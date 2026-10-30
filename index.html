@@ -642,7 +642,11 @@ const WALK = [
   { x0: -11.4, x1: 11.4, z0: ROOM.zFront + 0.9, z1: 15.55, top: 5.6 },
   { x0: -10.25, x1: -8.75, z0: 15.0, z1: 23.6, top: 1.55 },
   { x0: 8.75, x1: 10.25, z0: 15.0, z1: 23.6, top: 1.55 },
-  { x0: -11.4, x1: 11.4, z0: 23.3, z1: 32.5, top: 3.9 }
+  { x0: -11.4, x1: 11.4, z0: 23.3, z1: 32.5, top: 3.9 },
+  // around both ends of the counter and into the employee area behind it
+  { x0: -11.4, x1: -6.85, z0: 32.0, z1: 35.95, top: 3.9 },
+  { x0: 6.85, x1: 11.4, z0: 32.0, z1: 35.95, top: 3.9 },
+  { x0: -11.4, x1: 11.4, z0: 34.35, z1: 35.0, top: 3.9 }
 ];
 const walkable = (x, z) => WALK.some((w) => x >= w.x0 && x <= w.x1 && z >= w.z0 && z <= w.z1);
 const ceilingAt = (x, z) => { let t = 0.05; for (const w of WALK) if (x >= w.x0 && x <= w.x1 && z >= w.z0 && z <= w.z1) t = Math.max(t, w.top); return t; };
