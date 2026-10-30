@@ -156,6 +156,7 @@ input[type=range] { accent-color: var(--brass); }
       <label class="btn" for="subs" id="subsLbl" title="Load an .srt or .vtt subtitle file">Subtitles</label>
       <input type="file" id="subs" hidden>
       <button id="subsToggle" hidden title="Show or hide subtitles (U)">Hide subs</button>
+      <button id="shareBtn" hidden title="Put a window or monitor on the theater screen">Share screen</button>
       <button id="play" disabled>Play</button>
       <span id="clock">0:00 / 0:00</span>
       <input type="range" id="seek" min="0" max="1" step="0.1" value="0" disabled aria-label="Seek">
@@ -210,6 +211,7 @@ const store = {
 const clean = (s, n) => String(s || "").replace(/[\u0000-\u001f\u007f-\u009f­​-‏‪-‮⁠-⁯﻿-]/g, "").slice(0, n);
 const fmt = (t) => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
   return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0"); };
+const netHooks = {};
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const num = (v, d) => (typeof v === "number" && isFinite(v) ? v : d);
 
@@ -601,6 +603,7 @@ function act(p, pos) {
   pushPb(); applyVideo(true); renderPlay();
 }
 function togglePlay() {
+  resumeAudio();
   if (remoteBlocked) { unblockRemote(); return; }
   if (!(video.src && video.readyState >= 1)) { if (remoteOn) act(!pb.p, clamp(vt(), 0, remoteDur || 1e9)); return; }
   if (blocked && pb.p) { blocked = false; video.play().then(updateNotice).catch(() => { blocked = true; updateNotice(); }); updateNotice(); return; }
@@ -611,7 +614,7 @@ $("play").addEventListener("click", togglePlay);
 let seeking = false;
 $("seek").addEventListener("input", () => { seeking = true; $("clock").textContent = fmt(+$("seek").value) + " / " + fmt(video.duration); });
 $("seek").addEventListener("change", () => { seeking = false; act(pb.p, +$("seek").value); });
-$("vol").addEventListener("input", () => { video.volume = +$("vol").value; rVideo.volume = +$("vol").value; });
+$("vol").addEventListener("input", () => { const v = +$("vol").value; if (hostGain) hostGain.gain.value = v; else video.volume = v; rVideo.volume = v; });
 
 let blocked = false;
 function applyVideo(force) {
@@ -625,7 +628,25 @@ function applyVideo(force) {
 function renderPlay() { $("play").textContent = pb.p ? "Pause" : "Play"; }
 
 /* ---------------- subtitles ---------------- */
-let cues = [], subsOn = true, subOffset = 0, subShown = null, cueIdx = 0;
+let cues = [], subsOn = true, subOffset = 0, subShown = null, cueIdx = 0, ownSubs = false;
+const amHost = () => !!(p2p && p2p.isHost);
+function packSubs() { return { t: "subs", c: cues.map((q) => [+q.start.toFixed(3), +q.end.toFixed(3), q.text]), off: subOffset }; }
+function shareSubs() { if (room && amHost() && room.broadcast) room.broadcast(packSubs()); }
+netHooks.welcome = (send) => { if (amHost() && cues.length) send(packSubs()); };
+netHooks.data = (m) => {
+  if (ownSubs) return;
+  if (m.t === "suboff") { subOffset = clamp(num(m.off, 0), -600, 600); subShown = null; return; }
+  if (!Array.isArray(m.c)) return;
+  const list = [];
+  for (const x of m.c.slice(0, 30000)) {
+    if (!Array.isArray(x)) continue; const a = num(x[0], NaN), b = num(x[1], NaN);
+    const tx = String(x[2] || "").slice(0, 400).split("\n").map((l) => clean(l, 200)).filter(Boolean).join("\n");
+    if (isFinite(a) && isFinite(b) && tx) list.push({ start: a, end: b, text: tx });
+  }
+  cues = list.sort((x, y) => x.start - y.start); cueIdx = 0; subShown = null; subOffset = clamp(num(m.off, 0), -600, 600); subsOn = true;
+  $("subsToggle").hidden = !cues.length; $("subsToggle").textContent = "Hide subs";
+  if (cues.length) toast("The host turned on subtitles.");
+};
 function parseTime(t) {
   const m = String(t).trim().replace(",", ".").match(/^(?:(\d+):)?(\d{1,2}):(\d{1,2})(?:[.:](\d{1,3}))?$/);
   if (!m) return NaN;
@@ -694,7 +715,7 @@ function drawSub(text) {
 }
 function updateSubs() {
   let text = "";
-  if (subsOn && cues.length && (video.src || remoteOn)) {
+  if (subsOn && cues.length && (video.src || remoteOn) && !sharing && !hostSharing) {
     const t = (film ? video.currentTime : clamp(vt(), 0, remoteDur || 1e9)) + subOffset;
     if (cueIdx >= cues.length || cues[cueIdx].start > t) cueIdx = 0;
     while (cueIdx < cues.length - 1 && cues[cueIdx + 1].start <= t) cueIdx++;
@@ -716,13 +737,14 @@ $("subs").addEventListener("change", async (e) => {
     const parsed = parseSubs(decodeSubs(await f.arrayBuffer()));
     if (!parsed.length) { toast("Couldn't find any timed subtitles in " + clean(f.name, 60) + ". Use an .srt, .vtt or .ass file."); return; }
     cues = parsed; cueIdx = 0; subOffset = 0; subsOn = true; subShown = null;
+    ownSubs = !amHost(); shareSubs();
     $("subsToggle").hidden = false; $("subsToggle").textContent = "Hide subs"; $("subsLbl").textContent = "Change subs";
-    toast("Loaded " + cues.length + " subtitles. Use [ and ] if they're early or late.");
+    toast("Loaded " + cues.length + " subtitles" + (amHost() ? " for the whole room" : "") + ". Use [ and ] if they're early or late.");
   } catch (err) { toast("Couldn't read that subtitle file."); console.error(err); }
 });
 function toggleSubs() { if (!cues.length) return; subsOn = !subsOn; $("subsToggle").textContent = subsOn ? "Hide subs" : "Show subs"; toast(subsOn ? "Subtitles on" : "Subtitles off"); }
 $("subsToggle").addEventListener("click", toggleSubs);
-function nudgeSubs(d) { if (!cues.length) return; subOffset = Math.round((subOffset + d) * 10) / 10; subShown = null; toast("Subtitle timing " + (subOffset > 0 ? "+" : "") + subOffset.toFixed(1) + "s" + (subOffset > 0 ? " (earlier)" : subOffset < 0 ? " (later)" : "")); }
+function nudgeSubs(d) { if (!cues.length) return; subOffset = Math.round((subOffset + d) * 10) / 10; subShown = null; if (amHost() && room && room.broadcast) room.broadcast({ t: "suboff", off: subOffset }); toast("Subtitle timing " + (subOffset > 0 ? "+" : "") + subOffset.toFixed(1) + "s" + (subOffset > 0 ? " (earlier)" : subOffset < 0 ? " (later)" : "")); }
 
 /* ---------------- room (live friends) ---------------- */
 let room = null, syncRoom = null, peersSnap = [];
@@ -733,7 +755,7 @@ function sharePresence(force) {
   if (!room) return;
   const g = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), r: +me.yaw.toFixed(3), c: myColor };
   const patch = { g };
-  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; }
+  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.share = sharing || null; }
   room.presence(patch).catch(() => {});
 }
 function pushPb() {
@@ -791,6 +813,8 @@ function onPeers(ch) {
   }
   for (const [peer, o] of others) if (!seen.has(peer)) { removeGhost(o.gh); o.tag.el.remove(); others.delete(peer); }
   if (!syncRoom) considerPb(ch.peers);
+  const hs = !!(p2p && !p2p.isHost && ch.peers.some((pe) => pe.peer === p2p.hostId && pe.presence && pe.presence.share === true));
+  if (hs !== hostSharing) { hostSharing = hs; subShown = null; useScreenSource(); }
   remoteDur = 0; for (const pe of ch.peers) { const fl = pe.presence && pe.presence.film; if (!pe.sameTab && fl && typeof fl === "object") remoteDur = Math.max(remoteDur, clamp(num(fl.d, 0), 0, 360000)); }
   syncCalls();
   resolveNames(); renderCrowd(); updateNotice();
@@ -842,6 +866,8 @@ function updateNotice() {
 let p2p = null, outStream = null, streamUnsupported = false, remoteDur = 0;
 const calls = new Map(); // host: clientId -> {call, sig}
 const rVideo = document.createElement("video"); rVideo.playsInline = true; rVideo.autoplay = true; rVideo.volume = 0.9;
+rVideo.setAttribute("aria-hidden", "true"); rVideo.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;";
+document.body.appendChild(rVideo);
 let remoteTex = null, remoteOn = false, remoteBlocked = false, currentCall = null;
 function getOutStream() {
   if (outStream) return outStream;
@@ -850,14 +876,67 @@ function getOutStream() {
   try { outStream = cap.call(video); } catch { streamUnsupported = true; return null; }
   return outStream;
 }
+// The movie's sound runs through Web Audio: one branch to the host's speakers, one into the stream for guests.
+let actx = null, mediaSrc = null, hostGain = null, streamDest = null;
+function resumeAudio() { if (actx && actx.state === "suspended") actx.resume().catch(() => {}); }
+function ensureAudioGraph() {
+  if (mediaSrc) return true;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
+    actx = actx || new AC();
+    mediaSrc = actx.createMediaElementSource(video);
+    hostGain = actx.createGain(); hostGain.gain.value = +$("vol").value;
+    streamDest = actx.createMediaStreamDestination();
+    mediaSrc.connect(hostGain); hostGain.connect(actx.destination); mediaSrc.connect(streamDest);
+    video.volume = 1; resumeAudio(); return true;
+  } catch (e) { console.error(e); return false; }
+}
+for (const ev of ["pointerdown", "keydown"]) document.addEventListener(ev, resumeAudio, true);
+
+// Screen sharing (host): a window, tab or whole monitor goes on the theater screen.
+const shareVideo = document.createElement("video"); shareVideo.muted = true; shareVideo.playsInline = true;
+let sharing = false, shareStream = null, shareTex = null, hostSharing = false;
+shareVideo.addEventListener("resize", () => { if (sharing && shareVideo.videoWidth) fitScreen(shareVideo.videoWidth / shareVideo.videoHeight); });
+async function toggleShare() {
+  if (sharing) { stopShare(); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) { toast("This browser can't share its screen. Try Chrome or Edge on a computer."); return; }
+  try {
+    const st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
+    shareStream = st; sharing = true; shareVideo.srcObject = st; shareVideo.play().catch(() => {});
+    if (!shareTex) { shareTex = new THREE.VideoTexture(shareVideo); shareTex.encoding = THREE.sRGBEncoding; shareTex.minFilter = THREE.LinearFilter; }
+    const vt0 = st.getVideoTracks()[0]; if (vt0) vt0.addEventListener("ended", stopShare);
+    if (pb.p && film) act(false, video.currentTime);
+    $("shareBtn").textContent = "Stop sharing";
+    useScreenSource(); syncCalls(); sharePresence(true);
+    toast(st.getAudioTracks().length ? "You're sharing your screen with sound." : "You're sharing your screen. No sound was shared; tick “Share audio” in the picker to include it.");
+  } catch { toast("Screen sharing was cancelled."); }
+}
+function stopShare() {
+  if (!sharing) return;
+  sharing = false; try { shareStream.getTracks().forEach((t) => t.stop()); } catch {}
+  shareStream = null; shareVideo.srcObject = null; $("shareBtn").textContent = "Share screen";
+  useScreenSource(); syncCalls(); sharePresence(true); toast("Stopped sharing your screen.");
+}
+$("shareBtn").addEventListener("click", toggleShare);
+
+function outTracks() {
+  const live = (t) => t.readyState === "live";
+  if (sharing && shareStream) { const t = shareStream.getTracks().filter(live); return t.some((x) => x.kind === "video") ? t : null; }
+  if (!film || video.readyState < 2) return null;
+  const st = getOutStream(); if (!st) return null;
+  const v = st.getVideoTracks().filter(live)[0]; if (!v) return null;
+  const out = [v];
+  if (ensureAudioGraph()) { const a2 = streamDest.stream.getAudioTracks()[0]; if (a2) out.push(a2); }
+  else { const a2 = st.getAudioTracks().filter(live)[0]; if (a2) out.push(a2); }
+  return out;
+}
 function dropCall(id) { const c = calls.get(id); if (c) { try { c.call.close(); } catch {} calls.delete(id); } }
 function syncCalls() {
   if (!p2p || !p2p.isHost || !room) return;
   const want = new Set(peersSnap.filter((pe) => !pe.sameTab).map((pe) => pe.peer));
   for (const id of [...calls.keys()]) if (!want.has(id)) dropCall(id);
-  if (!film || video.readyState < 2) return;
-  const st = getOutStream(); if (!st) return;
-  const tracks = st.getTracks().filter((t) => t.readyState === "live"); if (!tracks.some((t) => t.kind === "video")) return;
+  if (!film && !sharing) { for (const id of [...calls.keys()]) dropCall(id); return; }
+  const tracks = outTracks(); if (!tracks) return;
   const sig = tracks.map((t) => t.id).sort().join(",");
   for (const id of want) {
     const have = calls.get(id); if (have && have.sig === sig) continue;
@@ -880,7 +959,7 @@ function onCall(call) {
     if (!remoteTex) { remoteTex = new THREE.VideoTexture(rVideo); remoteTex.encoding = THREE.sRGBEncoding; remoteTex.minFilter = THREE.LinearFilter; }
     rVideo.play().then(() => { remoteBlocked = false; updateNotice(); }).catch(() => { rVideo.muted = true; remoteBlocked = true; rVideo.play().catch(() => {}); updateNotice(); });
     useScreenSource(); updateNotice();
-    if (!film) toast("The projector is rolling. You're watching the host's movie.");
+    if (!film) toast(hostSharing ? "The host is sharing their screen." : "The projector is rolling. You're watching the host's movie.");
   });
   const end = () => { if (call !== currentCall) return; currentCall = null; remoteOn = false; rVideo.srcObject = null; useScreenSource(); updateNotice(); };
   call.on("close", end); call.on("error", end);
@@ -889,7 +968,9 @@ function unblockRemote() { rVideo.muted = false; rVideo.play().then(() => { remo
 document.addEventListener("pointerdown", () => { if (remoteBlocked) unblockRemote(); }, true);
 rVideo.addEventListener("resize", () => { if (!film && remoteOn && rVideo.videoWidth) fitScreen(rVideo.videoWidth / rVideo.videoHeight); });
 function useScreenSource() {
-  if (film && videoTex && video.readyState >= 1) { screenMat.map = videoTex; fitScreen((video.videoWidth || 16) / (video.videoHeight || 9)); }
+  if (sharing && shareTex) { screenMat.map = shareTex; if (shareVideo.videoWidth) fitScreen(shareVideo.videoWidth / shareVideo.videoHeight); }
+  else if (remoteOn && remoteTex && hostSharing) { screenMat.map = remoteTex; if (rVideo.videoWidth) fitScreen(rVideo.videoWidth / rVideo.videoHeight); }
+  else if (film && videoTex && video.readyState >= 1) { screenMat.map = videoTex; fitScreen((video.videoWidth || 16) / (video.videoHeight || 9)); }
   else if (remoteOn && remoteTex) { screenMat.map = remoteTex; if (rVideo.videoWidth) fitScreen(rVideo.videoWidth / rVideo.videoHeight); }
   else { screenMat.map = placeholderTex; fitScreen(16 / 9); }
   screenMat.needsUpdate = true;
@@ -927,6 +1008,7 @@ function makeNet(peerObj, isHost, hostConn, onDown) {
         const snap = [];
         for (const [name, c] of chans) { snap.push([name, myPid, c.mine]); for (const [pid, v] of c.map) snap.push([name, pid, v.presence]); }
         try { cn.send({ t: "snap", d: snap }); } catch {}
+        if (netHooks.welcome) netHooks.welcome((m) => { try { cn.send(m); } catch {} });
       });
       cn.on("data", (m) => {
         if (!m || m.t !== "p" || typeof m.ch !== "string" || m.ch.length > 24) return;
@@ -940,6 +1022,7 @@ function makeNet(peerObj, isHost, hostConn, onDown) {
       if (!m) return;
       if (m.t === "snap" && Array.isArray(m.d)) m.d.slice(0, 600).forEach((x) => Array.isArray(x) && apply(x[0], x[1], x[2]));
       if (m.t === "p") apply(m.ch, m.peer, m.presence);
+      if ((m.t === "subs" || m.t === "suboff") && netHooks.data) netHooks.data(m);
     });
     hostConn.on("close", onDown); hostConn.on("error", onDown);
   }
@@ -956,7 +1039,8 @@ function makeNet(peerObj, isHost, hostConn, onDown) {
       onPeers(fn) { c.fns.push(fn); Promise.resolve().then(() => fn({ peers: snapshot(c), joined: [], left: [], updated: [] })); return () => {}; },
       peers() { return snapshot(c); },
       onConnection(fn) { Promise.resolve().then(() => fn(true)); return () => {}; },
-      join(n) { return Promise.resolve(api(n)); }
+      join(n) { return Promise.resolve(api(n)); },
+      broadcast(m) { if (isHost) sendAll(m); }
     };
   }
   return api("lobby");
@@ -970,6 +1054,7 @@ function readNick() { myNick = clean($("nick").value, 24).trim(); store.set("gm.
 
 async function goLive(net, code, peerObj, isHost, hostId) {
   room = net; roomCode = code; p2p = { peer: peerObj, isHost, hostId };
+  $("shareBtn").hidden = !isHost;
   $("roomCode").textContent = code; $("roomline").hidden = false;
   try { history.replaceState(null, "", "#" + code); } catch {}
   room.onPeers(onPeers);
@@ -981,7 +1066,7 @@ function roomDown() {
   if (!room) return;
   room = null; syncRoom = null; peersSnap = [];
   for (const id of [...calls.keys()]) dropCall(id);
-  if (currentCall) { try { currentCall.close(); } catch {} } currentCall = null; remoteOn = false; rVideo.srcObject = null; p2p = null; useScreenSource();
+  if (currentCall) { try { currentCall.close(); } catch {} } currentCall = null; remoteOn = false; rVideo.srcObject = null; hostSharing = false; if (!ownSubs && !(p2p && p2p.isHost)) { cues = []; $("subsToggle").hidden = true; } p2p = null; $("shareBtn").hidden = false; useScreenSource();
   for (const o of others.values()) { removeGhost(o.gh); o.tag.el.remove(); } others.clear();
   $("roomline").hidden = true; renderCrowd(); updateNotice();
   toast("The host left, so the room closed. You can keep watching solo.");
@@ -1018,7 +1103,7 @@ function join(code) {
 }
 $("nick").value = myNick;
 $("joinForm").addEventListener("submit", (e) => { e.preventDefault(); join($("code").value); });
-$("solo").addEventListener("click", () => { readNick(); enterTheater(); });
+$("solo").addEventListener("click", () => { readNick(); $("shareBtn").hidden = false; enterTheater(); });
 { const h = location.hash.replace("#", "").toUpperCase(); if (/^[A-Z0-9]{5}$/.test(h)) { $("code").value = h; lobbyMsg("You've been invited to room " + h + ". Pick a name and press Join."); } }
 $("copyLink").addEventListener("click", () => {
   const link = location.href.split("#")[0] + "#" + roomCode;
@@ -1119,7 +1204,7 @@ function frame() {
 
   // screen light from the picture
   const playing = video.src && !video.paused && video.readyState >= 2;
-  const src = film && video.readyState >= 2 ? video : remoteOn && rVideo.readyState >= 2 ? rVideo : null;
+  const src = sharing && shareVideo.readyState >= 2 ? shareVideo : film && video.readyState >= 2 ? video : remoteOn && rVideo.readyState >= 2 ? rVideo : null;
   if (src && t - lastSample > 0.2) {
     lastSample = t;
     try { sctx.drawImage(src, 0, 0, 8, 8); const d = sctx.getImageData(0, 0, 8, 8).data; let r = 0, g = 0, b = 0;
