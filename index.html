@@ -1175,7 +1175,7 @@ async function toggleShare() {
   if (sharing) { stopShare(); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) { toast("This browser can't share its screen. Try Chrome or Edge on a computer."); return; }
   try {
-    const st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
+    const st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2, sampleRate: 48000 } });
     shareStream = st; sharing = true; shareVideo.srcObject = st; shareVideo.play().catch(() => {});
     if (!shareTex) { shareTex = new THREE.VideoTexture(shareVideo); shareTex.encoding = THREE.sRGBEncoding; shareTex.minFilter = THREE.LinearFilter; }
     const vt0 = st.getVideoTracks()[0]; if (vt0) vt0.addEventListener("ended", stopShare);
@@ -1195,14 +1195,36 @@ $("shareBtn").addEventListener("click", toggleShare);
 
 function outTracks() {
   const live = (t) => t.readyState === "live";
-  if (sharing && shareStream) { const t = shareStream.getTracks().filter(live); return t.some((x) => x.kind === "video") ? t : null; }
+  if (sharing && shareStream) { const t = shareStream.getTracks().filter(live); return t.some((x) => x.kind === "video") ? hint(t) : null; }
   if (!film || video.readyState < 2) return null;
   const st = getOutStream(); if (!st) return null;
   const v = st.getVideoTracks().filter(live)[0]; if (!v) return null;
   const out = [v];
   if (ensureAudioGraph()) { const a2 = streamDest.stream.getAudioTracks()[0]; if (a2) out.push(a2); }
   else { const a2 = st.getAudioTracks().filter(live)[0]; if (a2) out.push(a2); }
-  return out;
+  return hint(out);
+}
+// Tell the browser this is a movie: music-grade audio (no voice filters) and smooth motion video.
+function hint(tracks) { for (const t of tracks) { try { t.contentHint = t.kind === "audio" ? "music" : "motion"; } catch {} } return tracks; }
+// High-quality stereo Opus instead of the voice-call default (mono, ~32 kbps).
+function hifiSdp(sdp) {
+  const m = sdp.match(/a=rtpmap:(\d+) opus\/48000\/2/i); if (!m) return sdp;
+  const pt = m[1], want = ["stereo=1", "sprop-stereo=1", "maxaveragebitrate=256000", "maxplaybackrate=48000", "useinbandfec=1", "cbr=0"];
+  const re = new RegExp("a=fmtp:" + pt + " ([^\\r\\n]*)");
+  if (re.test(sdp)) return sdp.replace(re, (all, params) => "a=fmtp:" + pt + " " + params.split(";").map((x) => x.trim()).filter((x) => x && !/^(stereo|sprop-stereo|maxaveragebitrate|maxplaybackrate|useinbandfec|cbr)=/.test(x)).concat(want).join(";"));
+  return sdp.replace(m[0], m[0] + "\r\na=fmtp:" + pt + " " + want.join(";"));
+}
+async function boostSenders(call) {
+  const pc = call && call.peerConnection; if (!pc || !pc.getSenders) return;
+  for (const sn of pc.getSenders()) {
+    if (!sn.track || !sn.getParameters) continue;
+    try {
+      const prm = sn.getParameters(); if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
+      if (sn.track.kind === "audio") { prm.encodings[0].maxBitrate = 256000; prm.encodings[0].priority = "high"; prm.encodings[0].networkPriority = "high"; }
+      else { prm.encodings[0].maxBitrate = 6000000; prm.encodings[0].maxFramerate = 30; prm.degradationPreference = "maintain-framerate"; }
+      await sn.setParameters(prm);
+    } catch {}
+  }
 }
 function dropCall(id) { const c = calls.get(id); if (c) { try { c.call.close(); } catch {} calls.delete(id); } }
 function syncCalls() {
@@ -1216,7 +1238,8 @@ function syncCalls() {
     const have = calls.get(id); if (have && have.sig === sig) continue;
     dropCall(id);
     try {
-      const call = p2p.peer.call(id, new MediaStream(tracks)); if (!call) continue;
+      const call = p2p.peer.call(id, new MediaStream(tracks), { sdpTransform: hifiSdp }); if (!call) continue;
+      setTimeout(() => boostSenders(call), 1500); setTimeout(() => boostSenders(call), 6000);
       const entry = { call, sig }; calls.set(id, entry);
       const gone = () => { if (calls.get(id) === entry) calls.delete(id); };
       call.on("close", gone); call.on("error", gone);
@@ -1252,7 +1275,7 @@ function playRemoteAudio() {
 }
 function onCall(call) {
   if (!p2p || p2p.isHost || call.peer !== p2p.hostId) { try { call.close(); } catch {} return; }
-  currentCall = call; call.answer();
+  currentCall = call; call.answer(undefined, { sdpTransform: hifiSdp });
   call.on("stream", (st) => {
     if (call !== currentCall) return;
     if (remoteStream !== st) {
