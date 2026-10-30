@@ -109,6 +109,27 @@ input[type=range] { accent-color: var(--brass); }
 #enter { padding: 12px 22px; font-size: 15px; }
 .fine { font-size: 12px; color: var(--smoke); margin-top: 14px !important; margin-bottom: 0 !important; }
 
+/* Concessions */
+#shopHint { justify-self: center; }
+#tray { gap: 10px; }
+#tray .holding { font-size: 13px; color: var(--bone); }
+#tray .holding small { color: var(--smoke); margin-left: 4px; }
+.wallet { font-variant-numeric: tabular-nums; color: var(--brass); font-weight: 700; font-size: 13px; }
+#shop { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5, 2, 3, 0.55); z-index: 5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)); }
+.menu-card { width: min(460px, 100%); max-height: 100%; overflow-y: auto; background: #120708; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 30px 80px rgba(0,0,0,0.7); }
+.menu-card header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 18px 20px 12px; border-bottom: 1px solid var(--line); }
+.menu-card h2 { font-family: var(--display); font-weight: 400; font-size: 28px; color: var(--brass); margin: 0; letter-spacing: 0.03em; }
+.menu-card ul { list-style: none; margin: 0; padding: 6px 12px; }
+.menu-card li { display: grid; grid-template-columns: 14px 1fr auto auto; gap: 10px; align-items: center; padding: 9px 8px; border-bottom: 1px dashed rgba(216,165,78,0.14); }
+.menu-card li:last-child { border-bottom: none; }
+.menu-card .chip { width: 14px; height: 14px; border-radius: 3px; }
+.menu-card .nm { min-width: 0; }
+.menu-card .nm b { display: block; font-weight: 700; font-size: 14px; }
+.menu-card .nm span { color: var(--smoke); font-size: 12px; }
+.menu-card .price { font-variant-numeric: tabular-nums; color: var(--bone); font-size: 14px; }
+.menu-card footer { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 20px 18px; border-top: 1px solid var(--line); align-items: center; }
+.menu-card footer p { margin: 0; color: var(--smoke); font-size: 12px; }
 #toast { position: fixed; left: 50%; top: calc(70px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); padding: 8px 14px; border-radius: 20px; font-size: 13px; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
 
 @media (max-width: 560px) {
@@ -151,6 +172,13 @@ input[type=range] { accent-color: var(--brass); }
   </div>
 
   <div class="deck">
+    <div id="shopHint" hidden><button class="btn primary" id="openShop" type="button">Order at the counter (O)</button></div>
+    <div id="tray" class="bar" hidden>
+      <span class="holding" id="holding"></span>
+      <button id="eatBtn" type="button">Eat</button>
+      <button id="nextItem" type="button" title="Hold your next snack (G)">Switch</button>
+      <button id="tossItem" type="button" title="Throw this one away">Toss</button>
+    </div>
     <div id="notice" hidden></div>
     <div class="bar">
       <label class="btn primary" for="file" id="loadLbl">Load movie</label>
@@ -174,13 +202,20 @@ input[type=range] { accent-color: var(--brass); }
         <button type="button" id="boo">Boo!</button>
       </form>
     </div>
-    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drift · <kbd>U</kbd> subs · <kbd>[</kbd><kbd>]</kbd> sub timing · <kbd>Space</kbd>/<kbd>Shift</kbd> rise &amp; sink · drag to look · <kbd>V</kbd> camera · <kbd>P</kbd> dust · <kbd>B</kbd> boo</div>
+    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drift · <kbd>U</kbd> subs · <kbd>[</kbd><kbd>]</kbd> sub timing · <kbd>Space</kbd>/<kbd>Shift</kbd> rise &amp; sink · drag to look · <kbd>V</kbd> camera · <kbd>P</kbd> dust · <kbd>B</kbd> boo · <kbd>F</kbd> eat or drink · snacks in the lobby, out the back doors</div>
   </div>
 </div>
 
 <div id="joy" aria-hidden="true"><div id="knob"></div></div>
 <div id="updown"><button id="up" type="button">Rise</button><button id="down" type="button">Sink</button></div>
 <div id="toast" hidden></div>
+<div id="shop" hidden role="dialog" aria-label="Concession stand">
+  <div class="menu-card">
+    <header><h2>Concessions</h2><span class="wallet" id="walletTop"></span></header>
+    <ul id="menuList"></ul>
+    <footer><p>Ghost Bucks only. No refunds in the afterlife.</p><div style="display:flex;gap:8px"><button type="button" id="atm">Ghost ATM +$20</button><button type="button" class="btn primary" id="closeShop">Done</button></div></footer>
+  </div>
+</div>
 
 <div id="lobby">
   <div class="marquee">
@@ -263,6 +298,7 @@ const ROOM = { x: 12, zFront: -14, zBack: 16, h: 9 };
 scene.add(new THREE.HemisphereLight(0x3a2228, 0x0a0405, 0.55));
 scene.add(new THREE.AmbientLight(0x1a0d10, 0.5));
 
+const colliders = [];
 // carpet
 const carpet = canvasTex(256, 256, (x, w, h) => {
   x.fillStyle = "#2b0b10"; x.fillRect(0, 0, w, h);
@@ -284,15 +320,29 @@ const darkMat = new THREE.MeshStandardMaterial({ color: 0x0c0708, roughness: 1 }
 const depth = ROOM.zBack - ROOM.zFront, zMid = (ROOM.zBack + ROOM.zFront) / 2;
 for (const s of [-1, 1]) {
   const w = new THREE.Mesh(new THREE.PlaneGeometry(depth, ROOM.h), wallMat);
-  w.rotation.y = -s * Math.PI / 2; w.position.set(s * ROOM.x, ROOM.h / 2, zMid); scene.add(w);
+  w.rotation.y = -s * Math.PI / 2; w.position.set(s * ROOM.x, ROOM.h / 2, zMid); scene.add(w); colliders.push(w);
   for (let z = -10; z <= 14; z += 4) { // dark pilasters
     const p = new THREE.Mesh(new THREE.BoxGeometry(0.35, ROOM.h, 0.7), darkMat); p.position.set(s * (ROOM.x - 0.17), ROOM.h / 2, z); scene.add(p);
   }
 }
-const back = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, ROOM.h), darkMat); back.rotation.y = Math.PI; back.position.set(0, ROOM.h / 2, ROOM.zBack); scene.add(back);
+function wallBox(x0, x1, y0, y1, z0, z1, mat) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), mat);
+  m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); scene.add(m); colliders.push(m); return m;
+}
+// back wall with two doorways (x 8.4 to 10.6 on each side) out to the hallways
+const DOOR = { x0: 8.4, x1: 10.6, h: 3 };
+for (const [x0, x1] of [[-ROOM.x, -DOOR.x1], [-DOOR.x0, DOOR.x0], [DOOR.x1, ROOM.x]]) wallBox(x0, x1, 0, ROOM.h, ROOM.zBack, ROOM.zBack + 0.3, darkMat);
+for (const sx of [-1, 1]) {
+  const a = sx < 0 ? -DOOR.x1 : DOOR.x0, b = sx < 0 ? -DOOR.x0 : DOOR.x1;
+  wallBox(a, b, DOOR.h, ROOM.h, ROOM.zBack, ROOM.zBack + 0.3, darkMat);
+  // brass door frame on the theater side
+  for (const fx of [a, b]) { const f = new THREE.Mesh(new THREE.BoxGeometry(0.1, DOOR.h, 0.08), brass0()); f.position.set(fx, DOOR.h / 2, ROOM.zBack - 0.02); scene.add(f); }
+  const top = new THREE.Mesh(new THREE.BoxGeometry(b - a + 0.1, 0.1, 0.08), brass0()); top.position.set((a + b) / 2, DOOR.h, ROOM.zBack - 0.02); scene.add(top);
+}
+function brass0() { return brass0.m || (brass0.m = new THREE.MeshStandardMaterial({ color: 0xc89a50, metalness: 0.7, roughness: 0.35, emissive: 0x2a1606 })); }
 const front = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, ROOM.h), new THREE.MeshStandardMaterial({ color: 0x050404, roughness: 1 }));
 front.position.set(0, ROOM.h / 2, ROOM.zFront); scene.add(front);
-const ceil = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, depth), darkMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(0, ROOM.h, zMid); scene.add(ceil);
+const ceil = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, depth), darkMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(0, ROOM.h, zMid); scene.add(ceil); colliders.push(front, ceil);
 
 // stage, footlights, stanchions
 const stageBox = new THREE.Mesh(new THREE.BoxGeometry(ROOM.x * 2, 0.7, 2.8), new THREE.MeshStandardMaterial({ color: 0x140a0b, roughness: 0.8 }));
@@ -428,6 +478,201 @@ for (const s of [-1, 1]) {
   g.scale.set(2, 1.2, 1); g.position.set(s * 9.5, 3.4, ROOM.zBack - 0.1); scene.add(g);
 }
 
+/* ---------------- hallways + lobby + concession stand ---------------- */
+const LOBBY = { z0: 22.6, z1: 36.3, h: 5.5 };
+const MENU = [
+  { id: "popcorn", name: "Buttered popcorn", price: 7.5, uses: 6, verb: "Eat", color: "#f2c94c", sounds: ["*crunch*", "*munch munch*", "*crunch*"], done: "*licks the butter off*" },
+  { id: "soda", name: "Fountain soda", price: 5.25, uses: 5, verb: "Drink", color: "#c7352e", sounds: ["*slurp*", "*sip*", "*fizz*"], done: "*rattles the ice*" },
+  { id: "nachos", name: "Nachos & cheese", price: 6.75, uses: 5, verb: "Eat", color: "#e8a21a", sounds: ["*crunch*", "*dips a chip*"], done: "*scrapes the cheese cup*" },
+  { id: "hotdog", name: "Hot dog", price: 5.5, uses: 3, verb: "Eat", color: "#b5532c", sounds: ["*chomp*", "*nom*"], done: "*brushes off the crumbs*" },
+  { id: "pretzel", name: "Soft pretzel", price: 5, uses: 4, verb: "Eat", color: "#9a5b26", sounds: ["*munch*", "*salty*"], done: "*dusts off the salt*" },
+  { id: "candy", name: "Gummy worms", price: 4.25, uses: 6, verb: "Eat", color: "#7bd389", sounds: ["*chew*", "*stretchy*", "*chew chew*"], done: "*crumples the box*" },
+  { id: "slushie", name: "Blue raspberry slushie", price: 4.75, uses: 5, verb: "Drink", color: "#3d8bfd", sounds: ["*slurp*", "*sip*"], done: "*BRAIN FREEZE*" },
+  { id: "water", name: "Bottled water", price: 3.5, uses: 4, verb: "Drink", color: "#9fd8f0", sounds: ["*gulp*", "*sip*"], done: "*crinkles the bottle*" }
+];
+const MENU_BY_ID = Object.fromEntries(MENU.map((m) => [m.id, m]));
+{
+  const hallMat = new THREE.MeshStandardMaterial({ color: 0x3e0e15, roughness: 0.95 });
+  const lobbyWall = new THREE.MeshStandardMaterial({ color: 0x431a1f, roughness: 0.9 });
+  const wainscot = new THREE.MeshStandardMaterial({ color: 0x1a0d0c, roughness: 0.7 });
+  const lobbyCeil = new THREE.MeshStandardMaterial({ color: 0x1c100d, roughness: 1 });
+  // floor for hallways and lobby
+  const lf = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, LOBBY.z1 - ROOM.zBack), new THREE.MeshStandardMaterial({ map: carpet, roughness: 1 }));
+  lf.rotation.x = -Math.PI / 2; lf.position.set(0, 0, (ROOM.zBack + LOBBY.z1) / 2); scene.add(lf);
+  // two short hallways
+  for (const sx of [-1, 1]) {
+    const a = sx < 0 ? -DOOR.x1 : DOOR.x0, b = sx < 0 ? -DOOR.x0 : DOOR.x1;
+    wallBox(a - 0.2, a, 0, DOOR.h + 0.1, ROOM.zBack + 0.3, LOBBY.z0, hallMat);
+    wallBox(b, b + 0.2, 0, DOOR.h + 0.1, ROOM.zBack + 0.3, LOBBY.z0, hallMat);
+    wallBox(a - 0.2, b + 0.2, DOOR.h, DOOR.h + 0.1, ROOM.zBack + 0.3, LOBBY.z0, lobbyCeil);
+    for (const z of [17.8, 20.8]) { // little sconces down each hallway
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffd9a0 })); lamp.position.set(sx < 0 ? a + 0.05 : b - 0.05, 2.3, z); scene.add(lamp);
+      const g = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(255, 200, 140), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })); g.scale.set(1.6, 1.6, 1); g.position.copy(lamp.position); scene.add(g);
+    }
+    const L = new THREE.PointLight(0xffc98a, 0.7, 6, 2); L.position.set((a + b) / 2, 2.4, 19.3); scene.add(L);
+  }
+  // lobby shell (front wall has the two hallway openings)
+  for (const [x0, x1] of [[-ROOM.x, -DOOR.x1], [-DOOR.x0, DOOR.x0], [DOOR.x1, ROOM.x]]) wallBox(x0, x1, 0, LOBBY.h, LOBBY.z0, LOBBY.z0 + 0.3, lobbyWall);
+  for (const [x0, x1] of [[-DOOR.x1, -DOOR.x0], [DOOR.x0, DOOR.x1]]) wallBox(x0, x1, DOOR.h, LOBBY.h, LOBBY.z0, LOBBY.z0 + 0.3, lobbyWall);
+  wallBox(-ROOM.x, ROOM.x, 0, LOBBY.h, LOBBY.z1, LOBBY.z1 + 0.3, lobbyWall);
+  wallBox(-ROOM.x - 0.3, -ROOM.x, 0, LOBBY.h, LOBBY.z0, LOBBY.z1 + 0.3, lobbyWall);
+  wallBox(ROOM.x, ROOM.x + 0.3, 0, LOBBY.h, LOBBY.z0, LOBBY.z1 + 0.3, lobbyWall);
+  wallBox(-ROOM.x - 0.3, ROOM.x + 0.3, LOBBY.h, LOBBY.h + 0.2, LOBBY.z0, LOBBY.z1 + 0.3, lobbyCeil);
+  // dark wainscot band and brass rail around the lobby
+  for (const sx of [-1, 1]) {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.1, LOBBY.z1 - LOBBY.z0 - 0.3), wainscot); w.position.set(sx * (ROOM.x - 0.03), 0.55, (LOBBY.z0 + LOBBY.z1) / 2 + 0.15); scene.add(w);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, LOBBY.z1 - LOBBY.z0 - 0.3), brass0()); rail.position.set(sx * (ROOM.x - 0.05), 1.12, (LOBBY.z0 + LOBBY.z1) / 2 + 0.15); scene.add(rail);
+  }
+  // ceiling lamps + warm light
+  for (const [x, z] of [[-6, 26], [6, 26], [-6, 31.5], [6, 31.5], [0, 28.5]]) {
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.06, 20), new THREE.MeshBasicMaterial({ color: 0xffe3b8 })); disc.position.set(x, LOBBY.h - 0.04, z); scene.add(disc);
+  }
+  for (const [x, z] of [[-5, 27.5], [5, 27.5]]) { const L = new THREE.PointLight(0xffd2a0, 1.35, 15, 1.6); L.position.set(x, LOBBY.h - 0.6, z); scene.add(L); }
+
+  // movie posters (made-up titles) on the lobby side walls
+  const POSTERS = [["The Hollow Reel", "#2b3a67", "#e9c46a"], ["Midnight at the Mill", "#1d3b2a", "#f4a261"], ["Fog Over Fairmont", "#3a2f4f", "#cfd8e3"], ["Return of the Usher", "#5a1a1a", "#f1e3c2"]];
+  POSTERS.forEach(([title, bg, fg], i) => {
+    const tex = canvasTex(256, 384, (x, w, h) => {
+      const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, bg); g.addColorStop(1, "#0b0607"); x.fillStyle = g; x.fillRect(0, 0, w, h);
+      x.fillStyle = fg; x.globalAlpha = 0.9; x.beginPath(); x.arc(w * 0.62, h * 0.3, 52, 0, 7); x.fill(); x.globalAlpha = 1;
+      x.fillStyle = "#0b0607"; x.beginPath(); x.moveTo(0, h * 0.62); for (let k = 0; k <= 8; k++) x.lineTo((k / 8) * w, h * 0.55 + Math.sin(k * 1.7 + i) * 18); x.lineTo(w, h); x.lineTo(0, h); x.fill();
+      x.fillStyle = "#f3eff6"; x.beginPath(); x.ellipse(w * 0.35, h * 0.52, 16, 22, 0, Math.PI, 0); x.lineTo(w * 0.35 + 16, h * 0.6); x.lineTo(w * 0.35 - 16, h * 0.6); x.fill();
+      x.fillStyle = fg; x.textAlign = "center"; x.font = "30px Limelight, Georgia, serif";
+      const words = title.split(" "); const mid = Math.ceil(words.length / 2);
+      x.fillText(words.slice(0, mid).join(" "), w / 2, h * 0.76); x.fillText(words.slice(mid).join(" "), w / 2, h * 0.76 + 34);
+      x.font = "700 13px Karla, sans-serif"; x.fillStyle = "#cbbfae"; x.fillText("COMING SOON TO SCREEN ONE", w / 2, h - 18);
+    });
+    const sx = i < 2 ? -1 : 1, z = i % 2 ? 29.5 : 25.5;
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.3, 1.6), brass0()); frame.position.set(sx * (ROOM.x - 0.04), 2.6, z); scene.add(frame);
+    const pm = new THREE.Mesh(new THREE.PlaneGeometry(1.45, 2.15), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.25 }));
+    pm.rotation.y = -sx * Math.PI / 2; pm.position.set(sx * (ROOM.x - 0.08), 2.6, z); scene.add(pm);
+  });
+  // benches
+  for (const [x, z] of [[-9.6, 27.5], [9.6, 27.5]]) {
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.12, 2.4), new THREE.MeshStandardMaterial({ color: 0x6a1420, roughness: 0.85 })); seat.position.set(x, 0.5, z); scene.add(seat);
+    for (const dz of [-1, 1]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.45, 0.08), brass0()); leg.position.set(x, 0.22, z + dz * 1.05); scene.add(leg); }
+  }
+  // queue ropes
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0x8a1622, roughness: 0.7 });
+  const postXs = [-4.5, -1.5, 1.5, 4.5];
+  for (const x of postXs) { const pst = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 1, 10), brass0()); pst.position.set(x, 0.5, 30.2); scene.add(pst); const ball = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), brass0()); ball.position.set(x, 1.02, 30.2); scene.add(ball); }
+  for (let k = 0; k < postXs.length - 1; k += 2) {
+    const a = postXs[k], b = postXs[k + 1], curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(a, 0.92, 30.2), new THREE.Vector3((a + b) / 2, 0.62, 30.2), new THREE.Vector3(b, 0.92, 30.2));
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.025, 6, false), ropeMat));
+  }
+
+  // ---- the concession stand ----
+  const counterFront = canvasTex(512, 64, (x, w, h) => {
+    x.fillStyle = "#5a0f19"; x.fillRect(0, 0, w, h);
+    for (let i = 0; i < w; i += 32) { x.fillStyle = "rgba(216,165,78,0.55)"; x.fillRect(i + 14, 6, 4, h - 12); }
+    x.fillStyle = "#d8a54e"; x.fillRect(0, 0, w, 4); x.fillRect(0, h - 4, w, 4);
+  }, [3, 1]);
+  const CZ = 33.4; // front counter centre
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(13, 1.1, 1), [
+    new THREE.MeshStandardMaterial({ color: 0x3a0a10 }), new THREE.MeshStandardMaterial({ color: 0x3a0a10 }),
+    new THREE.MeshStandardMaterial({ color: 0x2b1712, roughness: 0.35, metalness: 0.2 }), new THREE.MeshStandardMaterial({ color: 0x1a0a0c }),
+    new THREE.MeshStandardMaterial({ map: counterFront, roughness: 0.6 }), new THREE.MeshStandardMaterial({ color: 0x3a0a10 })]);
+  counter.position.set(0, 0.55, CZ); scene.add(counter); colliders.push(counter);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(13.2, 0.06, 1.15), new THREE.MeshStandardMaterial({ color: 0xd8c9b0, roughness: 0.3 })); top.position.set(0, 1.13, CZ); scene.add(top);
+  const backCounter = new THREE.Mesh(new THREE.BoxGeometry(12, 1, 0.8), new THREE.MeshStandardMaterial({ color: 0x24110f, roughness: 0.6 })); backCounter.position.set(0, 0.5, LOBBY.z1 - 0.45); scene.add(backCounter);
+  const glass = new THREE.MeshStandardMaterial({ color: 0xcfe8ff, transparent: true, opacity: 0.18, roughness: 0.05, metalness: 0.1, depthWrite: false });
+
+  // popcorn machine
+  { const px = -4.9, base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.35, 0.8), new THREE.MeshStandardMaterial({ color: 0xb01e2a, roughness: 0.4 })); base.position.set(px, 1.33, CZ); scene.add(base);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.0, 0.8), glass); box.position.set(px, 2.0, CZ); scene.add(box);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.25, 0.9), new THREE.MeshStandardMaterial({ color: 0xb01e2a, roughness: 0.4 })); roof.position.set(px, 2.62, CZ); scene.add(roof);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.2), new THREE.MeshBasicMaterial({ map: canvasTex(256, 48, (x, w, h) => { x.fillStyle = "#b01e2a"; x.fillRect(0, 0, w, h); x.fillStyle = "#ffe9a8"; x.font = "30px Limelight, Georgia, serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("POPCORN", w / 2, h / 2 + 2); }), toneMapped: false }));
+    sign.rotation.y = Math.PI; sign.position.set(px, 2.62, CZ - 0.46); scene.add(sign);
+    const kernels = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.045, 0), new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0x6b4a10, roughness: 0.8 }), 220);
+    for (let i = 0; i < 220; i++) { const h = Math.pow(Math.random(), 1.6) * 0.55; kernels.setMatrixAt(i, m4.compose(v3.set(px + (Math.random() - 0.5) * 1.1, 1.55 + h, CZ + (Math.random() - 0.5) * 0.7), q.setFromEuler(e3.set(Math.random() * 3, Math.random() * 3, 0)), one)); }
+    scene.add(kernels);
+    const gl = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(255, 210, 120), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false })); gl.scale.set(2.2, 2.2, 1); gl.position.set(px, 2.0, CZ); scene.add(gl);
+  }
+  // candy display case built into the counter
+  { const cx = -1.6, cs = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.55, 0.8), glass); cs.position.set(cx, 1.45, CZ); scene.add(cs);
+    const COLORS = [0xe63946, 0xf4a261, 0x2a9d8f, 0x7bd389, 0xffd166, 0x9b5de5, 0x3d8bfd, 0xff8fab];
+    const boxes = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.3, 0.06), new THREE.MeshStandardMaterial({ roughness: 0.6 }), 24);
+    for (let i = 0; i < 24; i++) { const col = i % 8, row = Math.floor(i / 8); boxes.setMatrixAt(i, m4.compose(v3.set(cx - 0.95 + col * 0.27, 1.34, CZ - 0.25 + row * 0.22), q.setFromEuler(e3.set(-0.25, 0, 0)), one)); boxes.setColorAt(i, new THREE.Color(COLORS[(i * 3) % 8])); }
+    scene.add(boxes);
+  }
+  // register
+  { const reg = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.4), new THREE.MeshStandardMaterial({ color: 0x1b1b1f, roughness: 0.4 })); reg.position.set(1.4, 1.31, CZ + 0.05); scene.add(reg);
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.2), new THREE.MeshBasicMaterial({ color: 0x6dffb0 })); scr.rotation.y = Math.PI; scr.rotation.x = -0.3; scr.position.set(1.4, 1.55, CZ - 0.1); scene.add(scr); }
+  // hot dog roller
+  { const hx = 3.1, plate = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.12, 0.6), new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 0.8, roughness: 0.3 })); plate.position.set(hx, 1.22, CZ); scene.add(plate);
+    for (let i = 0; i < 6; i++) { const dog = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.8, 10), new THREE.MeshStandardMaterial({ color: 0x9b3a1e, roughness: 0.5 })); dog.rotation.z = Math.PI / 2; dog.position.set(hx, 1.32, CZ - 0.22 + i * 0.09); scene.add(dog); } }
+  // napkins + straws
+  { const nap = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.25, 0.25), new THREE.MeshStandardMaterial({ color: 0x222222 })); nap.position.set(5.6, 1.28, CZ); scene.add(nap); }
+  // soda fountain on the back counter
+  { const sx = 3.4, ft = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.1, 0.6), new THREE.MeshStandardMaterial({ color: 0x2a2a30, metalness: 0.6, roughness: 0.35 })); ft.position.set(sx, 1.55, LOBBY.z1 - 0.45); scene.add(ft);
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.45), new THREE.MeshBasicMaterial({ toneMapped: false, map: canvasTex(256, 68, (x, w, h) => { x.fillStyle = "#111"; x.fillRect(0, 0, w, h); ["#c7352e", "#3d8bfd", "#f4a261", "#7bd389", "#9fd8f0"].forEach((c, i) => { x.fillStyle = c; x.fillRect(10 + i * 49, 10, 40, h - 20); }); }) }));
+    panel.rotation.y = Math.PI; panel.position.set(sx, 1.85, LOBBY.z1 - 0.76); scene.add(panel);
+    for (let i = 0; i < 5; i++) { const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.1, 8), brass0()); sp.position.set(sx - 0.66 + i * 0.33, 1.25, LOBBY.z1 - 0.8); scene.add(sp); }
+    for (let i = 0; i < 3; i++) { const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.075, 0.5, 14), new THREE.MeshStandardMaterial({ color: 0xf1ece2 })); cup.position.set(sx + 1.2 + i * 0.25, 1.25, LOBBY.z1 - 0.45); scene.add(cup); } }
+  // slushie machine
+  { const sx = -2.6; for (const [i, c] of [[0, 0x3d8bfd], [1, 0xe63946]]) { const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.6, 16), new THREE.MeshStandardMaterial({ color: c, transparent: true, opacity: 0.8, roughness: 0.2, emissive: c, emissiveIntensity: 0.25 })); tank.position.set(sx + i * 0.6, 1.35, LOBBY.z1 - 0.45); scene.add(tank); } }
+
+  // menu board with marquee bulbs
+  const menuTex = canvasTex(1024, 256, () => {});
+  window.__drawMenuBoard = () => {
+    const c = menuTex.image, x = c.getContext("2d"), w = c.width, h = c.height;
+    x.fillStyle = "#0e0708"; x.fillRect(0, 0, w, h);
+    x.strokeStyle = "#d8a54e"; x.lineWidth = 4; x.strokeRect(10, 10, w - 20, h - 20);
+    x.fillStyle = "#d8a54e"; x.textAlign = "center"; x.textBaseline = "alphabetic"; x.font = "50px Limelight, Georgia, serif"; x.fillText("Concessions", w / 2, 66);
+    x.font = "700 22px Karla, sans-serif";
+    MENU.forEach((m, i) => { const col = i % 2, row = Math.floor(i / 2), cx = col ? w * 0.53 : w * 0.06, y = 112 + row * 36;
+      x.fillStyle = m.color; x.fillRect(cx, y - 15, 14, 14); x.fillStyle = "#efe6d8"; x.textAlign = "left"; x.fillText(m.name, cx + 24, y);
+      x.textAlign = "right"; x.fillStyle = "#d8a54e"; x.fillText("$" + m.price.toFixed(2), cx + w * 0.41, y); });
+    menuTex.needsUpdate = true;
+  };
+  window.__drawMenuBoard();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => window.__drawMenuBoard());
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(9, 2.25), new THREE.MeshBasicMaterial({ map: menuTex, toneMapped: false }));
+  board.rotation.y = Math.PI; board.position.set(0, 3.55, LOBBY.z1 - 0.02); scene.add(board);
+  const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffe2a0 });
+  for (let i = 0; i <= 18; i++) for (const y of [2.35, 4.75]) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), bulbMat); b.position.set(-4.6 + i * (9.2 / 18), y, LOBBY.z1 - 0.06); scene.add(b); }
+  const boardGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(255, 200, 120), transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false })); boardGlow.scale.set(13, 5, 1); boardGlow.position.set(0, 3.55, LOBBY.z1 - 0.2); scene.add(boardGlow);
+}
+
+// walkable areas: theater, two hallways, lobby (in front of the counter)
+const WALK = [
+  { x0: -11.4, x1: 11.4, z0: ROOM.zFront + 0.9, z1: 15.55, top: 5.6 },
+  { x0: -10.25, x1: -8.75, z0: 15.0, z1: 23.6, top: 1.55 },
+  { x0: 8.75, x1: 10.25, z0: 15.0, z1: 23.6, top: 1.55 },
+  { x0: -11.4, x1: 11.4, z0: 23.3, z1: 32.5, top: 3.9 }
+];
+const walkable = (x, z) => WALK.some((w) => x >= w.x0 && x <= w.x1 && z >= w.z0 && z <= w.z1);
+const ceilingAt = (x, z) => { let t = 0.05; for (const w of WALK) if (x >= w.x0 && x <= w.x1 && z >= w.z0 && z <= w.z1) t = Math.max(t, w.top); return t; };
+const nearCounter = () => me.z > 30.3 && Math.abs(me.x) < 7;
+
+// held snack models
+const itemMats = {};
+const im = (c, extra) => itemMats[c + JSON.stringify(extra || {})] || (itemMats[c + JSON.stringify(extra || {})] = new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.6 }, extra || {})));
+const stripeTex = canvasTex(64, 32, (x, w, h) => { for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? "#f4efe6" : "#c8202c"; x.fillRect(i * 8, 0, 8, h); } });
+function makeItemMesh(id) {
+  const g = new THREE.Group();
+  const add = (geo, mat, x, y, z, rx, ry, rz) => { const m = new THREE.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0); m.rotation.set(rx || 0, ry || 0, rz || 0); g.add(m); return m; };
+  if (id === "popcorn") { add(new THREE.CylinderGeometry(0.15, 0.1, 0.28, 16), new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.6 })); const top = add(new THREE.IcosahedronGeometry(0.15, 1), im(0xffe9a8, { emissive: 0x3a2a08, flatShading: true }), 0, 0.15, 0); top.scale.y = 0.6; }
+  else if (id === "soda" || id === "slushie") { const cup = id === "soda" ? im(0xc7352e) : im(0x3d8bfd, { transparent: true, opacity: 0.85, emissive: 0x0b2a66 });
+    add(new THREE.CylinderGeometry(0.1, 0.075, 0.28, 14), cup); add(new THREE.CylinderGeometry(0.105, 0.105, 0.025, 14), im(0xf4efe6), 0, 0.15, 0);
+    if (id === "slushie") { const d = add(new THREE.SphereGeometry(0.1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), im(0x7fb8ff, { transparent: true, opacity: 0.6 }), 0, 0.15, 0); d.scale.y = 0.7; }
+    add(new THREE.CylinderGeometry(0.01, 0.01, 0.22, 6), im(id === "soda" ? 0xffffff : 0xff5d8f), 0.03, 0.26, 0, 0, 0, 0.18); }
+  else if (id === "nachos") { add(new THREE.BoxGeometry(0.3, 0.05, 0.22), im(0x1b1b1b)); for (let i = 0; i < 7; i++) add(new THREE.ConeGeometry(0.05, 0.02, 3), im(0xf2b134, { flatShading: true }), -0.1 + (i % 4) * 0.06, 0.04, -0.05 + Math.floor(i / 4) * 0.08, 0.3 * i, i, 0);
+    add(new THREE.CylinderGeometry(0.04, 0.04, 0.05, 12), im(0xffc53d, { emissive: 0x3a2400 }), 0.1, 0.05, 0.06); }
+  else if (id === "hotdog") { const bun = add(new THREE.SphereGeometry(0.08, 12, 8), im(0xd9a066)); bun.scale.set(0.9, 0.55, 2.4); const sau = add(new THREE.SphereGeometry(0.05, 10, 8), im(0xa0401f), 0, 0.04, 0); sau.scale.set(0.9, 0.9, 5);
+    add(new THREE.BoxGeometry(0.015, 0.01, 0.3), im(0xffd400, { emissive: 0x332a00 }), 0, 0.09, 0); }
+  else if (id === "pretzel") { const t = add(new THREE.TorusGeometry(0.1, 0.035, 8, 20), im(0x9a5b26, { roughness: 0.5 }), 0, 0, 0, 0, 0, 0); t.scale.set(1.2, 1, 1); add(new THREE.TorusGeometry(0.05, 0.03, 8, 14), im(0x9a5b26), 0, 0.02, 0, 0, 0, 0); }
+  else if (id === "candy") { add(new THREE.BoxGeometry(0.16, 0.22, 0.05), im(0x7bd389)); add(new THREE.BoxGeometry(0.12, 0.08, 0.052), im(0xff8fab), 0, 0.03, 0); }
+  else { add(new THREE.CylinderGeometry(0.05, 0.05, 0.26, 14), im(0xbfe6ff, { transparent: true, opacity: 0.55, roughness: 0.1 })); add(new THREE.CylinderGeometry(0.03, 0.03, 0.04, 10), im(0x2b6fd6), 0, 0.15, 0); add(new THREE.CylinderGeometry(0.051, 0.051, 0.07, 14), im(0x3d8bfd), 0, 0.02, 0); }
+  return g;
+}
+function setHeld(gh, id) {
+  if ((gh.heldId || null) === (id || null)) return;
+  if (gh.held) { gh.bodyG.remove(gh.held); gh.held = null; }
+  gh.heldId = id || null;
+  if (id && MENU_BY_ID[id]) { gh.held = makeItemMesh(id); gh.held.position.set(0.56, 0.42, -0.3); gh.bodyG.add(gh.held); }
+}
+
 // jack-o'-lanterns
 const skinTex = canvasTex(256, 128, (x, w, h) => {
   x.fillStyle = "#c25410"; x.fillRect(0, 0, w, h);
@@ -484,7 +729,7 @@ function makeGhost(colorIdx) {
   shadow.rotation.x = -Math.PI / 2; scene.add(shadow); scene.add(group);
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(...col.toArray().map((c) => Math.round(c * 255))), transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false }));
   glow.scale.set(2.4, 2.4, 1); glow.position.y = 0.6; group.add(glow);
-  return { group, bodyG, mat, shadow, colorIdx, mouth, booAt: -10, phase: Math.random() * 6 };
+  return { group, bodyG, mat, shadow, colorIdx, mouth, booAt: -10, munchAt: -10, phase: Math.random() * 6, held: null, heldId: null };
 }
 function setGhostColor(gh, idx) {
   if (gh.colorIdx === idx) return; gh.colorIdx = idx; const c = new THREE.Color(SHEETS[idx].hex);
@@ -497,6 +742,9 @@ function poseGhost(gh, x, y, z, ry, t) {
   const boo = clamp(1 - (t - gh.booAt) / 0.7, 0, 1);
   const s = 1 + Math.sin(boo * Math.PI) * 0.35; gh.bodyG.scale.set(s, 1 + Math.sin(boo * Math.PI) * 0.2, s);
   gh.mouth.scale.set(0.8 + boo * 0.8, 1.1 + boo * 2.2, 0.5);
+  if (gh.held) { const mu = Math.sin(clamp((t - gh.munchAt) / 0.7, 0, 1) * Math.PI);
+    gh.held.position.set(0.56 - mu * 0.5, 0.42 + mu * 0.2, -0.3 - mu * 0.22); gh.held.rotation.set(-mu * 0.6, 0, mu * 0.3);
+    if (mu > 0) gh.mouth.scale.set(0.8 + mu * 0.5, 1.1 + Math.abs(Math.sin(t * 20)) * mu * 1.4, 0.5); }
   gh.bodyG.rotation.z = Math.sin(t * 1.3 + gh.phase) * 0.05;
   gh.shadow.position.set(x, 0.02, z); const k = clamp(1 - y / 5, 0.15, 1); gh.shadow.material.opacity = k; gh.shadow.scale.setScalar(0.7 + y * 0.15);
 }
@@ -527,8 +775,12 @@ const typing = () => document.activeElement && (document.activeElement.tagName =
 addEventListener("keydown", (e) => {
   if (typing()) { if (e.key === "Escape") document.activeElement.blur(); return; }
   if (!$("lobby").hidden) return;
+  if (!$("shop").hidden) { if (e.key === "Escape" || e.key.toLowerCase() === "o") closeShop(); return; }
   const k = e.key.toLowerCase(); keys.add(k);
   if (k === "v") toggleView();
+  if (k === "f") eatHeld();
+  if (k === "g") switchHeld();
+  if (k === "o" && nearCounter()) openShop();
   if (k === "p") setDust(!dustOn);
   if (k === "b") boo();
   if (k === "enter") { e.preventDefault(); $("say").focus(); }
@@ -763,7 +1015,7 @@ function sharePresence(force) {
   if (!room) return;
   const g = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), r: +me.yaw.toFixed(3), c: myColor };
   const patch = { g };
-  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.share = sharing || null; }
+  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; }
   room.presence(patch).catch(() => {});
 }
 function pushPb() {
@@ -809,13 +1061,14 @@ function onPeers(ch) {
     const g = pe.presence && pe.presence.g; if (!g || typeof g !== "object") continue;
     seen.add(pe.peer);
     let o = others.get(pe.peer);
-    const x = clamp(num(g.x, 0), -ROOM.x, ROOM.x), y = clamp(num(g.y, 0.3), 0, 6), z = clamp(num(g.z, 0), ROOM.zFront, ROOM.zBack), r = num(g.r, 0), c = clamp(num(g.c, 0) | 0, 0, SHEETS.length - 1);
+    const x = clamp(num(g.x, 0), -ROOM.x, ROOM.x), y = clamp(num(g.y, 0.3), 0, 6), z = clamp(num(g.z, 0), ROOM.zFront, LOBBY.z1), r = num(g.r, 0), c = clamp(num(g.c, 0) | 0, 0, SHEETS.length - 1);
     if (!o) { o = { gh: makeGhost(c), tag: makeTag(), x, y, z, yaw: r, sayKey: null, sayAt: -99, sayText: "" }; others.set(pe.peer, o); }
     setGhostColor(o.gh, c); o.tx = x; o.ty = y; o.tz = z; o.tyaw = r;
+    const hid = typeof pe.presence.hold === "string" && MENU_BY_ID[pe.presence.hold] ? pe.presence.hold : null; setHeld(o.gh, hid);
     const s = pe.presence.say;
     const sk = s && typeof s === "object" ? String(s.k) + "|" + String(s.t) : null;
     if (sk && sk !== o.sayKey) {
-      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); if (o.sayText.toLowerCase().startsWith("boo")) o.gh.booAt = performance.now() / 1000; }
+      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); if (o.sayText.toLowerCase().startsWith("boo")) o.gh.booAt = performance.now() / 1000; if (o.sayText.startsWith("*")) o.gh.munchAt = performance.now() / 1000; }
       o.sayKey = sk;
     } else if (!sk) o.sayKey = "";
   }
@@ -1199,6 +1452,65 @@ let entered = false;
 function enterTheater() { if (entered) return; $("lobby").hidden = true; entered = true; toast("Drag to look around. Load a movie when you're ready."); }
 $("enter").addEventListener("click", () => host(0));
 
+/* ---------------- concessions: wallet, menu, snacks ---------------- */
+let wallet = num(store.get("gm.wallet", 30), 30);
+const inventory = []; // [{id, left}]
+const heldItem = () => inventory[0] || null;
+const money = (v) => "$" + v.toFixed(2);
+function saveWallet() { store.set("gm.wallet", Math.round(wallet * 100) / 100); }
+function renderShop() {
+  $("walletTop").textContent = money(wallet) + " Ghost Bucks";
+  const ul = $("menuList"); ul.textContent = "";
+  for (const m of MENU) {
+    const li = document.createElement("li");
+    const chip = document.createElement("span"); chip.className = "chip"; chip.style.background = m.color;
+    const nm = document.createElement("div"); nm.className = "nm"; const b = document.createElement("b"); b.textContent = m.name; const sp = document.createElement("span"); sp.textContent = m.uses + " " + (m.verb === "Drink" ? "sips" : "bites"); nm.append(b, sp);
+    const pr = document.createElement("span"); pr.className = "price"; pr.textContent = money(m.price);
+    const buy = document.createElement("button"); buy.type = "button"; buy.textContent = "Buy"; buy.disabled = wallet + 1e-9 < m.price || inventory.length >= 6;
+    buy.title = inventory.length >= 6 ? "Your hands are full" : wallet < m.price ? "Not enough Ghost Bucks" : "Buy " + m.name;
+    buy.addEventListener("click", () => buyItem(m.id));
+    li.append(chip, nm, pr, buy); ul.appendChild(li);
+  }
+  $("atm").disabled = wallet >= 100;
+}
+function openShop() { if (!nearCounter()) return; renderShop(); $("shop").hidden = false; keys.clear(); const f = $("menuList").querySelector("button:not(:disabled)"); if (f) f.focus(); }
+function closeShop() { $("shop").hidden = true; }
+function buyItem(id) {
+  const m = MENU_BY_ID[id]; if (!m) return;
+  if (inventory.length >= 6) { toast("Your hands are full. Eat something first."); return; }
+  if (wallet + 1e-9 < m.price) { toast("Not enough Ghost Bucks. Try the Ghost ATM."); return; }
+  wallet = Math.round((wallet - m.price) * 100) / 100; saveWallet();
+  inventory.push({ id, left: m.uses });
+  if (inventory.length === 1) refreshHeld(); else renderTray();
+  renderShop(); toast("Got " + m.name.toLowerCase() + ". Press F to " + m.verb.toLowerCase() + ".");
+}
+function refreshHeld() { setHeld(me.ghost, heldItem() ? heldItem().id : null); renderTray(); sharePresence(true); }
+function renderTray() {
+  const h = heldItem(); $("tray").hidden = !h;
+  if (!h) return;
+  const m = MENU_BY_ID[h.id]; const el = $("holding"); el.textContent = m.name;
+  const sm = document.createElement("small"); sm.textContent = h.left + " " + (m.verb === "Drink" ? "sips" : "bites") + " left" + (inventory.length > 1 ? " · " + (inventory.length - 1) + " more in your pockets" : ""); el.appendChild(sm);
+  $("eatBtn").textContent = m.verb + " (F)"; $("nextItem").hidden = inventory.length < 2;
+}
+function eatHeld() {
+  const h = heldItem(); if (!h) return;
+  const m = MENU_BY_ID[h.id]; h.left -= 1;
+  me.ghost.munchAt = performance.now() / 1000;
+  if (h.left <= 0) { inventory.shift(); say(m.done); toast("Finished the " + m.name.toLowerCase() + "."); refreshHeld(); }
+  else { say(m.sounds[Math.floor(Math.random() * m.sounds.length)]); renderTray(); }
+}
+function switchHeld() { if (inventory.length < 2) return; inventory.push(inventory.shift()); refreshHeld(); }
+function tossHeld() { const h = heldItem(); if (!h) return; inventory.shift(); toast("Tossed the " + MENU_BY_ID[h.id].name.toLowerCase() + ". Very spooky of you."); refreshHeld(); }
+$("eatBtn").addEventListener("click", eatHeld);
+$("nextItem").addEventListener("click", switchHeld);
+$("tossItem").addEventListener("click", tossHeld);
+$("openShop").addEventListener("click", openShop);
+$("closeShop").addEventListener("click", closeShop);
+$("shop").addEventListener("click", (e) => { if (e.target === $("shop")) closeShop(); });
+$("atm").addEventListener("click", () => { wallet = Math.min(100, Math.round((wallet + 20) * 100) / 100); saveWallet(); renderShop(); toast("The Ghost ATM spat out $20. It smells faintly of cobwebs."); });
+const camRay = new THREE.Raycaster(), camDesired = new THREE.Vector3(), camDirV = new THREE.Vector3();
+let lastNear = false;
+
 /* ---------------- loop ---------------- */
 const clock = new THREE.Clock();
 const fwd = new THREE.Vector3(), right = new THREE.Vector3(), dir = new THREE.Vector3(), tgt = new THREE.Vector3();
@@ -1221,10 +1533,16 @@ function frame() {
     if (keys.has(" ") || keys.has("e")) u += 1; if (keys.has("shift") || keys.has("q") || keys.has("c")) u -= 1;
     f += -joy.y; s += joy.x;
     const sp = 4.2;
-    me.x = clamp(me.x + (fwd.x * f + right.x * s) * sp * dt, -ROOM.x + 0.6, ROOM.x - 0.6);
-    me.z = clamp(me.z + (fwd.z * f + right.z * s) * sp * dt, ROOM.zFront + 0.9, ROOM.zBack - 0.7);
-    const minY = me.z < ROOM.zFront + 2.8 ? 0.72 : 0.05;
-    me.y = clamp(me.y + u * 2.4 * dt, minY, 5.6);
+    if (!$("shop").hidden) { f = 0; s = 0; u = 0; }
+    const nx = me.x + (fwd.x * f + right.x * s) * sp * dt, nz = me.z + (fwd.z * f + right.z * s) * sp * dt;
+    if (!walkable(me.x, me.z) || walkable(nx, nz)) { me.x = nx; me.z = nz; }
+    else if (walkable(nx, me.z)) me.x = nx;
+    else if (walkable(me.x, nz)) me.z = nz;
+    const minY = me.z < ROOM.zFront + 2.8 ? 0.72 : 0.05, maxY = Math.max(minY, ceilingAt(me.x, me.z));
+    me.y = Math.max(minY, me.y + u * 2.4 * dt);
+    if (me.y > maxY) me.y += (maxY - me.y) * Math.min(1, dt * 7);
+    const near = nearCounter();
+    if (near !== lastNear) { lastNear = near; $("shopHint").hidden = !near; if (!near) closeShop(); }
   }
   poseGhost(me.ghost, me.x, me.y, me.z, me.yaw, t);
   me.ghost.group.visible = !firstPerson;
@@ -1236,9 +1554,12 @@ function frame() {
   } else {
     dir.set(fwd.x * Math.cos(me.pitch), Math.sin(me.pitch), fwd.z * Math.cos(me.pitch));
     tgt.set(me.x, me.y + 0.95, me.z);
-    camera.position.copy(tgt).addScaledVector(dir, -3.4); camera.position.y += 0.55;
-    camera.position.x = clamp(camera.position.x, -ROOM.x + 0.2, ROOM.x - 0.2); camera.position.z = clamp(camera.position.z, ROOM.zFront + 0.4, ROOM.zBack - 0.2);
-    camera.position.y = clamp(camera.position.y, 0.25, ROOM.h - 0.2);
+    camDesired.copy(tgt).addScaledVector(dir, -3.4); camDesired.y += 0.55;
+    camDirV.copy(camDesired).sub(tgt); const want = camDirV.length(); camDirV.normalize();
+    camRay.set(tgt, camDirV); camRay.far = want;
+    const hit = camRay.intersectObjects(colliders, false)[0];
+    camera.position.copy(tgt).addScaledVector(camDirV, hit ? Math.max(0.15, hit.distance - 0.25) : want);
+    camera.position.y = Math.max(0.25, camera.position.y);
     camera.lookAt(tgt.x + dir.x * 2, tgt.y + dir.y * 2, tgt.z + dir.z * 2);
   }
 
