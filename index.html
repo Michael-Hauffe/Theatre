@@ -130,6 +130,10 @@ input[type=range] { accent-color: var(--brass); }
 .menu-card .price { font-variant-numeric: tabular-nums; color: var(--bone); font-size: 14px; }
 .menu-card footer { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 20px 18px; border-top: 1px solid var(--line); align-items: center; }
 .menu-card footer p { margin: 0; color: var(--smoke); font-size: 12px; }
+/* Hide-HUD mode: only a small, faint button stays */
+body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.nohud #toast { display: none !important; }
+#showHud { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); z-index: 6; opacity: 0.35; padding: 6px 10px; font-size: 12px; }
+#showHud:hover, #showHud:focus-visible { opacity: 1; }
 #toast { position: fixed; left: 50%; top: calc(70px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); padding: 8px 14px; border-radius: 20px; font-size: 13px; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
 
 @media (max-width: 560px) {
@@ -193,6 +197,7 @@ input[type=range] { accent-color: var(--brass); }
       <input type="range" id="seek" min="0" max="1" step="0.1" value="0" disabled aria-label="Seek">
       <span class="vol">Vol <input type="range" id="vol" min="0" max="1" step="0.05" value="0.9" aria-label="Volume"></span>
       <button id="view" title="Switch camera (V)">First person</button>
+      <button id="hudBtn" type="button" title="Hide all controls and labels (H)">Hide HUD</button>
       <button id="dustBtn" title="Show or hide the floating projector dust (P)">Hide dust</button>
     </div>
     <div class="bar">
@@ -202,13 +207,14 @@ input[type=range] { accent-color: var(--brass); }
         <button type="button" id="boo">Boo!</button>
       </form>
     </div>
-    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drift · <kbd>U</kbd> subs · <kbd>[</kbd><kbd>]</kbd> sub timing · <kbd>Space</kbd>/<kbd>Shift</kbd> rise &amp; sink · drag to look · <kbd>V</kbd> camera · <kbd>P</kbd> dust · <kbd>B</kbd> boo · <kbd>F</kbd> eat or drink · snacks in the lobby, out the back doors</div>
+    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drift · <kbd>U</kbd> subs · <kbd>[</kbd><kbd>]</kbd> sub timing · <kbd>Space</kbd>/<kbd>Shift</kbd> rise &amp; sink · drag to look · <kbd>V</kbd> camera · <kbd>P</kbd> dust · <kbd>H</kbd> hide HUD · <kbd>B</kbd> boo · <kbd>F</kbd> eat or drink · snacks in the lobby, out the back doors</div>
   </div>
 </div>
 
 <div id="joy" aria-hidden="true"><div id="knob"></div></div>
 <div id="updown"><button id="up" type="button">Rise</button><button id="down" type="button">Sink</button></div>
 <div id="toast" hidden></div>
+<button id="showHud" type="button" hidden title="Bring the controls back (H)">Show HUD</button>
 <div id="shop" hidden role="dialog" aria-label="Concession stand">
   <div class="menu-card">
     <header><h2>Concessions</h2><span class="wallet" id="walletTop"></span></header>
@@ -778,6 +784,7 @@ addEventListener("keydown", (e) => {
   if (!$("shop").hidden) { if (e.key === "Escape" || e.key.toLowerCase() === "o") closeShop(); return; }
   const k = e.key.toLowerCase(); keys.add(k);
   if (k === "v") toggleView();
+  if (k === "h") setHud(document.body.classList.contains("nohud"));
   if (k === "f") eatHeld();
   if (k === "g") switchHeld();
   if (k === "o" && nearCounter()) openShop();
@@ -825,6 +832,12 @@ for (const [id, dir] of [["up", 1], ["down", -1]]) {
 
 function toggleView() { firstPerson = !firstPerson; $("view").textContent = firstPerson ? "Third person" : "First person"; }
 $("view").addEventListener("click", toggleView);
+function setHud(on) {
+  document.body.classList.toggle("nohud", !on); $("showHud").hidden = on;
+  if (!on) { closeShop(); if (document.activeElement) document.activeElement.blur(); }
+}
+$("hudBtn").addEventListener("click", () => setHud(false));
+$("showHud").addEventListener("click", () => setHud(true));
 $("dustBtn").addEventListener("click", () => setDust(!dustOn)); setDust(dustOn);
 document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("button"); if (b && e.detail > 0) b.blur(); });
 
