@@ -165,6 +165,7 @@ input[type=range] { accent-color: var(--brass); }
       <input type="range" id="seek" min="0" max="1" step="0.1" value="0" disabled aria-label="Seek">
       <span class="vol">Vol <input type="range" id="vol" min="0" max="1" step="0.05" value="0.9" aria-label="Volume"></span>
       <button id="view" title="Switch camera (V)">First person</button>
+      <button id="dustBtn" title="Show or hide the floating projector dust (P)">Hide dust</button>
     </div>
     <div class="bar">
       <form id="chat" autocomplete="off">
@@ -173,7 +174,7 @@ input[type=range] { accent-color: var(--brass); }
         <button type="button" id="boo">Boo!</button>
       </form>
     </div>
-    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drift · <kbd>U</kbd> subs · <kbd>[</kbd><kbd>]</kbd> sub timing · <kbd>Space</kbd>/<kbd>Shift</kbd> rise &amp; sink · drag to look · <kbd>V</kbd> camera · <kbd>B</kbd> boo</div>
+    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drift · <kbd>U</kbd> subs · <kbd>[</kbd><kbd>]</kbd> sub timing · <kbd>Space</kbd>/<kbd>Shift</kbd> rise &amp; sink · drag to look · <kbd>V</kbd> camera · <kbd>P</kbd> dust · <kbd>B</kbd> boo</div>
   </div>
 </div>
 
@@ -373,6 +374,8 @@ for (let i = 0; i < dustN; i++) { dustSeed[i * 3] = Math.random(); dustSeed[i * 
 const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
 const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ size: 0.035, color: 0xfff1d6, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
 scene.add(dust);
+let dustOn = store.get("gm.dust", true) !== false; dust.visible = dustOn;
+function setDust(on) { dustOn = on; dust.visible = on; store.set("gm.dust", on); const b = document.getElementById("dustBtn"); if (b) b.textContent = on ? "Hide dust" : "Show dust"; }
 function updateDust(t) {
   const w = screen.scale.x, h = screen.scale.y;
   for (let i = 0; i < dustN; i++) {
@@ -526,6 +529,7 @@ addEventListener("keydown", (e) => {
   if (!$("lobby").hidden) return;
   const k = e.key.toLowerCase(); keys.add(k);
   if (k === "v") toggleView();
+  if (k === "p") setDust(!dustOn);
   if (k === "b") boo();
   if (k === "enter") { e.preventDefault(); $("say").focus(); }
   if (k === "k") togglePlay();
@@ -569,6 +573,7 @@ for (const [id, dir] of [["up", 1], ["down", -1]]) {
 
 function toggleView() { firstPerson = !firstPerson; $("view").textContent = firstPerson ? "Third person" : "First person"; }
 $("view").addEventListener("click", toggleView);
+$("dustBtn").addEventListener("click", () => setDust(!dustOn)); setDust(dustOn);
 document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("button"); if (b && e.detail > 0) b.blur(); });
 
 /* ---------------- movie + playback sync ---------------- */
@@ -1273,7 +1278,7 @@ function frame() {
   screenLight.color.copy(lightCol); screenLight.intensity = 0.6 + lum * 3.2;
   beamMat.color.copy(lightCol); beamMat.opacity = 0.012 + lum * 0.05;
   boothGlow.material.opacity = 0.35 + lum * 0.5;
-  updateDust(t);
+  if (dustOn) updateDust(t);
 
   // transport UI
   const dur = video.duration || (film && film.d) || remoteDur || 0;
