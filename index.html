@@ -63,6 +63,8 @@ button:focus-visible, label.btn:focus-within, input:focus-visible { outline: 2px
 .deck { display: grid; gap: 8px; justify-items: center; }
 .deck .bar { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; max-width: 100%; backdrop-filter: blur(6px); }
 #notice { background: rgba(255, 138, 42, 0.14); border: 1px solid rgba(255, 138, 42, 0.45); color: #ffd5ad; padding: 7px 12px; border-radius: 3px; font-size: 13px; text-align: center; max-width: 100%; }
+#sound.ok { border-color: rgba(120, 220, 150, 0.55); color: #c8f5d4; }
+#sound.warn { border-color: rgba(255, 138, 42, 0.7); color: #ffd5ad; }
 #clock { font-variant-numeric: tabular-nums; color: var(--smoke); font-size: 12px; min-width: 92px; text-align: center; }
 input[type=range] { accent-color: var(--brass); }
 #seek { width: min(320px, 46vw); }
@@ -159,6 +161,7 @@ input[type=range] { accent-color: var(--brass); }
       <button id="shareBtn" hidden title="Put a window or monitor on the theater screen">Share screen</button>
       <button id="play" disabled>Play</button>
       <span id="clock">0:00 / 0:00</span>
+      <button id="sound" type="button" hidden title="Sound status for the host's stream">Sound</button>
       <input type="range" id="seek" min="0" max="1" step="0.1" value="0" disabled aria-label="Seek">
       <span class="vol">Vol <input type="range" id="vol" min="0" max="1" step="0.05" value="0.9" aria-label="Volume"></span>
       <button id="view" title="Switch camera (V)">First person</button>
@@ -614,7 +617,7 @@ $("play").addEventListener("click", togglePlay);
 let seeking = false;
 $("seek").addEventListener("input", () => { seeking = true; $("clock").textContent = fmt(+$("seek").value) + " / " + fmt(video.duration); });
 $("seek").addEventListener("change", () => { seeking = false; act(pb.p, +$("seek").value); });
-$("vol").addEventListener("input", () => { const v = +$("vol").value; if (hostGain) hostGain.gain.value = v; else video.volume = v; rVideo.volume = v; });
+$("vol").addEventListener("input", () => { const v = +$("vol").value; if (hostGain) hostGain.gain.value = v; else video.volume = v; rAudio.volume = v; });
 
 let blocked = false;
 function applyVideo(force) {
@@ -950,22 +953,77 @@ function syncCalls() {
   }
 }
 setInterval(syncCalls, 2000);
+// Guests: picture plays muted in rVideo; sound plays in its own <audio> element so neither can stall the other.
+const rAudio = document.createElement("audio"); rAudio.autoplay = true; rAudio.volume = 0.9;
+rAudio.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none;"; document.body.appendChild(rAudio);
+let remoteStream = null, gctx = null, gAnalyser = null, gSrcTrack = null, lastHeard = 0, levelBuf = null;
+function attachRemoteAudio() {
+  const st = remoteStream; const at = st ? st.getAudioTracks().filter((t) => t.readyState === "live") : [];
+  const track = at[0] || null;
+  if (!track) { rAudio.srcObject = null; updateSound(); return; }
+  if (!rAudio.srcObject || rAudio.srcObject.getAudioTracks()[0] !== track) rAudio.srcObject = new MediaStream([track]);
+  playRemoteAudio();
+  try { // level meter, so the Sound button can tell "playing but silent" from "playing with sound"
+    if (!gctx) gctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (gSrcTrack !== track) {
+      gSrcTrack = track; const src = gctx.createMediaStreamSource(new MediaStream([track]));
+      gAnalyser = gctx.createAnalyser(); gAnalyser.fftSize = 512; levelBuf = new Uint8Array(gAnalyser.fftSize);
+      const zero = gctx.createGain(); zero.gain.value = 0; src.connect(gAnalyser); gAnalyser.connect(zero); zero.connect(gctx.destination);
+    }
+    if (gctx.state === "suspended") gctx.resume().catch(() => {});
+  } catch {}
+}
+function playRemoteAudio() {
+  if (!rAudio.srcObject) return;
+  rAudio.muted = false; rAudio.volume = +$("vol").value;
+  rAudio.play().then(() => { remoteBlocked = false; updateNotice(); updateSound(); })
+    .catch((e) => { if (e && e.name === "AbortError") return; remoteBlocked = true; updateNotice(); updateSound(); });
+}
 function onCall(call) {
   if (!p2p || p2p.isHost || call.peer !== p2p.hostId) { try { call.close(); } catch {} return; }
   currentCall = call; call.answer();
   call.on("stream", (st) => {
     if (call !== currentCall) return;
-    rVideo.srcObject = st; rVideo.muted = false; remoteOn = true;
+    if (remoteStream !== st) {
+      remoteStream = st; rVideo.muted = true; rVideo.srcObject = st; rVideo.play().catch(() => {});
+      st.addEventListener("addtrack", attachRemoteAudio); st.addEventListener("removetrack", attachRemoteAudio);
+      if (!film) toast(hostSharing ? "The host is sharing their screen." : "The projector is rolling. You're watching the host's movie.");
+    }
+    remoteOn = true;
     if (!remoteTex) { remoteTex = new THREE.VideoTexture(rVideo); remoteTex.encoding = THREE.sRGBEncoding; remoteTex.minFilter = THREE.LinearFilter; }
-    rVideo.play().then(() => { remoteBlocked = false; updateNotice(); }).catch(() => { rVideo.muted = true; remoteBlocked = true; rVideo.play().catch(() => {}); updateNotice(); });
-    useScreenSource(); updateNotice();
-    if (!film) toast(hostSharing ? "The host is sharing their screen." : "The projector is rolling. You're watching the host's movie.");
+    attachRemoteAudio(); useScreenSource(); updateNotice();
   });
-  const end = () => { if (call !== currentCall) return; currentCall = null; remoteOn = false; rVideo.srcObject = null; useScreenSource(); updateNotice(); };
+  const end = () => { if (call !== currentCall) return; currentCall = null; remoteOn = false; remoteStream = null; rVideo.srcObject = null; rAudio.srcObject = null; useScreenSource(); updateNotice(); updateSound(); };
   call.on("close", end); call.on("error", end);
 }
-function unblockRemote() { rVideo.muted = false; rVideo.play().then(() => { remoteBlocked = false; updateNotice(); }).catch(() => {}); }
-document.addEventListener("pointerdown", () => { if (remoteBlocked) unblockRemote(); }, true);
+function unblockRemote() { playRemoteAudio(); if (gctx && gctx.state === "suspended") gctx.resume().catch(() => {}); if (rVideo.paused && rVideo.srcObject) rVideo.play().catch(() => {}); }
+document.addEventListener("pointerdown", () => { if (remoteBlocked || (rAudio.srcObject && rAudio.paused)) unblockRemote(); }, true);
+function updateSound() {
+  const b = $("sound");
+  if (!remoteOn || film) { b.hidden = true; return; }
+  b.hidden = false;
+  let label, cls;
+  const hasTrack = remoteStream && remoteStream.getAudioTracks().some((t) => t.readyState === "live");
+  if (!hasTrack) { label = hostSharing ? "No sound shared" : "No sound in stream"; cls = "warn"; }
+  else if (remoteBlocked || rAudio.paused) { label = "Tap for sound"; cls = "warn"; }
+  else if (rAudio.volume === 0) { label = "Volume is at 0"; cls = "warn"; }
+  else if (performance.now() - lastHeard < 4000) { label = "Sound on"; cls = "ok"; }
+  else if (!pb.p && !hostSharing) { label = "Sound ready"; cls = "ok"; }
+  else { label = "Sound silent"; cls = "warn"; }
+  if (b.textContent !== label) b.textContent = label;
+  b.className = cls;
+}
+setInterval(() => {
+  if (gAnalyser && levelBuf) { gAnalyser.getByteTimeDomainData(levelBuf); let peak = 0; for (const v of levelBuf) peak = Math.max(peak, Math.abs(v - 128)); if (peak > 2) lastHeard = performance.now(); }
+  updateSound();
+}, 250);
+$("sound").addEventListener("click", () => {
+  unblockRemote();
+  const t = $("sound").textContent;
+  if (t === "No sound shared") toast("The host's screen share has no sound. They need to tick “Share audio” in the share picker.");
+  else if (t === "No sound in stream") toast("No sound is reaching you from the host. Ask them to reload and press Host again.");
+  else if (t === "Sound silent") toast("Sound is connected but quiet. Check your device volume, or a quiet scene.");
+});
 rVideo.addEventListener("resize", () => { if (!film && remoteOn && rVideo.videoWidth) fitScreen(rVideo.videoWidth / rVideo.videoHeight); });
 function useScreenSource() {
   if (sharing && shareTex) { screenMat.map = shareTex; if (shareVideo.videoWidth) fitScreen(shareVideo.videoWidth / shareVideo.videoHeight); }
@@ -1066,7 +1124,7 @@ function roomDown() {
   if (!room) return;
   room = null; syncRoom = null; peersSnap = [];
   for (const id of [...calls.keys()]) dropCall(id);
-  if (currentCall) { try { currentCall.close(); } catch {} } currentCall = null; remoteOn = false; rVideo.srcObject = null; hostSharing = false; if (!ownSubs && !(p2p && p2p.isHost)) { cues = []; $("subsToggle").hidden = true; } p2p = null; $("shareBtn").hidden = false; useScreenSource();
+  if (currentCall) { try { currentCall.close(); } catch {} } currentCall = null; remoteOn = false; remoteStream = null; rVideo.srcObject = null; rAudio.srcObject = null; hostSharing = false; if (!ownSubs && !(p2p && p2p.isHost)) { cues = []; $("subsToggle").hidden = true; } p2p = null; $("shareBtn").hidden = false; useScreenSource();
   for (const o of others.values()) { removeGhost(o.gh); o.tag.el.remove(); } others.clear();
   $("roomline").hidden = true; renderCrowd(); updateNotice();
   toast("The host left, so the room closed. You can keep watching solo.");
