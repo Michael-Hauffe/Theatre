@@ -198,7 +198,6 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
       <span class="vol">Vol <input type="range" id="vol" min="0" max="1" step="0.05" value="0.9" aria-label="Volume"></span>
       <button id="view" title="Switch camera (V)">First person</button>
       <button id="hudBtn" type="button" title="Hide all controls and labels (H)">Hide HUD</button>
-      <button id="dustBtn" title="Show or hide the floating projector dust (P)">Hide dust</button>
     </div>
     <div class="bar">
       <form id="chat" autocomplete="off">
@@ -207,7 +206,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
         <button type="button" id="boo">Boo!</button>
       </form>
     </div>
-    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drift · <kbd>U</kbd> subs · <kbd>[</kbd><kbd>]</kbd> sub timing · <kbd>Space</kbd>/<kbd>Shift</kbd> rise &amp; sink · drag to look · <kbd>V</kbd> camera · <kbd>P</kbd> dust · <kbd>H</kbd> hide HUD · <kbd>B</kbd> boo · <kbd>F</kbd> eat or drink · snacks in the lobby, out the back doors</div>
+    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drift · <kbd>U</kbd> subs · <kbd>[</kbd><kbd>]</kbd> sub timing · <kbd>Space</kbd>/<kbd>Shift</kbd> rise &amp; sink · drag to look · <kbd>V</kbd> camera · <kbd>H</kbd> hide HUD · <kbd>B</kbd> boo · <kbd>F</kbd> eat or drink · snacks in the lobby, out the back doors</div>
   </div>
 </div>
 
@@ -429,9 +428,7 @@ const dustN = 420, dustPos = new Float32Array(dustN * 3), dustSeed = new Float32
 for (let i = 0; i < dustN; i++) { dustSeed[i * 3] = Math.random(); dustSeed[i * 3 + 1] = Math.random() - 0.5; dustSeed[i * 3 + 2] = Math.random() - 0.5; }
 const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
 const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ size: 0.035, color: 0xfff1d6, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
-scene.add(dust);
-let dustOn = store.get("gm.dust", true) !== false; dust.visible = dustOn;
-function setDust(on) { dustOn = on; dust.visible = on; store.set("gm.dust", on); const b = document.getElementById("dustBtn"); if (b) b.textContent = on ? "Hide dust" : "Show dust"; }
+// Dust is kept out of the scene so nothing floats between the audience and the screen.
 function updateDust(t) {
   const w = screen.scale.x, h = screen.scale.y;
   for (let i = 0; i < dustN; i++) {
@@ -788,7 +785,6 @@ addEventListener("keydown", (e) => {
   if (k === "f") eatHeld();
   if (k === "g") switchHeld();
   if (k === "o" && nearCounter()) openShop();
-  if (k === "p") setDust(!dustOn);
   if (k === "b") boo();
   if (k === "enter") { e.preventDefault(); $("say").focus(); }
   if (k === "k") togglePlay();
@@ -838,7 +834,7 @@ function setHud(on) {
 }
 $("hudBtn").addEventListener("click", () => setHud(false));
 $("showHud").addEventListener("click", () => setHud(true));
-$("dustBtn").addEventListener("click", () => setDust(!dustOn)); setDust(dustOn);
+
 document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("button"); if (b && e.detail > 0) b.blur(); });
 
 /* ---------------- movie + playback sync ---------------- */
@@ -1635,7 +1631,6 @@ function frame() {
   screenLight.color.copy(lightCol); screenLight.intensity = 0.6 + lum * 3.2;
   beamMat.color.copy(lightCol); beamMat.opacity = 0.012 + lum * 0.05;
   boothGlow.material.opacity = 0.35 + lum * 0.5;
-  if (dustOn) updateDust(t);
 
   // transport UI
   const dur = video.duration || (film && film.d) || remoteDur || 0;
