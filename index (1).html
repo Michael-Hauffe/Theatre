@@ -1,0 +1,1149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ghost Matinee</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Limelight&family=Karla:wght@400;500;700&display=swap">
+<style>
+/* Layout: one dark auditorium filling the screen; marquee-brass HUD floats at the edges like house signage. */
+:root {
+  --house: #070405;        /* the dark of the auditorium */
+  --velvet: #6e1420;       /* seat and curtain red */
+  --velvet-deep: #2a0a0f;
+  --brass: #d8a54e;        /* marquee bulbs, trim */
+  --bone: #efe6d8;         /* bedsheet white text */
+  --smoke: #a39488;        /* secondary text */
+  --pumpkin: #ff8a2a;
+  --panel: rgba(18, 9, 10, 0.78);
+  --line: rgba(216, 165, 78, 0.28);
+  --display: "Limelight", "Didot", "Bodoni 72", Georgia, serif;
+  --body: "Karla", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--house); color: var(--bone); font-family: var(--body); font-size: 14px; overflow: hidden; touch-action: none; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+#stage canvas:active { cursor: grabbing; }
+button, input, label.btn { font-family: var(--body); font-size: 13px; }
+button, label.btn {
+  appearance: none; border: 1px solid var(--line); background: rgba(40, 14, 18, 0.85); color: var(--bone);
+  padding: 8px 12px; border-radius: 3px; cursor: pointer; white-space: nowrap; letter-spacing: 0.02em;
+  display: inline-flex; align-items: center; gap: 6px; line-height: 1;
+}
+button:hover:not(:disabled), label.btn:hover { border-color: var(--brass); color: #fff; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button:focus-visible, label.btn:focus-within, input:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.btn.primary { background: var(--brass); color: #1a0d06; border-color: var(--brass); font-weight: 700; }
+.btn.primary:hover { background: #f0c070; color: #1a0d06; }
+
+/* HUD */
+.hud { position: fixed; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: calc(14px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)); }
+.hud > * { pointer-events: auto; }
+.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; pointer-events: none; }
+.top > * { pointer-events: auto; }
+.brand h1 { font-family: var(--display); font-weight: 400; font-size: 26px; margin: 0; color: var(--brass); letter-spacing: 0.04em; text-shadow: 0 0 18px rgba(216,165,78,0.35); }
+.brand p { margin: 2px 0 0; color: var(--smoke); font-size: 13px; }
+.brand p b { color: var(--bone); font-weight: 500; }
+#crowd { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; min-width: 0; max-width: 260px; backdrop-filter: blur(6px); }
+#crowd h2 { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--brass); margin: 0 0 6px; font-weight: 700; }
+#crowd ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; max-height: 32vh; overflow-y: auto; }
+#crowd li { display: grid; grid-template-columns: 10px 1fr; gap: 8px; align-items: baseline; }
+#crowd .dot { width: 10px; height: 10px; border-radius: 50% 50% 30% 30%; align-self: center; }
+#crowd .who { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#crowd .film { grid-column: 2; color: var(--smoke); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: -3px; }
+
+.deck { display: grid; gap: 8px; justify-items: center; }
+.deck .bar { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; max-width: 100%; backdrop-filter: blur(6px); }
+#notice { background: rgba(255, 138, 42, 0.14); border: 1px solid rgba(255, 138, 42, 0.45); color: #ffd5ad; padding: 7px 12px; border-radius: 3px; font-size: 13px; text-align: center; max-width: 100%; }
+#clock { font-variant-numeric: tabular-nums; color: var(--smoke); font-size: 12px; min-width: 92px; text-align: center; }
+input[type=range] { accent-color: var(--brass); }
+#seek { width: min(320px, 46vw); }
+#vol { width: 70px; }
+.vol { display: inline-flex; align-items: center; gap: 4px; color: var(--smoke); font-size: 12px; }
+#chat { display: flex; gap: 6px; flex-wrap: nowrap; min-width: 0; }
+#say { background: rgba(0,0,0,0.4); border: 1px solid var(--line); color: var(--bone); border-radius: 3px; padding: 8px 10px; width: min(260px, 48vw); min-width: 0; }
+#say::placeholder { color: var(--smoke); }
+.keys { color: var(--smoke); font-size: 11px; letter-spacing: 0.03em; text-align: center; }
+.keys kbd { font-family: var(--body); border: 1px solid var(--line); border-radius: 2px; padding: 0 4px; color: var(--bone); }
+
+/* Name tags */
+#tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.tag { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); display: grid; justify-items: center; gap: 4px; will-change: transform; }
+.tag .nm { font-size: 12px; font-weight: 700; color: var(--bone); background: rgba(10,5,6,0.6); padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+.tag .bub { font-size: 13px; background: var(--bone); color: #1b1012; padding: 6px 10px; border-radius: 12px 12px 12px 3px; max-width: 220px; overflow-wrap: anywhere; box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+.tag .bub:empty { display: none; }
+
+/* Touch joystick */
+#joy { position: fixed; left: max(20px, env(safe-area-inset-left, 0px)); bottom: calc(150px + env(safe-area-inset-bottom, 0px)); width: 112px; height: 112px; border-radius: 50%; border: 1px solid var(--line); background: rgba(20,8,10,0.4); touch-action: none; }
+#knob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(216,165,78,0.5); }
+#updown { position: fixed; right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(150px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 8px; }
+#updown button { width: 52px; height: 44px; justify-content: center; font-size: 12px; }
+
+/* Lobby */
+#lobby { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, rgba(7,4,5,0.35), rgba(7,4,5,0.88));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px; overflow-y: auto; }
+.marquee { width: min(460px, 100%); background: rgba(16,7,9,0.92); border: 1px solid var(--line); border-radius: 6px; padding: 26px 24px 22px; text-align: center; position: relative; box-shadow: 0 30px 80px rgba(0,0,0,0.6); }
+.marquee::before { content: ""; position: absolute; inset: 7px; border-radius: 3px; pointer-events: none;
+  background-image: radial-gradient(circle, var(--brass) 1.6px, transparent 2.2px); background-size: 14px 14px; opacity: 0.55;
+  -webkit-mask: linear-gradient(#000 0 0) top/100% 8px no-repeat, linear-gradient(#000 0 0) bottom/100% 8px no-repeat;
+          mask: linear-gradient(#000 0 0) top/100% 8px no-repeat, linear-gradient(#000 0 0) bottom/100% 8px no-repeat; }
+.marquee .eyebrow { font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--smoke); margin: 6px 0 4px; }
+.marquee h2 { font-family: var(--display); font-weight: 400; font-size: clamp(34px, 9vw, 48px); line-height: 1; color: var(--brass); margin: 0 0 12px; text-wrap: balance; text-shadow: 0 0 24px rgba(216,165,78,0.4); }
+.marquee p { color: var(--smoke); margin: 0 auto 16px; max-width: 36ch; line-height: 1.5; text-wrap: pretty; }
+.marquee .label { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--brass); margin: 4px 0 8px; font-weight: 700; }
+#sheets { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
+#sheets button { width: 42px; height: 50px; padding: 0; border-radius: 50% 50% 8px 8px; border: 2px solid transparent; background: var(--c); position: relative; }
+#sheets button::after { content: ""; position: absolute; left: 50%; top: 16px; width: 16px; height: 7px; margin-left: -8px;
+  background: radial-gradient(circle at 3px 3.5px, #1a1012 2.6px, transparent 3px), radial-gradient(circle at 13px 3.5px, #1a1012 2.6px, transparent 3px); }
+#sheets button[aria-pressed="true"] { border-color: var(--brass); box-shadow: 0 0 14px rgba(216,165,78,0.6); }
+#enter { padding: 12px 22px; font-size: 15px; }
+.fine { font-size: 12px; color: var(--smoke); margin-top: 14px !important; margin-bottom: 0 !important; }
+
+#toast { position: fixed; left: 50%; top: calc(70px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); padding: 8px 14px; border-radius: 20px; font-size: 13px; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
+
+@media (max-width: 560px) {
+  .brand h1 { font-size: 21px; }
+  #crowd { max-width: 46vw; padding: 8px 10px; }
+  .keys { display: none; }
+  #vol, .vol { display: none; }
+}
+@media (max-width: 560px) { #joy, #updown { bottom: calc(200px + env(safe-area-inset-bottom, 0px)); } }
+@media (hover: hover) and (pointer: fine) { #joy, #updown { display: none; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+#roomline { margin: 6px 0 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--smoke); font-size: 13px; }
+#roomline b { font-family: var(--display); font-weight: 400; color: var(--brass); letter-spacing: 0.12em; font-size: 17px; }
+#roomline button { padding: 5px 9px; font-size: 12px; }
+.field { width: 100%; max-width: 280px; background: rgba(0,0,0,0.45); border: 1px solid var(--line); color: var(--bone); border-radius: 3px; padding: 10px 12px; font-size: 15px; text-align: center; margin-bottom: 14px; }
+.choices { display: grid; gap: 10px; justify-items: center; }
+.or { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--smoke); }
+#joinForm { display: flex; gap: 6px; }
+#code { width: 130px; margin: 0; text-transform: uppercase; letter-spacing: 0.2em; font-family: var(--display); }
+.linkish { background: none !important; border: none !important; color: var(--smoke) !important; text-decoration: underline; padding: 4px !important; }
+#lobbyMsg { min-height: 1.4em; color: #ffd5ad !important; margin: 12px 0 0 !important; }
+</style>
+</head>
+<body>
+
+<div id="stage"></div>
+<div id="tags"></div>
+
+<div class="hud">
+  <div class="top">
+    <div class="brand">
+      <h1>Ghost Matinee</h1>
+      <p id="status">Watching solo</p>
+      <p id="roomline" hidden>Room <b id="roomCode"></b><button type="button" id="copyLink">Copy invite link</button></p>
+    </div>
+    <aside id="crowd" aria-label="Who is in the theater">
+      <h2>In the house</h2>
+      <ul id="crowdList"></ul>
+    </aside>
+  </div>
+
+  <div class="deck">
+    <div id="notice" hidden></div>
+    <div class="bar">
+      <label class="btn primary" for="file" id="loadLbl">Load movie</label>
+      <input type="file" id="file" accept="video/mp4,video/webm,video/*" hidden>
+      <label class="btn" for="subs" id="subsLbl" title="Load an .srt or .vtt subtitle file">Subtitles</label>
+      <input type="file" id="subs" hidden>
+      <button id="subsToggle" hidden title="Show or hide subtitles (U)">Hide subs</button>
+      <button id="play" disabled>Play</button>
+      <span id="clock">0:00 / 0:00</span>
+      <input type="range" id="seek" min="0" max="1" step="0.1" value="0" disabled aria-label="Seek">
+      <span class="vol">Vol <input type="range" id="vol" min="0" max="1" step="0.05" value="0.9" aria-label="Volume"></span>
+      <button id="view" title="Switch camera (V)">First person</button>
+    </div>
+    <div class="bar">
+      <form id="chat" autocomplete="off">
+        <input id="say" maxlength="80" placeholder="Whisper to the room…" aria-label="Message">
+        <button type="submit">Say</button>
+        <button type="button" id="boo">Boo!</button>
+      </form>
+    </div>
+    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drift · <kbd>U</kbd> subs · <kbd>[</kbd><kbd>]</kbd> sub timing · <kbd>Space</kbd>/<kbd>Shift</kbd> rise &amp; sink · drag to look · <kbd>V</kbd> camera · <kbd>B</kbd> boo</div>
+  </div>
+</div>
+
+<div id="joy" aria-hidden="true"><div id="knob"></div></div>
+<div id="updown"><button id="up" type="button">Rise</button><button id="down" type="button">Sink</button></div>
+<div id="toast" hidden></div>
+
+<div id="lobby">
+  <div class="marquee">
+    <div class="eyebrow">Tonight · Screen One</div>
+    <h2>Ghost Matinee</h2>
+    <p>Float around the house with your friends and watch any movie together. The host loads a video file and their browser projects it to everyone in the room. Play, pause and skipping work for the whole house.</p>
+    <div class="label">Your ghost name</div>
+    <input id="nick" class="field" maxlength="24" placeholder="Casper" autocomplete="off">
+    <div class="label">Pick your bedsheet</div>
+    <div id="sheets"></div>
+    <div class="choices">
+      <button class="btn primary" id="enter">Host a showing</button>
+      <div class="or">or join a friend</div>
+      <form id="joinForm" autocomplete="off"><input id="code" class="field" maxlength="5" placeholder="CODE" aria-label="Room code"><button type="submit">Join</button></form>
+      <button type="button" class="linkish" id="solo">Just look around alone</button>
+    </div>
+    <p class="fine" id="lobbyMsg"></p>
+    <p class="fine">The host's movie streams straight from their browser to friends. Nothing is uploaded to a server.</p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(() => {
+"use strict";
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+const clean = (s, n) => String(s || "").replace(/[\u0000-\u001f\u007f-\u009f­​-‏‪-‮⁠-⁯﻿-]/g, "").slice(0, n);
+const fmt = (t) => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0"); };
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const num = (v, d) => (typeof v === "number" && isFinite(v) ? v : d);
+
+const SHEETS = [
+  { name: "Bedsheet", hex: 0xf3eff6 }, { name: "Ectoplasm", hex: 0xb5f0d5 }, { name: "Lilac", hex: 0xd3c4ff },
+  { name: "Candle", hex: 0xffd59a }, { name: "Moonlight", hex: 0xaed6ff }, { name: "Rose", hex: 0xffbccd }
+];
+const cssHex = (h) => "#" + h.toString(16).padStart(6, "0");
+let myColor = clamp(store.get("gm.sheet", 0) | 0, 0, SHEETS.length - 1);
+const mySrc = Math.random().toString(36).slice(2, 10);
+
+/* ---------------- toast ---------------- */
+let toastT = 0;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 3200); }
+
+/* ---------------- renderer ---------------- */
+const stageEl = $("stage");
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+stageEl.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050304);
+scene.fog = new THREE.Fog(0x050304, 16, 44);
+const camera = new THREE.PerspectiveCamera(64, 1, 0.05, 120);
+function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+addEventListener("resize", resize); resize();
+
+function canvasTex(w, h, draw, repeat) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4;
+  if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat[0], repeat[1]); }
+  return t;
+}
+function glowTex(r, g, b) {
+  return canvasTex(128, 128, (x, w, h) => { const gr = x.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    gr.addColorStop(0, `rgba(${r},${g},${b},1)`); gr.addColorStop(0.35, `rgba(${r},${g},${b},0.35)`); gr.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    x.fillStyle = gr; x.fillRect(0, 0, w, h); });
+}
+
+/* ---------------- the house ---------------- */
+const ROOM = { x: 12, zFront: -14, zBack: 16, h: 9 };
+scene.add(new THREE.HemisphereLight(0x3a2228, 0x0a0405, 0.55));
+scene.add(new THREE.AmbientLight(0x1a0d10, 0.5));
+
+// carpet
+const carpet = canvasTex(256, 256, (x, w, h) => {
+  x.fillStyle = "#2b0b10"; x.fillRect(0, 0, w, h);
+  x.strokeStyle = "rgba(216,165,78,0.35)"; x.lineWidth = 3;
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
+    const cx = i * 128 + 64, cy = j * 128 + 64;
+    x.beginPath(); x.moveTo(cx, cy - 34); x.lineTo(cx + 34, cy); x.lineTo(cx, cy + 34); x.lineTo(cx - 34, cy); x.closePath(); x.stroke();
+    x.fillStyle = "rgba(90,20,40,0.9)"; x.beginPath(); x.arc(cx, cy, 10, 0, 7); x.fill();
+    x.fillStyle = "rgba(216,165,78,0.3)"; x.beginPath(); x.arc(cx - 64, cy - 64, 5, 0, 7); x.fill();
+  }
+  for (let k = 0; k < 900; k++) { x.fillStyle = `rgba(0,0,0,${Math.random() * 0.25})`; x.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+}, [10, 12]);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, ROOM.zBack - ROOM.zFront),
+  new THREE.MeshStandardMaterial({ map: carpet, roughness: 1 }));
+floor.rotation.x = -Math.PI / 2; floor.position.z = (ROOM.zBack + ROOM.zFront) / 2; scene.add(floor);
+
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x4a0f17, roughness: 0.95 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x0c0708, roughness: 1 });
+const depth = ROOM.zBack - ROOM.zFront, zMid = (ROOM.zBack + ROOM.zFront) / 2;
+for (const s of [-1, 1]) {
+  const w = new THREE.Mesh(new THREE.PlaneGeometry(depth, ROOM.h), wallMat);
+  w.rotation.y = -s * Math.PI / 2; w.position.set(s * ROOM.x, ROOM.h / 2, zMid); scene.add(w);
+  for (let z = -10; z <= 14; z += 4) { // dark pilasters
+    const p = new THREE.Mesh(new THREE.BoxGeometry(0.35, ROOM.h, 0.7), darkMat); p.position.set(s * (ROOM.x - 0.17), ROOM.h / 2, z); scene.add(p);
+  }
+}
+const back = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, ROOM.h), darkMat); back.rotation.y = Math.PI; back.position.set(0, ROOM.h / 2, ROOM.zBack); scene.add(back);
+const front = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, ROOM.h), new THREE.MeshStandardMaterial({ color: 0x050404, roughness: 1 }));
+front.position.set(0, ROOM.h / 2, ROOM.zFront); scene.add(front);
+const ceil = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, depth), darkMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(0, ROOM.h, zMid); scene.add(ceil);
+
+// stage, footlights, stanchions
+const stageBox = new THREE.Mesh(new THREE.BoxGeometry(ROOM.x * 2, 0.7, 2.8), new THREE.MeshStandardMaterial({ color: 0x140a0b, roughness: 0.8 }));
+stageBox.position.set(0, 0.35, ROOM.zFront + 1.4); scene.add(stageBox);
+const footMat = new THREE.MeshBasicMaterial({ color: 0xffc070 });
+const footGlow = new THREE.SpriteMaterial({ map: glowTex(255, 170, 80), color: 0xffffff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
+for (let x = -10.5; x <= 10.5; x += 1.5) {
+  const b = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), footMat); b.position.set(x, 0.62, ROOM.zFront + 2.82); scene.add(b);
+  const s = new THREE.Sprite(footGlow); s.scale.set(0.5, 0.5, 1); s.position.copy(b.position); scene.add(s);
+}
+const postMat = new THREE.MeshStandardMaterial({ color: 0x1a1515, metalness: 0.6, roughness: 0.4 });
+for (let x = -9; x <= 9; x += 1.5) {
+  const p = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 1, 8), postMat); p.position.set(x, 0.5, -10.4); scene.add(p);
+}
+
+// curtains with folds
+function curtain(w, h, folds) {
+  const g = new THREE.PlaneGeometry(w, h, Math.round(w * 14), 1); const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setZ(i, Math.sin(p.getX(i) * folds) * 0.14);
+  g.computeVertexNormals(); return g;
+}
+const curtainMat = new THREE.MeshStandardMaterial({ color: 0x5c0d18, roughness: 0.75, side: THREE.DoubleSide });
+for (const s of [-1, 1]) { const c = new THREE.Mesh(curtain(4.6, ROOM.h - 0.2, 4.2), curtainMat); c.position.set(s * 9.6, ROOM.h / 2 + 0.1, ROOM.zFront + 0.35); scene.add(c); }
+const valance = new THREE.Mesh(curtain(ROOM.x * 2, 1.3, 3), curtainMat); valance.position.set(0, ROOM.h - 0.65, ROOM.zFront + 0.45); scene.add(valance);
+
+// the screen
+const SCREEN = { maxW: 14, maxH: 7.4, cy: 4.75, z: ROOM.zFront + 0.18 };
+const placeholderTex = canvasTex(1024, 576, () => {}, null);
+function drawPlaceholder(line2) {
+  const c = placeholderTex.image, x = c.getContext("2d"), w = c.width, h = c.height;
+  const g = x.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, w * 0.7); g.addColorStop(0, "#d9cfc0"); g.addColorStop(1, "#7d7266");
+  x.fillStyle = g; x.fillRect(0, 0, w, h);
+  for (let i = 0; i < 1800; i++) { x.fillStyle = `rgba(40,30,25,${Math.random() * 0.12})`; x.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+  x.strokeStyle = "rgba(40,30,25,0.6)"; x.lineWidth = 4; x.beginPath(); x.arc(w / 2, h / 2 - 20, 150, 0, 7); x.stroke();
+  x.beginPath(); x.moveTo(w / 2, h / 2 - 190); x.lineTo(w / 2, h / 2 + 150); x.moveTo(w / 2 - 190, h / 2 - 20); x.lineTo(w / 2 + 190, h / 2 - 20); x.stroke();
+  x.fillStyle = "#24170f"; x.textAlign = "center"; x.textBaseline = "middle";
+  x.font = "84px Limelight, Georgia, serif"; x.fillText("Ghost Matinee", w / 2, h / 2 - 30);
+  x.font = "500 30px Karla, sans-serif"; x.fillText(line2, w / 2, h / 2 + 50);
+  placeholderTex.needsUpdate = true;
+}
+drawPlaceholder("Load a movie to begin the show");
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => drawPlaceholder(placeholderLine));
+let placeholderLine = "Load a movie to begin the show";
+
+const screenMat = new THREE.MeshBasicMaterial({ map: placeholderTex, toneMapped: false });
+const screen = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), screenMat);
+screen.position.set(0, SCREEN.cy, SCREEN.z); scene.add(screen);
+const mask = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x020101 }));
+mask.position.set(0, SCREEN.cy, SCREEN.z - 0.02); scene.add(mask);
+const subCv = document.createElement("canvas"); subCv.width = 1600; subCv.height = 400;
+const subTex = new THREE.CanvasTexture(subCv); subTex.encoding = THREE.sRGBEncoding;
+const subPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.25), new THREE.MeshBasicMaterial({ map: subTex, transparent: true, depthWrite: false, toneMapped: false }));
+subPlane.position.set(0, SCREEN.cy, SCREEN.z + 0.03); subPlane.renderOrder = 2; scene.add(subPlane);
+function fitScreen(aspect) {
+  let w = SCREEN.maxW, h = w / aspect; if (h > SCREEN.maxH) { h = SCREEN.maxH; w = h * aspect; }
+  screen.scale.set(w, h, 1); mask.scale.set(w + 0.5, h + 0.5, 1); fitBeam(w, h);
+  subPlane.scale.set(w, w, 1); subPlane.position.y = SCREEN.cy - h / 2 + (w * 0.25) / 2 + h * 0.03;
+}
+
+// projector booth + beam + dust
+const booth = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.7), new THREE.MeshBasicMaterial({ color: 0xffe2b0 }));
+booth.position.set(0, 7.4, ROOM.zBack - 0.02); booth.rotation.y = Math.PI; scene.add(booth);
+const boothGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(255, 220, 170), transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
+boothGlow.scale.set(3.4, 2.2, 1); boothGlow.position.set(0, 7.4, ROOM.zBack - 0.1); scene.add(boothGlow);
+const beamMat = new THREE.MeshBasicMaterial({ color: 0xfff0d8, transparent: true, opacity: 0.03, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+let beam = null;
+const beamFrom = new THREE.Vector3(0, 7.4, ROOM.zBack - 0.1), beamTo = new THREE.Vector3(0, SCREEN.cy, SCREEN.z + 0.05);
+function fitBeam(w, h) {
+  if (beam) { scene.remove(beam); beam.geometry.dispose(); }
+  const len = beamFrom.distanceTo(beamTo);
+  const g = new THREE.CylinderGeometry((w / 2) * Math.SQRT2, 0.12, len, 4, 1, true);
+  g.rotateY(Math.PI / 4); g.scale(1, 1, h / w); // square cross-section → screen aspect (y axis is length)
+  g.rotateX(Math.PI / 2); // length along +z, wide end at +z
+  beam = new THREE.Mesh(g, beamMat); beam.position.copy(beamFrom).lerp(beamTo, 0.5); beam.lookAt(beamTo); scene.add(beam);
+}
+fitScreen(16 / 9);
+const dustN = 420, dustPos = new Float32Array(dustN * 3), dustSeed = new Float32Array(dustN * 3);
+for (let i = 0; i < dustN; i++) { dustSeed[i * 3] = Math.random(); dustSeed[i * 3 + 1] = Math.random() - 0.5; dustSeed[i * 3 + 2] = Math.random() - 0.5; }
+const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
+const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ size: 0.035, color: 0xfff1d6, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
+scene.add(dust);
+function updateDust(t) {
+  const w = screen.scale.x, h = screen.scale.y;
+  for (let i = 0; i < dustN; i++) {
+    const f = (dustSeed[i * 3] + t * 0.004) % 1;
+    const sx = dustSeed[i * 3 + 1] + Math.sin(t * 0.3 + i) * 0.02, sy = dustSeed[i * 3 + 2] + Math.cos(t * 0.25 + i * 1.3) * 0.02;
+    dustPos[i * 3] = beamFrom.x + (beamTo.x - beamFrom.x) * f + sx * w * f;
+    dustPos[i * 3 + 1] = beamFrom.y + (beamTo.y - beamFrom.y) * f + sy * h * f;
+    dustPos[i * 3 + 2] = beamFrom.z + (beamTo.z - beamFrom.z) * f;
+  }
+  dustGeo.attributes.position.needsUpdate = true;
+}
+
+// seats (instanced)
+const seatSpots = [];
+for (let z = -8.2; z <= 14.2; z += 1.5) for (let x = -10.4; x <= 10.45; x += 0.74) if (Math.abs(x) > 1.2) seatSpots.push([x, z]);
+const seatMat = new THREE.MeshStandardMaterial({ color: 0x6a1420, roughness: 0.85 });
+const armMat = new THREE.MeshStandardMaterial({ color: 0x140b0b, roughness: 0.6 });
+const cushion = new THREE.InstancedMesh(new THREE.BoxGeometry(0.6, 0.14, 0.55), seatMat, seatSpots.length);
+const seatBack = new THREE.InstancedMesh(new THREE.BoxGeometry(0.6, 0.78, 0.12), seatMat, seatSpots.length);
+const arm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 0.5, 0.6), armMat, seatSpots.length);
+const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e3 = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1), v3 = new THREE.Vector3();
+seatSpots.forEach(([x, z], i) => {
+  cushion.setMatrixAt(i, m4.compose(v3.set(x, 0.45, z), q.identity(), one));
+  seatBack.setMatrixAt(i, m4.compose(v3.set(x, 0.86, z + 0.3), q.setFromEuler(e3.set(-0.15, 0, 0)), one));
+  arm.setMatrixAt(i, m4.compose(v3.set(x - 0.37, 0.3, z + 0.02), q.identity(), one));
+});
+scene.add(cushion, seatBack, arm);
+
+// wall sconces: red glow fans up and down, like old picture palaces
+const sconceGlow = glowTex(255, 40, 30);
+const sconceMat = new THREE.MeshBasicMaterial({ map: sconceGlow, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+const brass = new THREE.MeshStandardMaterial({ color: 0xc89a50, metalness: 0.7, roughness: 0.35, emissive: 0x3a2008 });
+for (const s of [-1, 1]) for (const z of [-4, 4, 12]) {
+  const fix = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.4), brass); fix.position.set(s * (ROOM.x - 0.08), 3.6, z); scene.add(fix);
+  const bulb = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.12), new THREE.MeshBasicMaterial({ color: 0xffeedd }));
+  bulb.rotation.y = -s * Math.PI / 2; bulb.position.set(s * (ROOM.x - 0.15), 3.6, z); scene.add(bulb);
+  for (const dy of [1.2, -1.1]) {
+    const fan = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.8), sconceMat);
+    fan.rotation.y = -s * Math.PI / 2; fan.position.set(s * (ROOM.x - 0.03), 3.6 + dy, z); scene.add(fan);
+  }
+  if (z !== 4) { const L = new THREE.PointLight(0xff2a1a, 0.9, 7, 2); L.position.set(s * (ROOM.x - 0.6), 3.6, z); scene.add(L); }
+}
+
+// exit signs
+const exitTex = canvasTex(128, 48, (x, w, h) => { x.fillStyle = "#0b2a14"; x.fillRect(0, 0, w, h); x.fillStyle = "#6dff9a"; x.font = "bold 30px Karla, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("EXIT", w / 2, h / 2 + 2); });
+for (const s of [-1, 1]) {
+  const ex = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.3), new THREE.MeshBasicMaterial({ map: exitTex, toneMapped: false }));
+  ex.rotation.y = Math.PI; ex.position.set(s * 9.5, 3.4, ROOM.zBack - 0.03); scene.add(ex);
+  const g = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(90, 255, 140), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+  g.scale.set(2, 1.2, 1); g.position.set(s * 9.5, 3.4, ROOM.zBack - 0.1); scene.add(g);
+}
+
+// jack-o'-lanterns
+const skinTex = canvasTex(256, 128, (x, w, h) => {
+  x.fillStyle = "#c25410"; x.fillRect(0, 0, w, h);
+  for (let i = 0; i < 12; i++) { const gx = (i / 12) * w; const g = x.createLinearGradient(gx, 0, gx + w / 12, 0);
+    g.addColorStop(0, "rgba(60,20,0,0.5)"); g.addColorStop(0.5, "rgba(255,150,60,0.12)"); g.addColorStop(1, "rgba(60,20,0,0.5)"); x.fillStyle = g; x.fillRect(gx, 0, w / 12, h); }
+});
+const faceTex = canvasTex(256, 128, (x, w, h) => {
+  x.fillStyle = "#000"; x.fillRect(0, 0, w, h); x.fillStyle = "#ffcf6a"; const cx = w / 2;
+  const tri = (a, b, c) => { x.beginPath(); x.moveTo(...a); x.lineTo(...b); x.lineTo(...c); x.fill(); };
+  tri([cx - 30, 50], [cx - 18, 30], [cx - 8, 50]); tri([cx + 8, 50], [cx + 18, 30], [cx + 30, 50]);
+  x.beginPath(); x.moveTo(cx - 34, 66); x.quadraticCurveTo(cx, 98, cx + 34, 66); x.lineTo(cx + 22, 72); x.lineTo(cx + 14, 66); x.lineTo(cx + 6, 74);
+  x.lineTo(cx - 6, 66); x.lineTo(cx - 14, 74); x.lineTo(cx - 24, 66); x.closePath(); x.fill();
+});
+const pumpkinGeo = new THREE.SphereGeometry(0.34, 32, 20);
+{ const p = pumpkinGeo.attributes.position; for (let i = 0; i < p.count; i++) { v3.fromBufferAttribute(p, i); const a = Math.atan2(v3.z, v3.x);
+  const r = 1 - 0.06 * Math.pow(Math.abs(Math.cos(a * 6)), 0.6); p.setXYZ(i, v3.x * r, v3.y * 0.78, v3.z * r); } pumpkinGeo.computeVertexNormals(); }
+const pumpkinMat = new THREE.MeshStandardMaterial({ map: skinTex, emissiveMap: faceTex, emissive: 0xff9a30, emissiveIntensity: 1.8, roughness: 0.7 });
+const stemMat = new THREE.MeshStandardMaterial({ color: 0x3d4a1c, roughness: 0.9 });
+const pumpkins = [[-1.9, -10.1], [2.1, -10.0], [-11.2, 1.2], [11.2, 7.8], [0.4, 15.2], [-0.7, 4.6]];
+pumpkins.forEach(([x, z], i) => {
+  const g = new THREE.Group(); const body = new THREE.Mesh(pumpkinGeo, pumpkinMat); body.position.y = 0.26; g.add(body);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.14, 6), stemMat); stem.position.y = 0.55; stem.rotation.z = 0.25; g.add(stem);
+  const dx = 0 - x, dz = 6 - z; g.rotation.y = Math.atan2(-dz, dx); g.position.set(x, 0, z); scene.add(g);
+  const gl = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(255, 140, 40), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
+  gl.scale.set(1.6, 1.2, 1); gl.position.set(x, 0.3, z); scene.add(gl);
+  if (i < 3) { const L = new THREE.PointLight(0xff7a20, 1.1, 4.5, 2); L.position.set(x, 0.6, z + (z < -5 ? 0.6 : 0)); scene.add(L); }
+});
+
+// the screen spills its light into the room
+const screenLight = new THREE.PointLight(0xfff0dd, 0.0, 26, 1.6); screenLight.position.set(0, SCREEN.cy - 0.5, SCREEN.z + 3); scene.add(screenLight);
+
+/* ---------------- ghosts ---------------- */
+const ghostGeo = (() => {
+  const pts = [[0, 1.12], [0.16, 1.1], [0.3, 1.04], [0.4, 0.94], [0.46, 0.8], [0.49, 0.62], [0.5, 0.42], [0.52, 0.22], [0.56, 0.06], [0.6, -0.02]].map(([x, y]) => new THREE.Vector2(x, y));
+  const g = new THREE.LatheGeometry(pts, 40); const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (y < 0.2) { const a = Math.atan2(p.getZ(i), p.getX(i)); p.setY(i, y + Math.sin(a * 7) * 0.07 * (0.2 - y) / 0.22); } }
+  g.computeVertexNormals(); return g;
+})();
+const eyeGeo = new THREE.SphereGeometry(0.068, 14, 10), eyeMat = new THREE.MeshBasicMaterial({ color: 0x140a0c });
+const armGeo = new THREE.SphereGeometry(0.13, 14, 10);
+const shadowTex = canvasTex(64, 64, (x, w, h) => { const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, "rgba(0,0,0,0.7)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, w, h); });
+
+function makeGhost(colorIdx) {
+  const col = new THREE.Color(SHEETS[colorIdx].hex);
+  const mat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.22, roughness: 0.85, transparent: true, opacity: 0.94, side: THREE.DoubleSide });
+  const group = new THREE.Group(), bodyG = new THREE.Group(); group.add(bodyG);
+  bodyG.add(new THREE.Mesh(ghostGeo, mat));
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(eyeGeo, eyeMat); eye.scale.set(1, 1.45, 0.55); eye.position.set(s * 0.14, 0.8, -0.445); bodyG.add(eye);
+    const a = new THREE.Mesh(armGeo, mat); a.scale.set(0.9, 0.7, 1.5); a.position.set(s * 0.5, 0.48, -0.08); a.rotation.z = s * 0.5; bodyG.add(a);
+  }
+  const mouth = new THREE.Mesh(eyeGeo, eyeMat); mouth.scale.set(0.8, 1.1, 0.5); mouth.position.set(0, 0.6, -0.48); bodyG.add(mouth);
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.3), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2; scene.add(shadow); scene.add(group);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(...col.toArray().map((c) => Math.round(c * 255))), transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false }));
+  glow.scale.set(2.4, 2.4, 1); glow.position.y = 0.6; group.add(glow);
+  return { group, bodyG, mat, shadow, colorIdx, mouth, booAt: -10, phase: Math.random() * 6 };
+}
+function setGhostColor(gh, idx) {
+  if (gh.colorIdx === idx) return; gh.colorIdx = idx; const c = new THREE.Color(SHEETS[idx].hex);
+  gh.mat.color.copy(c); gh.mat.emissive.copy(c);
+}
+function removeGhost(gh) { scene.remove(gh.group); scene.remove(gh.shadow); }
+function poseGhost(gh, x, y, z, ry, t) {
+  const bob = Math.sin(t * 2 + gh.phase) * 0.06;
+  gh.group.position.set(x, y + bob, z); gh.group.rotation.y = ry;
+  const boo = clamp(1 - (t - gh.booAt) / 0.7, 0, 1);
+  const s = 1 + Math.sin(boo * Math.PI) * 0.35; gh.bodyG.scale.set(s, 1 + Math.sin(boo * Math.PI) * 0.2, s);
+  gh.mouth.scale.set(0.8 + boo * 0.8, 1.1 + boo * 2.2, 0.5);
+  gh.bodyG.rotation.z = Math.sin(t * 1.3 + gh.phase) * 0.05;
+  gh.shadow.position.set(x, 0.02, z); const k = clamp(1 - y / 5, 0.15, 1); gh.shadow.material.opacity = k; gh.shadow.scale.setScalar(0.7 + y * 0.15);
+}
+
+/* ---------------- me ---------------- */
+const me = { x: 0, y: 0.35, z: 7.5, yaw: 0, pitch: 0.12, ghost: makeGhost(myColor), say: "", sayAt: 0 };
+let firstPerson = false;
+
+/* ---------------- labels ---------------- */
+const tagsEl = $("tags");
+function makeTag() { const d = document.createElement("div"); d.className = "tag"; d.innerHTML = '<div class="bub"></div><div class="nm"></div>'; tagsEl.appendChild(d); return { el: d, nm: d.querySelector(".nm"), bub: d.querySelector(".bub") }; }
+me.tag = makeTag(); me.tag.nm.textContent = "You";
+const proj = new THREE.Vector3();
+function placeTag(tag, x, y, z, hide) {
+  if (hide) { tag.el.style.display = "none"; return; }
+  proj.set(x, y, z).project(camera);
+  const dist = camera.position.distanceTo(v3.set(x, y, z));
+  if (proj.z > 1 || proj.z < -1 || dist > 26) { tag.el.style.display = "none"; return; }
+  tag.el.style.display = "";
+  const sx = (proj.x * 0.5 + 0.5) * innerWidth, sy = (-proj.y * 0.5 + 0.5) * innerHeight;
+  tag.el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
+  tag.el.style.opacity = String(clamp(1.3 - dist / 22, 0.35, 1));
+}
+
+/* ---------------- input ---------------- */
+const keys = new Set();
+const typing = () => document.activeElement && (document.activeElement.tagName === "INPUT" && document.activeElement.type === "text" || document.activeElement.id === "say");
+addEventListener("keydown", (e) => {
+  if (typing()) { if (e.key === "Escape") document.activeElement.blur(); return; }
+  if (!$("lobby").hidden) return;
+  const k = e.key.toLowerCase(); keys.add(k);
+  if (k === "v") toggleView();
+  if (k === "b") boo();
+  if (k === "enter") { e.preventDefault(); $("say").focus(); }
+  if (k === "k") togglePlay();
+  if (k === "u") toggleSubs();
+  if (k === "[") nudgeSubs(-0.5);
+  if (k === "]") nudgeSubs(0.5);
+  if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) e.preventDefault();
+});
+addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+addEventListener("blur", () => keys.clear());
+
+let drag = null;
+const cv = renderer.domElement;
+cv.addEventListener("pointerdown", (e) => { drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; try { cv.setPointerCapture(e.pointerId); } catch {} if (document.activeElement) document.activeElement.blur(); });
+cv.addEventListener("pointermove", (e) => {
+  if (!drag || drag.id !== e.pointerId) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+  const k = e.pointerType === "touch" ? 0.007 : 0.0045;
+  me.yaw -= dx * k; me.pitch = clamp(me.pitch - dy * k, -1.1, 0.75);
+});
+const endDrag = (e) => { if (drag && drag.id === e.pointerId) drag = null; };
+cv.addEventListener("pointerup", endDrag); cv.addEventListener("pointercancel", endDrag);
+
+const joy = { x: 0, y: 0, id: null };
+const joyEl = $("joy"), knob = $("knob");
+function joyMove(e) {
+  const r = joyEl.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  let dx = (e.clientX - cx) / (r.width / 2), dy = (e.clientY - cy) / (r.height / 2); const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
+  joy.x = dx; joy.y = dy; knob.style.transform = `translate(${dx * 33}px, ${dy * 33}px)`;
+}
+joyEl.addEventListener("pointerdown", (e) => { joy.id = e.pointerId; try { joyEl.setPointerCapture(e.pointerId); } catch {} joyMove(e); });
+joyEl.addEventListener("pointermove", (e) => { if (joy.id === e.pointerId) joyMove(e); });
+const joyEnd = (e) => { if (joy.id !== e.pointerId) return; joy.id = null; joy.x = joy.y = 0; knob.style.transform = ""; };
+joyEl.addEventListener("pointerup", joyEnd); joyEl.addEventListener("pointercancel", joyEnd);
+let vHold = 0;
+for (const [id, dir] of [["up", 1], ["down", -1]]) {
+  const b = $(id);
+  b.addEventListener("pointerdown", () => (vHold = dir));
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, () => { if (vHold === dir) vHold = 0; });
+}
+
+function toggleView() { firstPerson = !firstPerson; $("view").textContent = firstPerson ? "Third person" : "First person"; }
+$("view").addEventListener("click", toggleView);
+document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("button"); if (b && e.detail > 0) b.blur(); });
+
+/* ---------------- movie + playback sync ---------------- */
+const video = document.createElement("video");
+video.playsInline = true; video.preload = "auto"; video.crossOrigin = "anonymous"; video.volume = 0.9;
+let videoTex = null, film = null; // film = {n, d}
+const pb = { e: 0, src: "", p: false, pos: 0, at: performance.now() };
+const vt = () => pb.pos + (pb.p ? (performance.now() - pb.at) / 1000 : 0);
+const keyGt = (a, b) => a.e > b.e || (a.e === b.e && a.src > b.src);
+
+$("file").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  if (video.src) URL.revokeObjectURL(video.src);
+  video.src = URL.createObjectURL(f);
+  film = { n: clean(f.name, 80), d: 0 };
+  $("loadLbl").textContent = "Change movie";
+  toast("Threading " + film.n + " into the projector…");
+  video.load();
+});
+video.addEventListener("loadedmetadata", () => {
+  film.d = Math.round(video.duration || 0);
+  fitScreen((video.videoWidth || 16) / (video.videoHeight || 9));
+  if (!videoTex) { videoTex = new THREE.VideoTexture(video); videoTex.encoding = THREE.sRGBEncoding; videoTex.minFilter = THREE.LinearFilter; }
+  outStream = null; useScreenSource(); syncCalls();
+  sharePresence(true);
+  if (pb.e === 0) { video.currentTime = 0.01; toast("Ready. Press Play to start the show for everyone."); }
+  else { applyVideo(true); toast("You're in sync with the room."); }
+  updateNotice();
+});
+video.addEventListener("error", () => { toast("That file wouldn't play here. MP4 (H.264) or WebM work best."); });
+video.addEventListener("seeked", () => { if (videoTex) videoTex.needsUpdate = true; });
+
+function act(p, pos) {
+  pb.e += 1; pb.src = mySrc; pb.p = p; pb.pos = Math.max(0, pos); pb.at = performance.now();
+  pushPb(); applyVideo(true); renderPlay();
+}
+function togglePlay() {
+  if (remoteBlocked) { unblockRemote(); return; }
+  if (!(video.src && video.readyState >= 1)) { if (remoteOn) act(!pb.p, clamp(vt(), 0, remoteDur || 1e9)); return; }
+  if (blocked && pb.p) { blocked = false; video.play().then(updateNotice).catch(() => { blocked = true; updateNotice(); }); updateNotice(); return; }
+  const pos = video.currentTime;
+  if (!pb.p && video.duration && pos >= video.duration - 0.3) act(true, 0); else act(!pb.p, pos);
+}
+$("play").addEventListener("click", togglePlay);
+let seeking = false;
+$("seek").addEventListener("input", () => { seeking = true; $("clock").textContent = fmt(+$("seek").value) + " / " + fmt(video.duration); });
+$("seek").addEventListener("change", () => { seeking = false; act(pb.p, +$("seek").value); });
+$("vol").addEventListener("input", () => { video.volume = +$("vol").value; rVideo.volume = +$("vol").value; });
+
+let blocked = false;
+function applyVideo(force) {
+  if (!video.src || video.readyState < 1) return;
+  const d = video.duration || 0; let t = vt(); const ended = d && t >= d - 0.05; if (ended) t = d;
+  if (pb.p && !ended) { if (video.paused) video.play().then(() => { blocked = false; updateNotice(); }).catch(() => { blocked = true; updateNotice(); }); }
+  else if (!video.paused) video.pause();
+  const drift = Math.abs(video.currentTime - t);
+  if (!video.seeking && drift > (force ? 0.08 : pb.p ? 0.8 : 0.15)) { try { video.currentTime = t; } catch {} }
+}
+function renderPlay() { $("play").textContent = pb.p ? "Pause" : "Play"; }
+
+/* ---------------- subtitles ---------------- */
+let cues = [], subsOn = true, subOffset = 0, subShown = null, cueIdx = 0;
+function parseTime(t) {
+  const m = String(t).trim().replace(",", ".").match(/^(?:(\d+):)?(\d{1,2}):(\d{1,2})(?:[.:](\d{1,3}))?$/);
+  if (!m) return NaN;
+  const frac = m[4] ? parseFloat("0." + m[4].padEnd(3, "0")) : 0;
+  return (+(m[1] || 0)) * 3600 + (+m[2]) * 60 + (+m[3]) + frac;
+}
+function cleanSubLine(l) {
+  return l.replace(/\{[^}]*\}/g, "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " ").replace(/\\h/g, " ").trim();
+}
+function parseSubs(text) {
+  const lines = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  if (/^\s*\[Script Info\]/im.test(text) || /^Dialogue:/m.test(text)) { // .ass / .ssa
+    let fmt = ["layer", "start", "end", "style", "name", "marginl", "marginr", "marginv", "effect", "text"];
+    for (const raw of lines) {
+      const l = raw.trim();
+      if (/^Format:/i.test(l) && fmt && /text/i.test(l)) fmt = l.slice(7).split(",").map((x) => x.trim().toLowerCase());
+      if (!/^Dialogue:/i.test(l)) continue;
+      const parts = l.slice(9).split(","); const n = fmt.length;
+      const row = parts.slice(0, n - 1).concat([parts.slice(n - 1).join(",")]);
+      const get = (k) => row[fmt.indexOf(k)];
+      const start = parseTime(get("start")), end = parseTime(get("end"));
+      const body = String(get("text") || "").replace(/\\N/gi, "\n").split("\n").map(cleanSubLine).filter(Boolean);
+      if (isFinite(start) && isFinite(end) && body.length) out.push({ start, end, text: body.join("\n") });
+    }
+    return out.sort((x, y) => x.start - y.start);
+  }
+  // .srt / .vtt: walk line by line, so odd spacing between cues doesn't matter
+  const timing = /^\s*([\d:.,]+)\s*-->\s*([\d:.,]+)/;
+  let cur = null;
+  const flush = () => { if (cur && cur.body.length && isFinite(cur.start) && isFinite(cur.end)) out.push({ start: cur.start, end: cur.end, text: cur.body.join("\n") }); cur = null; };
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(timing);
+    if (m) { flush(); cur = { start: parseTime(m[1]), end: parseTime(m[2]), body: [] }; continue; }
+    if (!cur) continue;
+    const l = lines[i].trim();
+    if (!l) { flush(); continue; }
+    if (/^\d+$/.test(l) && i + 1 < lines.length && timing.test(lines[i + 1])) { flush(); continue; }
+    const c = cleanSubLine(l); if (c) cur.body.push(c);
+  }
+  flush();
+  return out.sort((x, y) => x.start - y.start);
+}
+function decodeSubs(buf) {
+  const b = new Uint8Array(buf);
+  if (b[0] === 0xff && b[1] === 0xfe) return new TextDecoder("utf-16le").decode(buf);
+  if (b[0] === 0xfe && b[1] === 0xff) return new TextDecoder("utf-16be").decode(buf);
+  // UTF-16 without a byte-order mark: lots of zero bytes
+  const n = Math.min(b.length, 2000); let z0 = 0, z1 = 0; for (let i = 0; i < n; i++) if (!b[i]) (i % 2 ? z1++ : z0++);
+  if (z1 > n * 0.2) return new TextDecoder("utf-16le").decode(buf);
+  if (z0 > n * 0.2) return new TextDecoder("utf-16be").decode(buf);
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch { return new TextDecoder("windows-1252").decode(buf); }
+}
+function drawSub(text) {
+  const x = subCv.getContext("2d"), W = subCv.width, H = subCv.height; x.clearRect(0, 0, W, H);
+  if (text) {
+    x.font = "700 60px Karla, 'Segoe UI', sans-serif"; x.textAlign = "center"; x.textBaseline = "alphabetic"; x.lineJoin = "round";
+    const lines = [];
+    for (const para of text.split("\n")) { let cur = ""; for (const w of para.split(" ")) { const t = cur ? cur + " " + w : w; if (x.measureText(t).width > W - 120 && cur) { lines.push(cur); cur = w; } else cur = t; } lines.push(cur); }
+    const shown = lines.slice(-5), lh = 72;
+    shown.forEach((ln, i) => { const y = H - 26 - (shown.length - 1 - i) * lh;
+      x.strokeStyle = "rgba(0,0,0,0.92)"; x.lineWidth = 12; x.strokeText(ln, W / 2, y); x.fillStyle = "#fffbea"; x.fillText(ln, W / 2, y); });
+  }
+  subTex.needsUpdate = true;
+}
+function updateSubs() {
+  let text = "";
+  if (subsOn && cues.length && (video.src || remoteOn)) {
+    const t = (film ? video.currentTime : clamp(vt(), 0, remoteDur || 1e9)) + subOffset;
+    if (cueIdx >= cues.length || cues[cueIdx].start > t) cueIdx = 0;
+    while (cueIdx < cues.length - 1 && cues[cueIdx + 1].start <= t) cueIdx++;
+    const parts = [];
+    for (let i = Math.max(0, cueIdx - 3); i <= cueIdx; i++) if (cues[i].start <= t && t < cues[i].end) parts.push(cues[i].text);
+    text = parts.join("\n");
+  }
+  if (text !== subShown) { subShown = text; drawSub(text); }
+}
+$("subs").addEventListener("change", async (e) => {
+  const f = e.target.files && e.target.files[0]; if (!f) return; e.target.value = "";
+  const ext = (f.name.split(".").pop() || "").toLowerCase();
+  if (/^video\//.test(f.type) || ["mkv", "mp4", "avi", "mov", "webm", "m4v"].includes(ext)) {
+    toast("That's a video file. Subtitles packed inside a video can't be read by a browser, so pick a separate .srt, .vtt or .ass file."); return;
+  }
+  if (["sub", "idx", "sup"].includes(ext)) { toast("." + ext + " subtitles are pictures, not text. Use an .srt, .vtt or .ass file instead."); return; }
+  if (f.size > 20 * 1024 * 1024) { toast("That file is too big to be a subtitle file."); return; }
+  try {
+    const parsed = parseSubs(decodeSubs(await f.arrayBuffer()));
+    if (!parsed.length) { toast("Couldn't find any timed subtitles in " + clean(f.name, 60) + ". Use an .srt, .vtt or .ass file."); return; }
+    cues = parsed; cueIdx = 0; subOffset = 0; subsOn = true; subShown = null;
+    $("subsToggle").hidden = false; $("subsToggle").textContent = "Hide subs"; $("subsLbl").textContent = "Change subs";
+    toast("Loaded " + cues.length + " subtitles. Use [ and ] if they're early or late.");
+  } catch (err) { toast("Couldn't read that subtitle file."); console.error(err); }
+});
+function toggleSubs() { if (!cues.length) return; subsOn = !subsOn; $("subsToggle").textContent = subsOn ? "Hide subs" : "Show subs"; toast(subsOn ? "Subtitles on" : "Subtitles off"); }
+$("subsToggle").addEventListener("click", toggleSubs);
+function nudgeSubs(d) { if (!cues.length) return; subOffset = Math.round((subOffset + d) * 10) / 10; subShown = null; toast("Subtitle timing " + (subOffset > 0 ? "+" : "") + subOffset.toFixed(1) + "s" + (subOffset > 0 ? " (earlier)" : subOffset < 0 ? " (later)" : "")); }
+
+/* ---------------- room (live friends) ---------------- */
+let room = null, syncRoom = null, peersSnap = [];
+const others = new Map(); // peer -> {gh, tag, tx,ty,tz,tyaw, x,y,z,yaw, sayKey, sayAt, by}
+const names = new Map();
+
+function sharePresence(force) {
+  if (!room) return;
+  const g = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), r: +me.yaw.toFixed(3), c: myColor };
+  const patch = { g };
+  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; }
+  room.presence(patch).catch(() => {});
+}
+function pushPb() {
+  const target = syncRoom || room; if (!target) return;
+  target.presence({ pb: { e: pb.e, src: pb.src, p: pb.p, pos: +vt().toFixed(2) } }).catch(() => {});
+}
+setInterval(() => { if (pb.e > 0) pushPb(); }, 3000);
+setInterval(() => applyVideo(false), 400);
+
+function considerPb(list) {
+  let best = null;
+  for (const pe of list) {
+    if (pe.sameTab) continue; const qd = pe.presence && pe.presence.pb;
+    if (!qd || typeof qd !== "object" || typeof qd.e !== "number" || typeof qd.pos !== "number") continue;
+    const k = { e: qd.e | 0, src: String(qd.src || "").slice(0, 16) };
+    if (!keyGt(k, pb)) continue;
+    if (!best || keyGt(k, best.k) || (k.e === best.k.e && k.src === best.k.src && pe.updatedAt > best.pe.updatedAt)) best = { k, qd, pe };
+  }
+  if (!best) return;
+  const wasP = pb.p, oldPos = vt(), firstSync = pb.e === 0;
+  const elapsed = best.qd.p ? clamp((Date.now() - best.pe.updatedAt) / 1000, 0, 5) : 0;
+  pb.e = best.k.e; pb.src = best.k.src; pb.p = !!best.qd.p; pb.pos = Math.max(0, num(best.qd.pos, 0) + elapsed); pb.at = performance.now();
+  renderPlay(); applyVideo(true); updateNotice();
+  const who = nameFor(peersSnap.find((p) => p.peer === best.pe.peer) || best.pe);
+  if (firstSync) { if (pb.p) toast("The show is already playing. Joining at " + fmt(pb.pos) + "."); }
+  else if (pb.p !== wasP) toast(who + (pb.p ? " started the movie" : " paused the movie"));
+  else if (Math.abs(pb.pos - oldPos) > 2) toast(who + " skipped to " + fmt(pb.pos));
+}
+
+function nameFor(pe) {
+  if (!pe) return "Someone";
+  if (pe.sameTab) return "You";
+  const n = pe.presence && clean(pe.presence.nick, 24).trim();
+  return n || SHEETS[clamp(num(pe.presence && pe.presence.g && pe.presence.g.c, 0) | 0, 0, 5)].name + " ghost";
+}
+function resolveNames() {}
+
+function onPeers(ch) {
+  peersSnap = ch.peers;
+  const seen = new Set();
+  for (const pe of ch.peers) {
+    if (pe.sameTab || pe.kind !== "viewer") continue;
+    const g = pe.presence && pe.presence.g; if (!g || typeof g !== "object") continue;
+    seen.add(pe.peer);
+    let o = others.get(pe.peer);
+    const x = clamp(num(g.x, 0), -ROOM.x, ROOM.x), y = clamp(num(g.y, 0.3), 0, 6), z = clamp(num(g.z, 0), ROOM.zFront, ROOM.zBack), r = num(g.r, 0), c = clamp(num(g.c, 0) | 0, 0, SHEETS.length - 1);
+    if (!o) { o = { gh: makeGhost(c), tag: makeTag(), x, y, z, yaw: r, sayKey: null, sayAt: -99, sayText: "" }; others.set(pe.peer, o); }
+    setGhostColor(o.gh, c); o.tx = x; o.ty = y; o.tz = z; o.tyaw = r;
+    const s = pe.presence.say;
+    const sk = s && typeof s === "object" ? String(s.k) + "|" + String(s.t) : null;
+    if (sk && sk !== o.sayKey) {
+      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); if (o.sayText.toLowerCase().startsWith("boo")) o.gh.booAt = performance.now() / 1000; }
+      o.sayKey = sk;
+    } else if (!sk) o.sayKey = "";
+  }
+  for (const [peer, o] of others) if (!seen.has(peer)) { removeGhost(o.gh); o.tag.el.remove(); others.delete(peer); }
+  if (!syncRoom) considerPb(ch.peers);
+  remoteDur = 0; for (const pe of ch.peers) { const fl = pe.presence && pe.presence.film; if (!pe.sameTab && fl && typeof fl === "object") remoteDur = Math.max(remoteDur, clamp(num(fl.d, 0), 0, 360000)); }
+  syncCalls();
+  resolveNames(); renderCrowd(); updateNotice();
+}
+
+function renderCrowd() {
+  const list = $("crowdList"); list.textContent = "";
+  const rows = [{ me: true, c: myColor, name: "You", film }];
+  for (const pe of peersSnap) {
+    if (pe.sameTab || pe.kind !== "viewer") continue; const pr = pe.presence || {};
+    const c = clamp(num(pr.g && pr.g.c, 0) | 0, 0, 5);
+    rows.push({ c, name: nameFor(pe), film: pr.film && typeof pr.film === "object" ? { n: clean(pr.film.n, 80) } : null, lurking: !pr.g });
+  }
+  for (const r of rows) {
+    const li = document.createElement("li");
+    const dot = document.createElement("span"); dot.className = "dot"; dot.style.background = cssHex(SHEETS[r.c].hex);
+    const who = document.createElement("span"); who.className = "who"; who.textContent = r.name;
+    const fl = document.createElement("span"); fl.className = "film"; fl.textContent = r.lurking ? "still in the lobby" : r.film ? r.film.n : "no movie loaded";
+    li.append(dot, who, fl); list.appendChild(li);
+  }
+  const n = rows.length;
+  $("status").innerHTML = "";
+  const b = document.createElement("b");
+  if (!room) { $("status").textContent = "Watching solo"; return; }
+  b.textContent = n === 1 ? "Just you" : n + " ghosts";
+  $("status").append(b, document.createTextNode(n === 1 ? " in the house. Send friends the invite link." : " in the house"));
+}
+
+function updateNotice() {
+  const el = $("notice");
+  let msg = "";
+  if (blocked || remoteBlocked) msg = "Your browser held the sound back. Tap anywhere to hear the show.";
+  else if (film && p2p && p2p.isHost && streamUnsupported) msg = "This browser can't project to friends. Host from Chrome or Edge so friends don't need their own copy.";
+  else if (!film && !remoteOn) {
+    const theirs = peersSnap.find((p) => !p.sameTab && p.presence && p.presence.film && p.presence.film.n);
+    if (theirs) msg = p2p && theirs.peer === p2p.hostId
+      ? "Connecting to " + nameFor(theirs) + "'s projector…"
+      : nameFor(theirs) + " is showing \u201c" + clean(theirs.presence.film.n, 80) + "\u201d. Load your own copy of that file to watch along.";
+  } else if (film && !(p2p && p2p.isHost)) {
+    const diff = peersSnap.find((p) => !p.sameTab && p.presence && p.presence.film && p.presence.film.n && clean(p.presence.film.n, 80) !== film.n);
+    if (diff) msg = nameFor(diff) + " loaded \u201c" + clean(diff.presence.film.n, 80) + "\u201d. Make sure you picked the same movie.";
+  }
+  el.textContent = msg; el.hidden = !msg;
+  const ph = film || remoteOn ? "" : pb.e > 0 ? "The show is on. Waiting for the projector…" : p2p && !p2p.isHost ? "Waiting for the host to load a movie" : "Load a movie to begin the show";
+  if (!film && !remoteOn && ph !== placeholderLine) { placeholderLine = ph; drawPlaceholder(ph); }
+}
+
+/* ---------------- host projects the movie to friends (WebRTC media) ---------------- */
+let p2p = null, outStream = null, streamUnsupported = false, remoteDur = 0;
+const calls = new Map(); // host: clientId -> {call, sig}
+const rVideo = document.createElement("video"); rVideo.playsInline = true; rVideo.autoplay = true; rVideo.volume = 0.9;
+let remoteTex = null, remoteOn = false, remoteBlocked = false, currentCall = null;
+function getOutStream() {
+  if (outStream) return outStream;
+  const cap = video.captureStream || video.mozCaptureStream;
+  if (!cap) { streamUnsupported = true; updateNotice(); return null; }
+  try { outStream = cap.call(video); } catch { streamUnsupported = true; return null; }
+  return outStream;
+}
+function dropCall(id) { const c = calls.get(id); if (c) { try { c.call.close(); } catch {} calls.delete(id); } }
+function syncCalls() {
+  if (!p2p || !p2p.isHost || !room) return;
+  const want = new Set(peersSnap.filter((pe) => !pe.sameTab).map((pe) => pe.peer));
+  for (const id of [...calls.keys()]) if (!want.has(id)) dropCall(id);
+  if (!film || video.readyState < 2) return;
+  const st = getOutStream(); if (!st) return;
+  const tracks = st.getTracks().filter((t) => t.readyState === "live"); if (!tracks.some((t) => t.kind === "video")) return;
+  const sig = tracks.map((t) => t.id).sort().join(",");
+  for (const id of want) {
+    const have = calls.get(id); if (have && have.sig === sig) continue;
+    dropCall(id);
+    try {
+      const call = p2p.peer.call(id, new MediaStream(tracks)); if (!call) continue;
+      const entry = { call, sig }; calls.set(id, entry);
+      const gone = () => { if (calls.get(id) === entry) calls.delete(id); };
+      call.on("close", gone); call.on("error", gone);
+    } catch {}
+  }
+}
+setInterval(syncCalls, 2000);
+function onCall(call) {
+  if (!p2p || p2p.isHost || call.peer !== p2p.hostId) { try { call.close(); } catch {} return; }
+  currentCall = call; call.answer();
+  call.on("stream", (st) => {
+    if (call !== currentCall) return;
+    rVideo.srcObject = st; rVideo.muted = false; remoteOn = true;
+    if (!remoteTex) { remoteTex = new THREE.VideoTexture(rVideo); remoteTex.encoding = THREE.sRGBEncoding; remoteTex.minFilter = THREE.LinearFilter; }
+    rVideo.play().then(() => { remoteBlocked = false; updateNotice(); }).catch(() => { rVideo.muted = true; remoteBlocked = true; rVideo.play().catch(() => {}); updateNotice(); });
+    useScreenSource(); updateNotice();
+    if (!film) toast("The projector is rolling. You're watching the host's movie.");
+  });
+  const end = () => { if (call !== currentCall) return; currentCall = null; remoteOn = false; rVideo.srcObject = null; useScreenSource(); updateNotice(); };
+  call.on("close", end); call.on("error", end);
+}
+function unblockRemote() { rVideo.muted = false; rVideo.play().then(() => { remoteBlocked = false; updateNotice(); }).catch(() => {}); }
+document.addEventListener("pointerdown", () => { if (remoteBlocked) unblockRemote(); }, true);
+rVideo.addEventListener("resize", () => { if (!film && remoteOn && rVideo.videoWidth) fitScreen(rVideo.videoWidth / rVideo.videoHeight); });
+function useScreenSource() {
+  if (film && videoTex && video.readyState >= 1) { screenMat.map = videoTex; fitScreen((video.videoWidth || 16) / (video.videoHeight || 9)); }
+  else if (remoteOn && remoteTex) { screenMat.map = remoteTex; if (rVideo.videoWidth) fitScreen(rVideo.videoWidth / rVideo.videoHeight); }
+  else { screenMat.map = placeholderTex; fitScreen(16 / 9); }
+  screenMat.needsUpdate = true;
+  const can = !!(film && video.readyState >= 1) || remoteOn;
+  $("play").disabled = !can; $("seek").disabled = !can;
+  if (film && video.duration) $("seek").max = String(video.duration);
+}
+
+/* ---------------- PeerJS networking: the host's browser relays to everyone ---------------- */
+const PREFIX = "ghostmatinee-v1-";
+let myNick = clean(store.get("gm.nick", ""), 24);
+function makeNet(peerObj, isHost, hostConn, onDown) {
+  const myPid = peerObj.id, chans = new Map(), conns = new Map();
+  const chan = (name) => { if (!chans.has(name)) chans.set(name, { fns: [], map: new Map(), mine: {} }); return chans.get(name); };
+  const ok = (p) => p && typeof p === "object" && !Array.isArray(p) && JSON.stringify(p).length < 4096;
+  function snapshot(c) {
+    const arr = [{ peer: myPid, presence: Object.freeze({ ...c.mine }), updatedAt: Date.now(), sameTab: true, isMe: true, kind: "viewer", by: null, guest: false }];
+    for (const [pid, v] of c.map) arr.push({ peer: pid, presence: v.presence, updatedAt: v.updatedAt, sameTab: false, isMe: false, kind: "viewer", by: null, guest: false });
+    return Object.freeze(arr);
+  }
+  function apply(chName, pid, presence) {
+    if (typeof chName !== "string" || typeof pid !== "string" || pid === myPid) return;
+    const c = chan(chName), had = c.map.get(pid);
+    if (presence === null) { if (!had) return; c.map.delete(pid); fire(c, [], [{ peer: pid }]); return; }
+    if (!ok(presence)) return;
+    const entry = { presence: Object.freeze(presence), updatedAt: Date.now() }; c.map.set(pid, entry);
+    fire(c, had ? [] : [{ peer: pid, sameTab: false }], []);
+  }
+  function fire(c, joined, left) { const peers = snapshot(c); c.fns.forEach((f) => { try { f({ peers, joined, left, updated: [] }); } catch (e) { console.error(e); } }); }
+  function sendAll(msg, except) { for (const [pid, cn] of conns) if (pid !== except && cn.open) { try { cn.send(msg); } catch {} } }
+  if (isHost) {
+    peerObj.on("connection", (cn) => {
+      cn.on("open", () => {
+        conns.set(cn.peer, cn);
+        const snap = [];
+        for (const [name, c] of chans) { snap.push([name, myPid, c.mine]); for (const [pid, v] of c.map) snap.push([name, pid, v.presence]); }
+        try { cn.send({ t: "snap", d: snap }); } catch {}
+      });
+      cn.on("data", (m) => {
+        if (!m || m.t !== "p" || typeof m.ch !== "string" || m.ch.length > 24) return;
+        apply(m.ch, cn.peer, m.presence); sendAll({ t: "p", ch: m.ch, peer: cn.peer, presence: m.presence }, cn.peer);
+      });
+      const gone = () => { if (!conns.has(cn.peer)) return; conns.delete(cn.peer); for (const name of chans.keys()) { apply(name, cn.peer, null); sendAll({ t: "p", ch: name, peer: cn.peer, presence: null }); } };
+      cn.on("close", gone); cn.on("error", gone);
+    });
+  } else {
+    hostConn.on("data", (m) => {
+      if (!m) return;
+      if (m.t === "snap" && Array.isArray(m.d)) m.d.slice(0, 600).forEach((x) => Array.isArray(x) && apply(x[0], x[1], x[2]));
+      if (m.t === "p") apply(m.ch, m.peer, m.presence);
+    });
+    hostConn.on("close", onDown); hostConn.on("error", onDown);
+  }
+  peerObj.on("disconnected", () => { try { peerObj.reconnect(); } catch {} });
+  function api(name) {
+    const c = chan(name);
+    return {
+      presence(patch) {
+        for (const k in patch) { if (patch[k] === null) delete c.mine[k]; else c.mine[k] = patch[k]; }
+        const msg = isHost ? { t: "p", ch: name, peer: myPid, presence: c.mine } : { t: "p", ch: name, presence: c.mine };
+        if (isHost) sendAll(msg); else if (hostConn.open) { try { hostConn.send(msg); } catch {} }
+        return Promise.resolve();
+      },
+      onPeers(fn) { c.fns.push(fn); Promise.resolve().then(() => fn({ peers: snapshot(c), joined: [], left: [], updated: [] })); return () => {}; },
+      peers() { return snapshot(c); },
+      onConnection(fn) { Promise.resolve().then(() => fn(true)); return () => {}; },
+      join(n) { return Promise.resolve(api(n)); }
+    };
+  }
+  return api("lobby");
+}
+
+function lobbyMsg(t) { $("lobbyMsg").textContent = t; }
+function setBusy(b) { ["enter", "solo"].forEach((id) => ($(id).disabled = b)); $("joinForm").querySelector("button").disabled = b; }
+function makeCode() { const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; let c = ""; for (let i = 0; i < 5; i++) c += A[Math.floor(Math.random() * A.length)]; return c; }
+let roomCode = "";
+function readNick() { myNick = clean($("nick").value, 24).trim(); store.set("gm.nick", myNick); }
+
+async function goLive(net, code, peerObj, isHost, hostId) {
+  room = net; roomCode = code; p2p = { peer: peerObj, isHost, hostId };
+  $("roomCode").textContent = code; $("roomline").hidden = false;
+  try { history.replaceState(null, "", "#" + code); } catch {}
+  room.onPeers(onPeers);
+  syncRoom = await room.join("projector");
+  syncRoom.onPeers((ch) => considerPb(ch.peers));
+  enterTheater(); sharePresence(true); if (pb.e > 0) pushPb(); renderCrowd();
+}
+function roomDown() {
+  if (!room) return;
+  room = null; syncRoom = null; peersSnap = [];
+  for (const id of [...calls.keys()]) dropCall(id);
+  if (currentCall) { try { currentCall.close(); } catch {} } currentCall = null; remoteOn = false; rVideo.srcObject = null; p2p = null; useScreenSource();
+  for (const o of others.values()) { removeGhost(o.gh); o.tag.el.remove(); } others.clear();
+  $("roomline").hidden = true; renderCrowd(); updateNotice();
+  toast("The host left, so the room closed. You can keep watching solo.");
+}
+function host(tries) {
+  if (typeof Peer === "undefined") { lobbyMsg("Couldn't load the connection library. Check your internet connection."); return; }
+  readNick(); setBusy(true); lobbyMsg("Opening the theater…");
+  const code = makeCode(), p = new Peer(PREFIX + code);
+  p.on("open", () => goLive(makeNet(p, true, null, roomDown), code, p, true, p.id));
+  p.on("error", (err) => {
+    if (err && err.type === "unavailable-id" && (tries || 0) < 4) { p.destroy(); host((tries || 0) + 1); return; }
+    if (!entered) { setBusy(false); lobbyMsg("Couldn't open a room (" + (err && err.type || "network") + "). Try again in a moment."); }
+  });
+}
+function join(code) {
+  if (typeof Peer === "undefined") { lobbyMsg("Couldn't load the connection library. Check your internet connection."); return; }
+  code = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (code.length !== 5) { lobbyMsg("Room codes are 5 characters, like K7QPM."); return; }
+  readNick(); setBusy(true); lobbyMsg("Finding room " + code + "…");
+  const p = new Peer();
+  p.on("call", onCall);
+  let done = false;
+  const fail = (msg) => { if (done) return; done = true; try { p.destroy(); } catch {} setBusy(false); lobbyMsg(msg); };
+  const timer = setTimeout(() => fail("No answer from room " + code + ". Check the code, and make sure the host still has the page open."), 15000);
+  p.on("open", () => {
+    const cn = p.connect(PREFIX + code, { reliable: true });
+    cn.on("open", () => { if (done) return; done = true; clearTimeout(timer); goLive(makeNet(p, false, cn, roomDown), code, p, false, PREFIX + code); });
+  });
+  p.on("error", (err) => {
+    clearTimeout(timer);
+    if (err && err.type === "peer-unavailable") fail("There's no showing with code " + code + " right now.");
+    else if (!entered) fail("Couldn't connect (" + (err && err.type || "network") + "). Try again.");
+  });
+}
+$("nick").value = myNick;
+$("joinForm").addEventListener("submit", (e) => { e.preventDefault(); join($("code").value); });
+$("solo").addEventListener("click", () => { readNick(); enterTheater(); });
+{ const h = location.hash.replace("#", "").toUpperCase(); if (/^[A-Z0-9]{5}$/.test(h)) { $("code").value = h; lobbyMsg("You've been invited to room " + h + ". Pick a name and press Join."); } }
+$("copyLink").addEventListener("click", () => {
+  const link = location.href.split("#")[0] + "#" + roomCode;
+  const done = () => toast("Invite link copied. Send it to your friends.");
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, () => toast(link));
+  else toast(link);
+});
+renderCrowd();
+
+/* ---------------- chat + boo ---------------- */
+function say(text) {
+  text = clean(text, 80).trim(); if (!text) return;
+  me.say = text; me.sayAt = Date.now(); me.sayLocal = performance.now() / 1000;
+  if (/^boo/i.test(text)) me.ghost.booAt = performance.now() / 1000;
+  sharePresence(true);
+}
+function boo() { say("Boo!"); }
+$("chat").addEventListener("submit", (e) => { e.preventDefault(); say($("say").value); $("say").value = ""; $("say").blur(); });
+$("boo").addEventListener("click", boo);
+
+/* ---------------- lobby ---------------- */
+const sheetsEl = $("sheets");
+SHEETS.forEach((s, i) => {
+  const b = document.createElement("button"); b.type = "button"; b.style.setProperty("--c", cssHex(s.hex)); b.setAttribute("aria-label", s.name);
+  b.title = s.name; b.setAttribute("aria-pressed", String(i === myColor));
+  b.addEventListener("click", () => { myColor = i; store.set("gm.sheet", i); setGhostColor(me.ghost, i); [...sheetsEl.children].forEach((c, j) => c.setAttribute("aria-pressed", String(j === i))); sharePresence(false); });
+  sheetsEl.appendChild(b);
+});
+let entered = false;
+function enterTheater() { if (entered) return; $("lobby").hidden = true; entered = true; toast("Drag to look around. Load a movie when you're ready."); }
+$("enter").addEventListener("click", () => host(0));
+
+/* ---------------- loop ---------------- */
+const clock = new THREE.Clock();
+const fwd = new THREE.Vector3(), right = new THREE.Vector3(), dir = new THREE.Vector3(), tgt = new THREE.Vector3();
+let lastSent = 0, lastSentKey = "", lastSample = 0, lum = 0;
+const sampleCv = document.createElement("canvas"); sampleCv.width = sampleCv.height = 8; const sctx = sampleCv.getContext("2d", { willReadFrequently: true });
+const lightCol = new THREE.Color(0xfff0dd), tmpCol = new THREE.Color();
+const angLerp = (a, b, k) => { let d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; return a + d * k; };
+
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+
+  if (!entered) { me.yaw = Math.sin(t * 0.12) * 0.35; }
+  if (entered) {
+    fwd.set(-Math.sin(me.yaw), 0, -Math.cos(me.yaw)); right.set(Math.cos(me.yaw), 0, -Math.sin(me.yaw));
+    let f = 0, s = 0, u = vHold;
+    if (keys.has("w") || keys.has("arrowup")) f += 1; if (keys.has("s") || keys.has("arrowdown")) f -= 1;
+    if (keys.has("d")) s += 1; if (keys.has("a")) s -= 1;
+    if (keys.has("arrowleft")) me.yaw += dt * 1.8; if (keys.has("arrowright")) me.yaw -= dt * 1.8;
+    if (keys.has(" ") || keys.has("e")) u += 1; if (keys.has("shift") || keys.has("q") || keys.has("c")) u -= 1;
+    f += -joy.y; s += joy.x;
+    const sp = 4.2;
+    me.x = clamp(me.x + (fwd.x * f + right.x * s) * sp * dt, -ROOM.x + 0.6, ROOM.x - 0.6);
+    me.z = clamp(me.z + (fwd.z * f + right.z * s) * sp * dt, ROOM.zFront + 0.9, ROOM.zBack - 0.7);
+    const minY = me.z < ROOM.zFront + 2.8 ? 0.72 : 0.05;
+    me.y = clamp(me.y + u * 2.4 * dt, minY, 5.6);
+  }
+  poseGhost(me.ghost, me.x, me.y, me.z, me.yaw, t);
+  me.ghost.group.visible = !firstPerson;
+
+  // camera
+  fwd.set(-Math.sin(me.yaw), 0, -Math.cos(me.yaw));
+  if (firstPerson) {
+    camera.position.set(me.x, me.y + 0.82, me.z); camera.rotation.order = "YXZ"; camera.rotation.set(me.pitch, me.yaw, 0);
+  } else {
+    dir.set(fwd.x * Math.cos(me.pitch), Math.sin(me.pitch), fwd.z * Math.cos(me.pitch));
+    tgt.set(me.x, me.y + 0.95, me.z);
+    camera.position.copy(tgt).addScaledVector(dir, -3.4); camera.position.y += 0.55;
+    camera.position.x = clamp(camera.position.x, -ROOM.x + 0.2, ROOM.x - 0.2); camera.position.z = clamp(camera.position.z, ROOM.zFront + 0.4, ROOM.zBack - 0.2);
+    camera.position.y = clamp(camera.position.y, 0.25, ROOM.h - 0.2);
+    camera.lookAt(tgt.x + dir.x * 2, tgt.y + dir.y * 2, tgt.z + dir.z * 2);
+  }
+
+  // others
+  const k = 1 - Math.exp(-dt * 10);
+  for (const o of others.values()) {
+    o.x += (o.tx - o.x) * k; o.y += (o.ty - o.y) * k; o.z += (o.tz - o.z) * k; o.yaw = angLerp(o.yaw, o.tyaw, k);
+    poseGhost(o.gh, o.x, o.y, o.z, o.yaw, t);
+    const showSay = t - o.sayAt < 6; o.tag.bub.textContent = showSay ? o.sayText : "";
+    placeTag(o.tag, o.x, o.y + 1.45, o.z, false);
+  }
+  // my tag
+  const myShow = me.sayLocal && t - me.sayLocal < 6;
+  me.tag.bub.textContent = myShow ? me.say : "";
+  placeTag(me.tag, me.x, me.y + 1.45, me.z, firstPerson || !entered);
+  me.tag.nm.style.display = myShow ? "none" : "";
+
+  // names for others (cheap: once per frame text only when changed)
+  for (const [peer, o] of others) { const pe = peersSnap.find((p) => p.peer === peer); const n = nameFor(pe); if (o.tag.nm.textContent !== n) o.tag.nm.textContent = n; }
+
+  // send my position (~12/s while moving)
+  if (room && entered && t - lastSent > 0.08) {
+    const key = me.x.toFixed(2) + me.y.toFixed(2) + me.z.toFixed(2) + me.yaw.toFixed(2) + myColor;
+    if (key !== lastSentKey) { lastSentKey = key; lastSent = t; sharePresence(false); }
+  }
+
+  // screen light from the picture
+  const playing = video.src && !video.paused && video.readyState >= 2;
+  const src = film && video.readyState >= 2 ? video : remoteOn && rVideo.readyState >= 2 ? rVideo : null;
+  if (src && t - lastSample > 0.2) {
+    lastSample = t;
+    try { sctx.drawImage(src, 0, 0, 8, 8); const d = sctx.getImageData(0, 0, 8, 8).data; let r = 0, g = 0, b = 0;
+      for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; } const n = d.length / 4;
+      tmpCol.setRGB(r / n / 255, g / n / 255, b / n / 255); lum = (0.3 * r + 0.59 * g + 0.11 * b) / n / 255; } catch {}
+  } else if (!src) { tmpCol.setRGB(0.85, 0.8, 0.72); lum = 0.6; }
+  lightCol.lerp(tmpCol, 1 - Math.exp(-dt * 6));
+  screenLight.color.copy(lightCol); screenLight.intensity = 0.6 + lum * 3.2;
+  beamMat.color.copy(lightCol); beamMat.opacity = 0.012 + lum * 0.05;
+  boothGlow.material.opacity = 0.35 + lum * 0.5;
+  updateDust(t);
+
+  // transport UI
+  const dur = video.duration || (film && film.d) || remoteDur || 0;
+  if (!film && remoteOn && dur && +$("seek").max !== dur) $("seek").max = String(dur);
+  const cur = video.src ? (playing ? video.currentTime : clamp(vt(), 0, dur || 1e9)) : vt();
+  if (!seeking) { $("clock").textContent = fmt(cur) + " / " + fmt(dur); if (video.src || remoteOn) $("seek").value = String(cur); }
+  if (pb.p && dur && vt() >= dur && video.src && video.ended) renderPlay();
+
+  updateSubs();
+  renderer.render(scene, camera);
+}
+frame();
+})();
+</script>
+</body>
+</html>
