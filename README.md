@@ -7,7 +7,7 @@ Play it here: https://michael-hauffe.github.io/Theatre/
 ## Known good version
 
 **v1.0, confirmed working on November 1, 2026.**
-Tagged in git as [`v1.0`](https://github.com/Michael-Hauffe/Theatre/tree/v1.0) (commit `96160b4`).
+Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/tree/v1.0-working) (commit `96160b4`). Leave that branch alone; new work goes on `main`.
 
 Confirmed working in that version:
 - Hosting and joining rooms with a 5-letter code or invite link
@@ -20,7 +20,7 @@ Confirmed working in that version:
 - Buying, holding, eating and drinking snacks with Ghost Bucks
 - Hide HUD button
 
-If a later change breaks something, the v1.0 code can be restored from that tag.
+If a later change breaks something, the v1.0 code can be restored from that branch.
 
 ## Hosting tips
 
