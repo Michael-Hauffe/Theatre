@@ -191,8 +191,6 @@ input[type=range] { accent-color: var(--brass); }
 #chargeLabel { font-size: 12px; font-weight: 700; color: var(--bone); text-shadow: 0 1px 4px #000; letter-spacing: 0.04em; }
 /* The debug sheet shows live numbers for troubleshooting. Like the shortcut sheet, it only shows while held. */
 /* Debug screen: visible only while held */
-#dbgBtn { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-#dbgBtn[aria-pressed="true"] { border-color: var(--brass); color: #fff; background: rgba(90, 30, 36, 0.9); }
 #debugSheet { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 7; pointer-events: none;
   width: min(960px, calc(100% - 32px)); max-height: calc(100% - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow: hidden;
   background: rgba(8, 5, 8, 0.8); border: 1px solid var(--line); border-radius: 6px; padding: 14px 18px 16px; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 24px 70px rgba(0,0,0,0.55); }
@@ -312,9 +310,8 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
       <input type="range" id="seek" min="0" max="1" step="0.1" value="0" disabled aria-label="Seek">
       <span class="vol">Vol <input type="range" id="vol" min="0" max="1" step="0.05" value="0.9" aria-label="Volume"></span>
       <button id="view" title="Switch camera (V)">First person</button>
-      <!-- These two only show their sheet while held down (not toggles). -->
+      <!-- Shows its sheet only while held down (not a toggle). The debug screen is keyboard-only: hold ` (see the script). -->
       <button id="keysBtn" type="button" aria-pressed="false" aria-controls="keySheet" title="Hold to see every shortcut">Show Shortcuts</button>
-      <button id="dbgBtn" type="button" aria-pressed="false" aria-controls="debugSheet" title="Hold to see what's going on under the hood (hold `)">Show Debug Screen</button>
       <button id="hudBtn" type="button" title="Hide all controls and labels (H)">Hide HUD</button>
     </div>
     <!-- Chat: what you type appears as a speech bubble over your ghost. -->
@@ -357,7 +354,8 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
         <dl>
           <dt><kbd>V</kbd></dt><dd>First or third person</dd>
           <dt><kbd>H</kbd></dt><dd>Hide or show the HUD</dd>
-          <dt><kbd>`</kbd> <span class="alt">hold</span></dt><dd>Debug screen</dd>
+          <dt><kbd>`</kbd> <span class="alt">hold</span></dt><dd>Show the debug screen</dd>
+          <dt><kbd>P</kbd></dt><dd>Copy the debug screen</dd>
         </dl>
       </section>
     </div>
@@ -1386,6 +1384,7 @@ addEventListener("keydown", (e) => {
   if (k === "f") eatHeld();
   if (k === "g") switchHeld();
   if (k === "r") talkNpc();
+  if (k === "p") copyDebug(); // Copy Debug Screen
   if (k === "o" && nearCounter()) openShop();
   if (k === "b") boo();
   if (k === "enter") { e.preventDefault(); $("say").focus(); }
@@ -1961,8 +1960,6 @@ function syncCalls() {
       const entry = { call, sig }; calls.set(id, entry);
       const gone = () => { if (calls.get(id) === entry) calls.delete(id); };
       call.on("close", gone); call.on("error", gone);
-      // If the picture never connects, hang up so the next round tries again.
-      setTimeout(() => { if (calls.get(id) !== entry) return; const st = call.peerConnection && call.peerConnection.iceConnectionState; if (st !== "connected" && st !== "completed") dropCall(id); }, 15000);
     } catch {}
   }
 }
@@ -2144,9 +2141,12 @@ function applyProj(s) {
     if (amRoomHost()) sharedSubsPacket = null;
   }
   hostSharing = proj.kind === "screen" && proj.owner !== mine;
-  // Picture from someone who no longer runs the projector
-  if (currentCall && currentCall.peer !== proj.owner) { const c = currentCall; currentCall = null; try { c.close(); } catch {} endRemote(); }
-  for (const [peer, pc] of [...pendingCalls]) if (peer === proj.owner && proj.owner !== mine) { pendingCalls.delete(peer); clearTimeout(pc.timer); acceptCall(pc.call); }
+  // Stop showing a picture from someone who no longer runs the projector (their call is left alone;
+  // they hang it up themselves when they stop)…
+  if (currentCall && currentCall.peer !== proj.owner) { currentCall = null; endRemote(); }
+  // …and if the new projectionist's picture already arrived before this news did, show it now.
+  const waiting = proj.owner && proj.owner !== mine ? inCalls.get(proj.owner) : null;
+  if (waiting && waiting.stream && currentCall !== waiting.call) showRemote(waiting);
   // The referee's answer to my own request
   const ans = s.ans && typeof s.ans === "object" ? s.ans : null;
   if (projPending && ans && ans.to === mine && ans.rid === projPending.rid) {
@@ -2235,35 +2235,48 @@ function stopMovie() {
 
 // ---- pictures from the projector ----
 // ---- Receiving the picture ----
-// Calls that arrived before we heard who the projectionist is; held for up to 8 s.
-const pendingCalls = new Map();
-// Someone is calling with a picture. Accept it only from the current projectionist.
+// Every incoming call is answered straight away, exactly like v1.0 did. (PeerJS can lose the
+// connection details that arrive before a call is answered, which leaves a black screen, so we
+// never make a call wait.) Which call we actually SHOW is decided separately: only the one from
+// whoever holds the projector right now.
+// inCalls: everyone currently sending us a picture, by their network id -> { call, stream }.
+const inCalls = new Map();
+// Someone is calling with a picture: answer immediately, then show it if they're the projectionist.
 function onCall(call) {
   if (!p2p) { try { call.close(); } catch {} return; }
-  if (call.peer === proj.owner && !amProj()) { acceptCall(call); return; }
-  // News of who holds the projector may still be on its way: hold the call for a moment.
-  const old = pendingCalls.get(call.peer); if (old) { clearTimeout(old.timer); try { old.call.close(); } catch {} }
-  const timer = setTimeout(() => { const pc = pendingCalls.get(call.peer); if (pc && pc.call === call) { pendingCalls.delete(call.peer); try { call.close(); } catch {} } }, 8000);
-  pendingCalls.set(call.peer, { call, timer });
-}
-// Answer the call and put its picture/sound on the screen when it arrives.
-function acceptCall(call) {
-  if (currentCall && currentCall !== call) { const old = currentCall; currentCall = null; try { old.close(); } catch {} }
-  currentCall = call; call.answer(undefined, { sdpTransform: hifiSdp });
+  // A newer call from the same person replaces their older one.
+  const old = inCalls.get(call.peer);
+  if (old && old.call !== call) { inCalls.delete(call.peer); if (currentCall === old.call) currentCall = null; try { old.call.close(); } catch {} }
+  const entry = { call, stream: null };
+  inCalls.set(call.peer, entry);
+  call.answer(undefined, { sdpTransform: hifiSdp });
+  // "stream" fires once per track (picture, then sound), always with the same stream object.
   call.on("stream", (st) => {
-    if (call !== currentCall) return;
-    if (remoteStream !== st) {
-      remoteStream = st; rVideo.muted = true; rVideo.srcObject = st; rVideo.play().catch(() => {});
-      st.addEventListener("addtrack", attachRemoteAudio); st.addEventListener("removetrack", attachRemoteAudio);
-      const who = proj.nick || "someone";
-      toast(hostSharing ? who + " is sharing their screen." : "The projector is rolling. You're watching " + who + "'s movie.");
-    }
-    remoteOn = true;
-    if (!remoteTex) { remoteTex = new THREE.VideoTexture(rVideo); remoteTex.encoding = THREE.sRGBEncoding; remoteTex.minFilter = THREE.LinearFilter; }
-    attachRemoteAudio(); useScreenSource(); updateNotice();
+    entry.stream = st;
+    if (call.peer === proj.owner && !amProj()) showRemote(entry);
   });
-  const end = () => { if (call !== currentCall) return; currentCall = null; endRemote(); };
+  // Call ended: forget it, and if it was on screen, go back to the placeholder.
+  const end = () => {
+    if (inCalls.get(call.peer) === entry) inCalls.delete(call.peer);
+    if (currentCall === call) { currentCall = null; endRemote(); }
+  };
   call.on("close", end); call.on("error", end);
+}
+// Put a received call's picture and sound on the theater screen.
+function showRemote(entry) {
+  if (!entry || !entry.stream) return;
+  currentCall = entry.call;
+  const st = entry.stream;
+  if (remoteStream !== st) {
+    remoteStream = st; rVideo.muted = true; rVideo.srcObject = st; rVideo.play().catch(() => {});
+    // The sound track can arrive a moment after the picture; re-attach sound when tracks change.
+    st.addEventListener("addtrack", attachRemoteAudio); st.addEventListener("removetrack", attachRemoteAudio);
+    const who = proj.nick || "someone";
+    toast(hostSharing ? who + " is sharing their screen." : "The projector is rolling. You're watching " + who + "'s movie.");
+  }
+  remoteOn = true;
+  if (!remoteTex) { remoteTex = new THREE.VideoTexture(rVideo); remoteTex.encoding = THREE.sRGBEncoding; remoteTex.minFilter = THREE.LinearFilter; }
+  attachRemoteAudio(); useScreenSource(); updateNotice();
 }
 // The incoming picture ended: back to the placeholder.
 function endRemote() {
@@ -2393,7 +2406,7 @@ function roomDown() {
   room = null; syncRoom = null; peersSnap = [];
   for (const id of [...calls.keys()]) dropCall(id);
   if (currentCall) { try { currentCall.close(); } catch {} } currentCall = null; remoteOn = false; remoteStream = null; rVideo.srcObject = null; rAudio.srcObject = null; hostSharing = false;
-  for (const [, pc] of pendingCalls) { clearTimeout(pc.timer); try { pc.call.close(); } catch {} } pendingCalls.clear();
+  for (const [, ic] of inCalls) { try { ic.call.close(); } catch {} } inCalls.clear(); // hang up every incoming picture
   const hadIt = amProj(); p2p = null; projPending = null;
   proj = hadIt && (film || sharing) ? { owner: "solo", nick: myNick, kind: film ? "movie" : "screen", film: film ? film.n : "", at: Date.now(), v: 0 } : { owner: null, nick: "", kind: "", film: "", at: 0, v: 0 };
   if (!hadIt && !ownSubs) clearSubs();
@@ -2813,7 +2826,9 @@ const fpScene = new THREE.Scene();
 fpScene.add(new THREE.HemisphereLight(0xfff2e0, 0x2a1418, 0.95));
 { const k = new THREE.DirectionalLight(0xffe8cc, 0.7); k.position.set(0.6, 1, 0.5); fpScene.add(k); }
 const fpRoot = new THREE.Group(), fpHand = new THREE.Group(); fpRoot.add(fpHand); fpScene.add(fpRoot); fpRoot.visible = false;
-{ const paw = new THREE.Mesh(armGeo, me.ghost.mat); paw.scale.set(0.85, 0.7, 1.35); paw.position.set(0.03, -0.05, 0.1); paw.rotation.set(0.35, 0, -0.4); fpHand.add(paw); }
+// A small sheet-colored "hand" tucked UNDER the snack. (It used to be a big blob in front of the snack,
+// which filled the view like a shoulder whenever you took a bite.)
+{ const paw = new THREE.Mesh(armGeo, me.ghost.mat); paw.scale.set(0.45, 0.36, 0.55); paw.position.set(0, -0.1, 0.01); fpHand.add(paw); }
 // The snack model in your hand; fpRaise animates a new snack rising into view.
 let fpItem = null, fpItemId = null, fpRaise = 1;
 // Every frame: show the hand while holding something (or mid-throw), and animate
@@ -2830,20 +2845,31 @@ function updateFP(t, dt) {
   const th = throwing ? Math.sin(clamp((t - me.ghost.throwAt) / 0.4, 0, 1) * Math.PI) : 0;
   const ease = 1 - Math.pow(1 - fpRaise, 3), bob = Math.sin(t * 2) * 0.008, chew = mu * Math.abs(Math.sin(t * 22)) * 0.012;
   const wu = me.ghost.windup || 0, shake = wu >= 1 ? Math.sin(t * 40) * 0.004 : 0;
-  fpHand.position.set(0.3 - mu * 0.26 - th * 0.12 + wu * 0.05 + shake, -0.28 - (1 - ease) * 0.3 + mu * 0.15 + th * 0.1 + bob + chew + wu * 0.08, -0.55 + mu * 0.23 - th * 0.3 + wu * 0.14);
-  fpHand.rotation.set(-0.1 - mu * 0.6 - th * 0.5 + wu * 0.5, -0.3 + mu * 0.25, mu * 0.3);
+  // Positions are in front of your eyes: x = right, y = up, z = forward (negative = away from you).
+  // REST: lower right of the view. BITE: centered just below your eyes, close, so the snack itself
+  // fills the bottom of the view. mu (0..1..0 over a bite) blends between the two.
+  const REST = [0.24, -0.27, -0.55], BITE = [0, -0.19, -0.34];
+  const lift = (1 - ease) * 0.3;            // a newly held snack slides up into view
+  fpHand.position.set(
+    REST[0] + (BITE[0] - REST[0]) * mu - th * 0.1 + wu * 0.06 + shake,
+    REST[1] + (BITE[1] - REST[1]) * mu - lift + th * 0.08 + wu * 0.09 + bob + chew,
+    REST[2] + (BITE[2] - REST[2]) * mu - th * 0.3 + wu * 0.12);
+  // Tip the top of the snack toward your mouth while biting (positive x-rotation tips it toward you),
+  // swing it forward when throwing, cock it back while charging. At rest it's angled slightly inward.
+  fpHand.rotation.set(mu * 0.75 - th * 0.5 + wu * 0.4, -0.25 * (1 - mu), -0.1 * (1 - mu));
 }
 
 /* =====================================================================
    DEBUG SCREEN
-   Hold "Show Debug Screen" (or the ` key) to see live numbers for troubleshooting.
+   Hold the ` key (top left of most keyboards) to see live numbers for troubleshooting.
+   Press P to copy everything on it, so it can be pasted into a message.
    Refreshes 4 times a second while shown. Add rows in dbgRows() for anything new.
    ===================================================================== */
 /* ---------------- debug screen (hold to show) ---------------- */
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v1.1 · 2026-11-01";
+const BUILD = "v1.2 · 2026-11-01";
 // Collect everything worth knowing, grouped into sections of [label, value] rows.
 function dbgRows() {
   const pc = currentCall && currentCall.peerConnection;
@@ -2879,7 +2905,10 @@ function dbgRows() {
       ["Audio graph", mediaSrc ? "on (" + (actx ? actx.state : "?") + ")" : "off"]
     ]],
     ["Receiving", [
+      ["Calls in", inCalls.size ? [...inCalls.entries()].map(([id, ic]) => whoIs(id) + "=" + ((ic.call.peerConnection && ic.call.peerConnection.iceConnectionState) || "?") + (ic.stream ? "" : " (no stream yet)")).join(", ") : "none"],
+      ["Showing call from", currentCall ? whoIs(currentCall.peer) : "nobody"],
       ["Picture", remoteOn ? "on, " + rVideo.videoWidth + "×" + rVideo.videoHeight + ", ready " + rVideo.readyState : "off"],
+      ["Frames received", rVideo.getVideoPlaybackQuality ? String(rVideo.getVideoPlaybackQuality().totalVideoFrames) : "?"],
       ["Connection", pc ? pc.iceConnectionState + " / " + pc.connectionState : "–"],
       ["Sound", soundState + (remoteOn ? " · tracks " + vTracks(remoteStream) : "")],
       ["Speaker", rAudio.srcObject ? (rAudio.paused ? "paused" : "playing") + (rAudio.muted ? ", muted" : "") + ", volume " + Math.round(rAudio.volume * 100) + "%" : "–"],
@@ -2916,21 +2945,33 @@ function renderDebug() {
     sec.append(h, dl); box.appendChild(sec);
   }
 }
+// Turn the debug screen into plain text: a title line, then "[Section]" and "Label: value" lines.
+function debugText() {
+  const lines = ["Ghost Matinee debug screen · " + new Date().toLocaleString()];
+  for (const [title, rows] of dbgRows()) { lines.push("", "[" + title + "]"); for (const [k, v] of rows) lines.push(k + ": " + v); }
+  return lines.join("\n");
+}
+// Copy Debug Screen (P): put that text on the clipboard. Browsers only allow this right after a key
+// press or click, which is exactly when this runs. If the modern clipboard call is refused, fall back
+// to the older "select a hidden text box and copy" method.
+async function copyDebug() {
+  const text = debugText();
+  try { await navigator.clipboard.writeText(text); toast("Debug screen copied. Paste it into a message to share it."); return; } catch {}
+  const ta = document.createElement("textarea"); ta.value = text; ta.setAttribute("readonly", "");
+  ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0"; document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch {}
+  ta.remove();
+  toast(ok ? "Debug screen copied. Paste it into a message to share it." : "Couldn't copy here. Hold ` and take a screenshot instead.");
+}
 let dbgTimer = 0, dbgKeyHeld = false;
 // Show/hide the sheet and start/stop refreshing it.
 function showDebug(on) {
-  $("debugSheet").hidden = !on; $("dbgBtn").setAttribute("aria-pressed", String(on));
+  $("debugSheet").hidden = !on;
   clearInterval(dbgTimer);
   if (on) { renderDebug(); dbgTimer = setInterval(renderDebug, 250); }
 }
+// Hold ` to show the debug screen; let go (or switch to another window) to hide it.
 {
-  const btn = $("dbgBtn");
-  btn.addEventListener("pointerdown", (e) => { if (e.button > 0) return; e.preventDefault(); try { btn.setPointerCapture(e.pointerId); } catch {} showDebug(true); });
-  for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) btn.addEventListener(ev, () => { if (!dbgKeyHeld) showDebug(false); });
-  btn.addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); e.stopPropagation(); if (!e.repeat) showDebug(true); } });
-  btn.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); e.stopPropagation(); showDebug(false); } });
-  btn.addEventListener("blur", () => { if (!dbgKeyHeld) showDebug(false); });
-  btn.addEventListener("contextmenu", (e) => e.preventDefault());
   addEventListener("keydown", (e) => { if (e.key === "`" && !e.repeat && !typing()) { dbgKeyHeld = true; showDebug(true); } });
   addEventListener("keyup", (e) => { if (e.key === "`") { dbgKeyHeld = false; showDebug(false); } });
   addEventListener("blur", () => { dbgKeyHeld = false; showDebug(false); });

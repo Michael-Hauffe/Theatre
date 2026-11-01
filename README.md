@@ -29,7 +29,10 @@ If a later change breaks something, the v1.0 code can be restored from that bran
 - **Throwing food.** Hold Throw (or T) to charge: a tap is a gentle toss, 2 seconds is a hard throw, 6 seconds is full power. Food bounces off walls, seats, counters and ghosts, everyone sees it, and it disappears after 30 seconds.
 - **Mortimer**, the concession ghost behind the counter. Talk to him with the button, R, or by clicking him.
 - **Lobby posters**: 20 original ghost movies, six shown at a time, picked randomly per room. Add your own (below).
-- **Show Shortcuts** and **Show Debug Screen** buttons that show their panel only while held. Hold the ` key for the debug screen too. The sound status moved from the main screen into the debug screen.
+- **Show Shortcuts** button that shows the shortcut list only while held.
+- **Debug screen**: hold the ` key (top left of the keyboard) to see live details on the room, the projector, picture and sound, your snacks and performance. Press **P** to copy it all to the clipboard so you can paste it into a message. The sound status moved from the main screen into the debug screen.
+
+If the picture or sound doesn't reach someone, have them hold ` and press P, then paste what was copied. The "Receiving" section shows whether their computer is connected to the projector and how many frames have arrived.
 
 ## Adding your own lobby posters
 
