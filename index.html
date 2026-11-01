@@ -73,8 +73,25 @@ input[type=range] { accent-color: var(--brass); }
 #chat { display: flex; gap: 6px; flex-wrap: nowrap; min-width: 0; }
 #say { background: rgba(0,0,0,0.4); border: 1px solid var(--line); color: var(--bone); border-radius: 3px; padding: 8px 10px; width: min(260px, 48vw); min-width: 0; }
 #say::placeholder { color: var(--smoke); }
-.keys { color: var(--smoke); font-size: 11px; letter-spacing: 0.03em; text-align: center; }
-.keys kbd { font-family: var(--body); border: 1px solid var(--line); border-radius: 2px; padding: 0 4px; color: var(--bone); }
+/* Shortcut sheet: visible only while "Show Shortcuts" is held */
+#keysBtn { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+#keysBtn[aria-pressed="true"] { border-color: var(--brass); color: #fff; background: rgba(90, 30, 36, 0.9); }
+#keySheet { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 7; pointer-events: none;
+  width: min(680px, calc(100% - 32px)); max-height: calc(100% - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow: hidden;
+  background: rgba(14, 6, 8, 0.72); border: 1px solid var(--line); border-radius: 6px; padding: 18px 22px 20px;
+  backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 24px 70px rgba(0,0,0,0.55); }
+#keySheet h2 { font-family: var(--display); font-weight: 400; font-size: 24px; color: var(--brass); margin: 0 0 12px; letter-spacing: 0.03em; }
+#keySheet .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 28px; }
+#keySheet .stack { display: grid; gap: 14px; align-content: start; min-width: 0; }
+#keySheet h3 { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--brass); margin: 0 0 6px; font-weight: 700; }
+#keySheet dl { margin: 0; display: grid; grid-template-columns: 8.4em minmax(0, 1fr); gap: 5px 10px; align-items: baseline; }
+#keySheet dt { white-space: nowrap; }
+#keySheet dd { margin: 0; color: var(--bone); font-size: 13px; }
+#keySheet kbd { font-family: var(--body); font-size: 12px; font-weight: 700; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 1px 6px; color: var(--bone); background: rgba(255,255,255,0.05); }
+#keySheet .alt { color: var(--smoke); font-size: 11px; margin: 0 2px; }
+#keySheet .stack + .stack dl { grid-template-columns: 4.6em minmax(0, 1fr); }
+#keySheet .act { font-size: 12px; font-weight: 700; color: var(--smoke); }
+@media (max-width: 560px) { #keySheet { padding: 14px 16px 16px; } #keySheet .cols, #keySheet .stack { grid-template-columns: 1fr; gap: 10px; } #keySheet .stack + .stack dl { grid-template-columns: 8.4em minmax(0, 1fr); } #keySheet dd { font-size: 12px; } #keySheet h2 { font-size: 20px; margin-bottom: 8px; } }
 
 /* Name tags */
 #tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
@@ -139,7 +156,6 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
 @media (max-width: 560px) {
   .brand h1 { font-size: 21px; }
   #crowd { max-width: 46vw; padding: 8px 10px; }
-  .keys { display: none; }
   #vol, .vol { display: none; }
 }
 @media (max-width: 560px) { #joy, #updown { bottom: calc(200px + env(safe-area-inset-bottom, 0px)); } }
@@ -197,6 +213,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
       <input type="range" id="seek" min="0" max="1" step="0.1" value="0" disabled aria-label="Seek">
       <span class="vol">Vol <input type="range" id="vol" min="0" max="1" step="0.05" value="0.9" aria-label="Volume"></span>
       <button id="view" title="Switch camera (V)">First person</button>
+      <button id="keysBtn" type="button" aria-pressed="false" aria-controls="keySheet" title="Hold to see every shortcut">Show Shortcuts</button>
       <button id="hudBtn" type="button" title="Hide all controls and labels (H)">Hide HUD</button>
     </div>
     <div class="bar">
@@ -206,13 +223,65 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
         <button type="button" id="boo">Boo!</button>
       </form>
     </div>
-    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drift · <kbd>U</kbd> subs · <kbd>[</kbd><kbd>]</kbd> sub timing · <kbd>Space</kbd>/<kbd>Shift</kbd> rise &amp; sink · drag to look · <kbd>V</kbd> camera · <kbd>H</kbd> hide HUD · <kbd>B</kbd> boo · <kbd>F</kbd> eat or drink · snacks in the lobby, out the back doors</div>
   </div>
 </div>
 
 <div id="joy" aria-hidden="true"><div id="knob"></div></div>
 <div id="updown"><button id="up" type="button">Rise</button><button id="down" type="button">Sink</button></div>
 <div id="toast" hidden></div>
+<div id="keySheet" hidden role="note" aria-label="Keyboard shortcuts">
+  <h2>Shortcuts</h2>
+  <div class="cols">
+    <div class="stack">
+      <section>
+        <h3>Moving</h3>
+        <dl>
+          <dt><kbd>W</kbd><span class="alt">or</span><kbd>&uarr;</kbd></dt><dd>Drift forward</dd>
+          <dt><kbd>S</kbd><span class="alt">or</span><kbd>&darr;</kbd></dt><dd>Drift backward</dd>
+          <dt><kbd>A</kbd> <kbd>D</kbd></dt><dd>Drift left and right</dd>
+          <dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Turn left and right</dd>
+          <dt><kbd>Space</kbd><span class="alt">or</span><kbd>E</kbd></dt><dd>Rise</dd>
+          <dt><kbd>Shift</kbd><span class="alt">or</span><kbd>Q</kbd><span class="alt">or</span><kbd>C</kbd></dt><dd>Sink</dd>
+          <dt><span class="act">Drag the view</span></dt><dd>Look around</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>View</h3>
+        <dl>
+          <dt><kbd>V</kbd></dt><dd>First or third person</dd>
+          <dt><kbd>H</kbd></dt><dd>Hide or show the HUD</dd>
+        </dl>
+      </section>
+    </div>
+    <div class="stack">
+      <section>
+        <h3>Movie</h3>
+        <dl>
+          <dt><kbd>K</kbd></dt><dd>Play or pause for everyone</dd>
+          <dt><kbd>U</kbd></dt><dd>Subtitles on or off</dd>
+          <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Subtitles half a second later or earlier</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>Friends</h3>
+        <dl>
+          <dt><kbd>Enter</kbd></dt><dd>Type a message</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Leave the message box</dd>
+          <dt><kbd>B</kbd></dt><dd>Boo!</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>Snacks</h3>
+        <dl>
+          <dt><kbd>O</kbd></dt><dd>Order, when you're at the counter</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Close the menu</dd>
+          <dt><kbd>F</kbd></dt><dd>Eat or drink what you're holding</dd>
+          <dt><kbd>G</kbd></dt><dd>Switch to your next snack</dd>
+        </dl>
+      </section>
+    </div>
+  </div>
+</div>
 <button id="showHud" type="button" hidden title="Bring the controls back (H)">Show HUD</button>
 <div id="shop" hidden role="dialog" aria-label="Concession stand">
   <div class="menu-card">
@@ -837,6 +906,19 @@ function setHud(on) {
   if (!on) { closeShop(); if (document.activeElement) document.activeElement.blur(); }
 }
 $("hudBtn").addEventListener("click", () => setHud(false));
+// "Show Shortcuts" only shows the sheet while it is held down (mouse, touch, or Space/Enter on the focused button).
+{
+  const btn = $("keysBtn"), sheet = $("keySheet");
+  const show = (on) => { sheet.hidden = !on; btn.setAttribute("aria-pressed", String(on)); };
+  btn.addEventListener("pointerdown", (e) => { if (e.button > 0) return; e.preventDefault(); try { btn.setPointerCapture(e.pointerId); } catch {} show(true); });
+  for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) btn.addEventListener(ev, () => show(false));
+  btn.addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); e.stopPropagation(); if (!e.repeat) show(true); } });
+  btn.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); e.stopPropagation(); show(false); } });
+  btn.addEventListener("blur", () => show(false));
+  btn.addEventListener("contextmenu", (e) => e.preventDefault());
+  addEventListener("blur", () => show(false));
+  document.addEventListener("visibilitychange", () => { if (document.hidden) show(false); });
+}
 $("showHud").addEventListener("click", () => setHud(true));
 
 document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("button"); if (b && e.detail > 0) b.blur(); });
