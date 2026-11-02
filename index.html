@@ -325,7 +325,10 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
       <input type="file" id="subs" hidden>
       <button id="subsToggle" hidden title="Show or hide subtitles (U)">Hide subs</button>
       <button id="shareBtn" type="button" title="Put a window or monitor on the theater screen">Share screen</button>
+      <!-- Skip back / Play / skip forward. All three are grayed out unless a movie is on (not during a screen share). -->
+      <button id="back10" type="button" disabled title="Back 10 seconds, for everyone (J)" aria-label="Back 10 seconds">&minus;10s</button>
       <button id="play" disabled>Play</button>
+      <button id="fwd10" type="button" disabled title="Forward 10 seconds, for everyone (L)" aria-label="Forward 10 seconds">+10s</button>
       <span id="clock">0:00 / 0:00</span>
       <!-- Kept for the sound-status logic; its text now shows on the debug screen instead. -->
       <button id="sound" type="button" hidden>Sound</button>
@@ -387,6 +390,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
         <h3>Movie</h3>
         <dl>
           <dt><kbd>K</kbd></dt><dd>Play or pause for everyone</dd>
+          <dt><kbd>J</kbd> <kbd>L</kbd></dt><dd>Back or forward 10 seconds</dd>
           <dt><kbd>U</kbd></dt><dd>Subtitles on or off</dd>
           <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Subtitles half a second later or earlier</dd>
         </dl>
@@ -1267,6 +1271,8 @@ addEventListener("keydown", (e) => {
   if (k === "b") boo();
   if (k === "enter") { e.preventDefault(); $("say").focus(); }
   if (k === "k") togglePlay();
+  if (k === "j") skip(-10); // back 10 seconds
+  if (k === "l") skip(10);  // forward 10 seconds
   if (k === "u") toggleSubs();
   if (k === "[") nudgeSubs(-0.5);
   if (k === "]") nudgeSubs(0.5);
@@ -1406,6 +1412,20 @@ function togglePlay() {
   if (!pb.p && video.duration && pos >= video.duration - 0.3) act(true, 0); else act(!pb.p, pos);
 }
 $("play").addEventListener("click", togglePlay);
+// −10s / +10s buttons (and J / L): jump the movie for everyone, keeping it playing or paused as it was.
+// Does nothing during a screen share or with no movie on (the buttons are grayed out then too).
+function skip(seconds) {
+  if ($("play").disabled) return; // same rule as Play: only while a movie is on
+  resumeAudio();
+  // Where the movie is now: the real video for the person showing it, the shared clock for everyone else.
+  const now = film && video.readyState >= 1 ? video.currentTime : vt();
+  const dur = (film && video.duration) || remoteDur || Infinity;
+  const to = clamp(now + seconds, 0, Math.max(0, dur - 0.5)); // don't jump past the very end
+  act(pb.p, to);
+  toast((seconds < 0 ? "Back " : "Forward ") + Math.abs(seconds) + " seconds, to " + fmt(to) + ".");
+}
+$("back10").addEventListener("click", () => skip(-10));
+$("fwd10").addEventListener("click", () => skip(10));
 // Dragging the seek bar previews the time; letting go jumps everyone there.
 let seeking = false;
 $("seek").addEventListener("input", () => { seeking = true; $("clock").textContent = fmt(+$("seek").value) + " / " + fmt(video.duration); });
@@ -1940,6 +1960,7 @@ function useScreenSource() {
   screenMat.needsUpdate = true;
   const can = proj.kind === "movie" && ((mine && film && video.readyState >= 1) || (!mine && remoteOn));
   $("play").disabled = !can; $("seek").disabled = !can;
+  $("back10").disabled = !can; $("fwd10").disabled = !can; // gray during a screen share or with no movie
   if (film && video.duration) $("seek").max = String(video.duration);
 }
 
@@ -2860,7 +2881,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.0 · 2026-11-01 (saved as the v2.0-working branch)";
+const BUILD = "v2.1 · 2026-11-01";
 // Collect everything worth knowing, grouped into sections of [label, value] rows.
 function dbgRows() {
   const pc = currentCall && currentCall.peerConnection;
