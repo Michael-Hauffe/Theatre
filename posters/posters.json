@@ -1,4 +1,24 @@
 {
-  "keepBuiltInPosters": true,
-  "images": []
+  "images": [
+    "the-last-matinee.jpg",
+    "sheets-to-the-wind.jpg",
+    "boo-moon-rising.jpg",
+    "the-quiet-attic.jpg",
+    "fog-harbor.jpg",
+    "specter-inspector.jpg",
+    "ghosts-in-orbit.jpg",
+    "ectoplasm-express.jpg",
+    "the-wailing-woods.jpg",
+    "lighthouse-of-whispers.jpg",
+    "cobweb-county-fair.jpg",
+    "ghoulfriend.jpg",
+    "night-of-the-unfolded-laundry.jpg",
+    "double-feature-forever.jpg",
+    "midnight-shift.jpg",
+    "under-the-floorboards.jpg",
+    "the-pumpkin-keeper.jpg",
+    "last-stop-hollow-creek.jpg",
+    "a-very-spooky-wedding.jpg",
+    "the-lantern-society.jpg"
+  ]
 }

@@ -22,8 +22,10 @@
 
 - `index.html` is the whole game: styles, HTML and script in one file. The top of the
   file has an overview, and each section of the script has its own header comment.
-- `posters/posters.json` lists optional poster images (stored in `posters/`) that join
-  the lobby poster rotation. See README.md.
+- `posters/` holds every lobby poster as an image file; `posters/posters.json` lists which
+  ones are in the rotation, in order (the order sets the "image" numbers for admin commands).
+- `tools/poster-maker.html` draws the 20 built-in posters with code and offers each as a JPG
+  download. The game doesn't use it; it's for making or editing posters.
 - The site is served by GitHub Pages straight from the `main` branch.
 
 ## Things that are easy to get wrong

@@ -28,7 +28,7 @@ If a later change breaks something, the v1.0 code can be restored from that bran
 - **Eating in first person.** Your snack shows in your hand and moves to your mouth with each bite or sip.
 - **Throwing food.** Hold Throw (or T) to charge: a tap is a gentle toss, 2 seconds is a hard throw, 6 seconds is full power. Food bounces off walls, seats, counters and ghosts, everyone sees it, and it disappears after 30 seconds.
 - **Mortimer**, the concession ghost behind the counter. Talk to him with the button, R, or by clicking him.
-- **Lobby posters**: 20 original ghost movies, six shown at a time, picked randomly per room. Add your own (below).
+- **Lobby posters**: 20 original ghost movies as JPG files, six shown at a time, picked randomly per room. Add, remove or replace them like any image (below).
 - **Show Shortcuts** button that shows the shortcut list only while held.
 - **Debug screen**: hold the ` key (top left of the keyboard) to see live details on the room, the projector, picture and sound, your snacks and performance. Press **P** to copy it all to the clipboard so you can paste it into a message. The sound status moved from the main screen into the debug screen.
 
@@ -56,21 +56,32 @@ Anyone in the room can type these in the chat box. Commands that change things a
 | `/admin summon` | Brings everyone to where you are |
 | `/admin give everyone 20` | Gives everyone 1 to 100 Ghost Bucks |
 
-## Adding your own lobby posters
+## Lobby posters
 
-1. Put your poster images in the [`posters`](posters) folder. JPG, PNG, WebP or GIF all work. Portrait images shaped like a movie poster (2:3, for example 600×900 pixels) look best; other shapes get their edges trimmed to fit the frame.
-2. Open [`posters/posters.json`](posters/posters.json) and add each file name to the `images` list, in quotes, separated by commas:
+Every poster is an ordinary image file in the [`posters`](posters) folder, listed in [`posters/posters.json`](posters/posters.json). The 20 ghost-movie posters that come with the game are JPGs there too, so you can open, edit or replace any of them in an image editor. Each room shows six of them, picked at random (everyone in the same room sees the same six), and only those six are downloaded.
+
+**To add your own poster:**
+
+1. Put the image in the `posters` folder. JPG, PNG, WebP or GIF all work. Portrait images shaped like a movie poster (2:3, for example 600×900 pixels) look best; other shapes get their edges trimmed to fit the frame.
+2. Add its file name to the `images` list in `posters/posters.json`, in quotes, with a comma after the line before it:
 
    ```json
    {
-     "keepBuiltInPosters": true,
-     "images": ["my-poster.jpg", "another one.png"]
+     "images": [
+       "the-last-matinee.jpg",
+       "...the other built-in posters...",
+       "my-poster.jpg"
+     ]
    }
    ```
 
 3. Commit the changes. GitHub Pages updates the site within a minute or two.
 
-Your images join the random rotation with the built-in ghost posters. To show only your own, change `"keepBuiltInPosters": true` to `false`. File names are case-sensitive and must match exactly, and images must be in the `posters` folder itself, not a subfolder. If an image can't be found, a built-in poster takes its place.
+**To remove a poster** from the rotation, delete its line from the list (you can leave the file in the folder). **To replace one**, save your image over the old file with the same name.
+
+The order of the list sets the image numbers used by `/admin set poster 2 to image 3`. The file name becomes the poster's name in `/admin list posters` (`my-poster.jpg` shows as "My Poster"). File names are case-sensitive and must be directly in the `posters` folder, not a subfolder. If a listed file is missing, its frame shows a "Coming soon" card.
+
+**Making more ghost posters in the same style:** open [`tools/poster-maker.html`](https://michael-hauffe.github.io/Theatre/tools/poster-maker.html). It draws the 20 built-in posters with code and has a download link under each. To change a title, tagline or colors, edit the `GHOST_POSTERS` list in that file.
 
 ## Hosting tips
 

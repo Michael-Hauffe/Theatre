@@ -15,8 +15,10 @@
          - Whoever loads a movie (or shares a screen) streams the picture and sound
            straight from their browser to everyone else. Nothing goes through a server.
 
-  Optional files next to this one:
-    posters/posters.json  – list of your own poster images for the lobby (see README.md).
+  Files next to this one:
+    posters/               – every lobby poster, as an image file.
+    posters/posters.json   – which posters are in the rotation, in order (see README.md).
+    tools/poster-maker.html – draws the built-in ghost posters, for making new ones.
 
   House rule for this project: comment everything generously (see CLAUDE.md).
 -->
@@ -935,309 +937,120 @@ const MENU_BY_ID = Object.fromEntries(MENU.map((m) => [m.id, m]));
 
 /* =====================================================================
    LOBBY POSTERS
-   Twenty made-up ghost movies, each painted with the canvas API in the game's style.
-   Each room shows six, chosen by shuffling with the room code as the "seed", so everyone
-   in the same room sees the same posters, and a different room gets a different mix.
+   Every poster is an image file in the posters/ folder, listed in posters/posters.json.
+   The 20 built-in ghost-movie posters ship as JPGs there (made with tools/poster-maker.html),
+   and your own images work exactly the same way: add the file, add its name to the list.
+   Each room shows six, picked by shuffling the list with the room code as the "seed", so
+   everyone in the same room sees the same posters. Only the six on the wall are downloaded.
    ===================================================================== */
-/* ---------------- lobby posters: original ghost movies, picked per room ---------------- */
-// Your own posters: put images in the posters/ folder and list them in posters/posters.json (see README).
-// Poster list. t = title, g = tagline, s = which scene to draw (see POSTER_SCENES),
-// bg = background gradient top/bottom, a = accent color (title, lights).
-// Optional: n = number of ghosts, lantern = ghosts carry lanterns, wed = wedding outfits.
-const GHOST_POSTERS = [
-  { t: "The Last Matinee", g: "The show never really ends.", s: "stage", bg: ["#3a0d14", "#0b0406"], a: "#e9c46a" },
-  { t: "Sheets to the Wind", g: "One stormy night. One very loose bedsheet.", s: "storm", bg: ["#22324a", "#05070c"], a: "#cfe3ff" },
-  { t: "Boo Moon Rising", g: "They only come out when it's full.", s: "moon", bg: ["#1c2347", "#05060d"], a: "#f4d58d", n: 3 },
-  { t: "The Quiet Attic", g: "Something up there is folding the laundry.", s: "house", bg: ["#2d2340", "#08060c"], a: "#ffcf6a" },
-  { t: "Fog Harbor", g: "Every boat comes back. Not every sailor.", s: "sea", bg: ["#1f3b45", "#04090b"], a: "#d9f0ea" },
-  { t: "Specter Inspector", g: "He solves the cases nobody living can.", s: "lamp", bg: ["#2a2a2e", "#060607"], a: "#ffd27a" },
-  { t: "Ghosts in Orbit", g: "Zero gravity. Zero pulse.", s: "space", bg: ["#120f2e", "#020208"], a: "#9ad1ff" },
-  { t: "Ectoplasm Express", g: "Next stop: nowhere in particular.", s: "train", bg: ["#3b2a1a", "#0a0604"], a: "#ffb347" },
-  { t: "The Wailing Woods", g: "Stay on the path. They won't.", s: "forest", bg: ["#16301f", "#030805"], a: "#b8ffcf" },
-  { t: "Lighthouse of Whispers", g: "The keeper never left his post.", s: "lighthouse", bg: ["#1d2d4f", "#04070f"], a: "#fff1b8" },
-  { t: "Cobweb County Fair", g: "Three nights only. Forever.", s: "field", bg: ["#3d1f3a", "#0a0509"], a: "#ff9a3c" },
-  { t: "Ghoulfriend", g: "Love never dies. It just hangs around.", s: "pair", bg: ["#4a1730", "#0c0408"], a: "#ff7aa8" },
-  { t: "Night of the Unfolded Laundry", g: "The spin cycle is just the beginning.", s: "laundry", bg: ["#283a2e", "#050906"], a: "#f2f2e6" },
-  { t: "Double Feature Forever", g: "Park. Watch. Never leave.", s: "drivein", bg: ["#2b1f47", "#06040c"], a: "#7ee0ff" },
-  { t: "Midnight Shift", g: "The night janitor sees everything.", s: "city", bg: ["#1a2236", "#030407"], a: "#ffe08a" },
-  { t: "Under the Floorboards", g: "Creak once for yes.", s: "house", bg: ["#3a2618", "#0a0603"], a: "#ff8f5a" },
-  { t: "The Pumpkin Keeper", g: "He guards the patch all year round.", s: "field", bg: ["#2e2a12", "#080702"], a: "#ffb03b" },
-  { t: "Last Stop, Hollow Creek", g: "The 11:59 always runs on time.", s: "train", bg: ["#1c2c3c", "#04070a"], a: "#c9e7ff" },
-  { t: "A Very Spooky Wedding", g: "Till death do us... oh. Right.", s: "pair", bg: ["#2f2440", "#07050b"], a: "#f7e3ff", wed: true },
-  { t: "The Lantern Society", g: "Light one. Make a wish. Run.", s: "moon", bg: ["#3b1d10", "#0a0502"], a: "#ffcc66", n: 4, lantern: true }
+// The built-in posters, used if posters/posters.json can't be read (for example when the
+// page is opened straight from a computer's disk instead of from the website).
+const DEFAULT_POSTERS = [
+  "the-last-matinee.jpg",
+  "sheets-to-the-wind.jpg",
+  "boo-moon-rising.jpg",
+  "the-quiet-attic.jpg",
+  "fog-harbor.jpg",
+  "specter-inspector.jpg",
+  "ghosts-in-orbit.jpg",
+  "ectoplasm-express.jpg",
+  "the-wailing-woods.jpg",
+  "lighthouse-of-whispers.jpg",
+  "cobweb-county-fair.jpg",
+  "ghoulfriend.jpg",
+  "night-of-the-unfolded-laundry.jpg",
+  "double-feature-forever.jpg",
+  "midnight-shift.jpg",
+  "under-the-floorboards.jpg",
+  "the-pumpkin-keeper.jpg",
+  "last-stop-hollow-creek.jpg",
+  "a-very-spooky-wedding.jpg",
+  "the-lantern-society.jpg"
 ];
-// The bedsheet colors again, as CSS colors for the 2D poster paintings.
-const SHEET_CSS = ["#f3eff6", "#b5f0d5", "#d3c4ff", "#ffd59a", "#aed6ff", "#ffbccd"];
-// Posters are designed on a 256×384 grid and scaled up to the real canvas size.
-const PW = 256, PH = 384;
 // Turn text (the room code) into a number. Same text -> same number on every computer.
 function hashStr(s) { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
 // A repeatable random number generator: the same seed always gives the same sequence.
 // That's what makes every player in a room see the same posters.
 function seeded(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
-// Draw one ghost on a poster: rounded top, wavy hem, two eyes.
-// cx, cy = head center; s = size; col = sheet color.
-// Options (o): tilt, arms, mouth, closed (sleepy eyes), bow (bow tie), hat ("detective" or "top"), veil, glow.
-function pGhost(x, cx, cy, s, col, o) {
-  o = o || {};
-  x.save(); x.translate(cx, cy); x.rotate(o.tilt || 0); x.scale(s, s);
-  x.shadowColor = col; x.shadowBlur = o.glow === false ? 0 : 14;
-  x.fillStyle = col; x.beginPath(); x.moveTo(-20, 0); x.arc(0, 0, 20, Math.PI, 0); x.lineTo(21, 30);
-  for (let i = 0; i < 4; i++) { const xa = 21 - (i + 0.5) * 10.5, xb = 21 - (i + 1) * 10.5; x.quadraticCurveTo(xa, 41, xb, 30); }
-  x.closePath(); x.fill();
-  if (o.arms) { x.beginPath(); x.ellipse(-21, 14, 5, 8, 0.5, 0, 7); x.ellipse(21, 14, 5, 8, -0.5, 0, 7); x.fill(); }
-  x.shadowBlur = 0; x.fillStyle = "#140a0c";
-  if (o.closed) { x.strokeStyle = "#140a0c"; x.lineWidth = 2; x.beginPath(); x.arc(-7, 3, 3.5, 0.2, Math.PI - 0.2); x.stroke(); x.beginPath(); x.arc(7, 3, 3.5, 0.2, Math.PI - 0.2); x.stroke(); }
-  else { x.beginPath(); x.ellipse(-7, 2, 3.2, 4.6, 0, 0, 7); x.ellipse(7, 2, 3.2, 4.6, 0, 0, 7); x.fill(); }
-  if (o.mouth) { x.beginPath(); x.ellipse(0, 13, 3, 4.2, 0, 0, 7); x.fill(); }
-  if (o.bow) { x.beginPath(); x.moveTo(0, 20); x.lineTo(-8, 15); x.lineTo(-8, 25); x.closePath(); x.moveTo(0, 20); x.lineTo(8, 15); x.lineTo(8, 25); x.closePath(); x.fill(); }
-  if (o.hat === "detective") { x.fillStyle = "#3a2f25"; x.beginPath(); x.ellipse(0, -14, 26, 5, 0, 0, 7); x.fill(); x.fillRect(-14, -30, 28, 16); x.fillStyle = "#1b1410"; x.fillRect(-14, -18, 28, 4); }
-  if (o.hat === "top") { x.fillStyle = "#121014"; x.beginPath(); x.ellipse(0, -16, 20, 4, 0, 0, 7); x.fill(); x.fillRect(-12, -38, 24, 22); }
-  if (o.veil) { x.fillStyle = "rgba(255,255,255,0.55)"; x.beginPath(); x.moveTo(-6, -20); x.quadraticCurveTo(-34, 6, -26, 34); x.lineTo(-10, 30); x.closePath(); x.fill(); }
-  x.restore();
-}
-// Sprinkle n stars above height maxY.
-function pStars(x, R, n, maxY) { for (let i = 0; i < n; i++) { const s = R() * 1.4 + 0.4; x.fillStyle = "rgba(255,255,255," + (0.35 + R() * 0.55).toFixed(2) + ")"; x.fillRect(R() * PW, R() * maxY, s, s); } }
-// A moon with a soft halo.
-function pMoon(x, cx, cy, r, col) {
-  const g = x.createRadialGradient(cx, cy, r * 0.6, cx, cy, r * 2.2); g.addColorStop(0, col); g.addColorStop(0.35, "rgba(255,240,200,0.18)"); g.addColorStop(1, "rgba(0,0,0,0)");
-  x.fillStyle = g; x.fillRect(cx - r * 2.2, cy - r * 2.2, r * 4.4, r * 4.4); x.fillStyle = col; x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill();
-}
-// A wavy dark hill along the bottom of the scene.
-function pHill(x, y, amp, col, R) { x.fillStyle = col; x.beginPath(); x.moveTo(0, PH); x.lineTo(0, y); const ph = R() * 6; for (let k = 0; k <= 10; k++) x.lineTo((k / 10) * PW, y + Math.sin(k * 1.1 + ph) * amp); x.lineTo(PW, PH); x.closePath(); x.fill(); }
-// A round soft glow (lamps, lanterns, eyes in the dark).
-function pGlow(x, cx, cy, r, col, a) { const g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, col); g.addColorStop(1, "rgba(0,0,0,0)"); x.globalAlpha = a; x.fillStyle = g; x.fillRect(cx - r, cy - r, r * 2, r * 2); x.globalAlpha = 1; }
-const DARK = "#07040a";
-// One drawing function per scene type. Each gets: the canvas (x), the poster (P),
-// the poster's own random generator (R) and up to three ghost colors (gc).
-const POSTER_SCENES = {
-  moon(x, P, R, gc) {
-    pStars(x, R, 70, 200); pMoon(x, 172, 86, 42, P.a); pHill(x, 222, 9, DARK, R);
-    const n = P.n || 2;
-    for (let i = 0; i < n; i++) { const cx = 46 + (i + 0.5) * (164 / n) + (R() - 0.5) * 10, s = 0.75 + R() * 0.45, cy = 196 - s * 30 - R() * 26;
-      pGhost(x, cx, cy, s, gc[i % gc.length], { tilt: (R() - 0.5) * 0.4, arms: P.lantern });
-      if (P.lantern) { pGlow(x, cx + 26 * s, cy + 22 * s, 22, P.a, 0.9); x.fillStyle = P.a; x.fillRect(cx + 23 * s, cy + 18 * s, 7, 9); } }
-  },
-  storm(x, P, R, gc) {
-    x.strokeStyle = "rgba(200,220,255,0.28)"; x.lineWidth = 1; for (let i = 0; i < 90; i++) { const sx = R() * PW, sy = R() * 260; x.beginPath(); x.moveTo(sx, sy); x.lineTo(sx - 6, sy + 14); x.stroke(); }
-    x.strokeStyle = P.a; x.lineWidth = 3; x.shadowColor = P.a; x.shadowBlur = 16; x.beginPath(); x.moveTo(196, 20); x.lineTo(180, 70); x.lineTo(196, 72); x.lineTo(172, 128); x.stroke(); x.shadowBlur = 0;
-    pHill(x, 232, 5, DARK, R);
-    x.strokeStyle = DARK; x.lineWidth = 6; x.beginPath(); x.moveTo(214, 236); x.lineTo(220, 170); x.lineTo(200, 140); x.moveTo(219, 185); x.lineTo(240, 160); x.stroke();
-    pGhost(x, 110, 150, 1.7, gc[0], { tilt: -0.55, mouth: true, arms: true });
-  },
-  house(x, P, R, gc) {
-    pStars(x, R, 50, 120); pMoon(x, 210, 54, 22, "#f3ead2"); pHill(x, 246, 3, DARK, R);
-    x.fillStyle = DARK; x.fillRect(58, 130, 140, 120); x.beginPath(); x.moveTo(46, 134); x.lineTo(128, 78); x.lineTo(210, 134); x.fill();
-    x.fillRect(150, 70, 30, 70); x.beginPath(); x.moveTo(144, 72); x.lineTo(165, 44); x.lineTo(186, 72); x.fill();
-    x.fillStyle = P.a; for (const [wx, wy] of [[76, 160], [160, 160], [76, 204], [160, 204]]) { if (R() < 0.75) x.fillRect(wx, wy, 20, 24); }
-    x.fillRect(116, 100, 24, 26); pGlow(x, 128, 113, 40, P.a, 0.5);
-    pGhost(x, 128, 108, 0.42, gc[0], { glow: false });
-    x.fillStyle = DARK; x.fillRect(116, 116, 24, 10);
-  },
-  sea(x, P, R, gc) {
-    pStars(x, R, 40, 140); pMoon(x, 70, 70, 26, "#f6f0dc");
-    const g = x.createLinearGradient(0, 196, 0, 300); g.addColorStop(0, "#0d2027"); g.addColorStop(1, DARK); x.fillStyle = g; x.fillRect(0, 196, PW, 120);
-    x.fillStyle = "rgba(255,248,220,0.22)"; for (let i = 0; i < 9; i++) x.fillRect(58 + (R() - 0.5) * 20, 202 + i * 6, 24 - i * 2, 2);
-    x.fillStyle = "rgba(230,240,240,0.10)"; for (let i = 0; i < 4; i++) x.fillRect(0, 150 + i * 14, PW, 6);
-    x.fillStyle = DARK; x.beginPath(); x.moveTo(120, 206); x.lineTo(206, 206); x.lineTo(194, 222); x.lineTo(132, 222); x.fill();
-    x.fillRect(160, 130, 3, 78); x.beginPath(); x.moveTo(163, 134); x.lineTo(196, 196); x.lineTo(163, 196); x.fill();
-    pGhost(x, 142, 186, 0.62, gc[0], {});
-  },
-  lamp(x, P, R, gc) {
-    pHill(x, 248, 0, "#121114", R);
-    x.fillStyle = "#151318"; x.fillRect(68, 64, 5, 186); x.fillRect(60, 56, 22, 12);
-    const cone = x.createRadialGradient(72, 70, 4, 100, 240, 150); cone.addColorStop(0, "rgba(255,220,140,0.55)"); cone.addColorStop(1, "rgba(255,220,140,0)");
-    x.fillStyle = cone; x.beginPath(); x.moveTo(64, 68); x.lineTo(20, 250); x.lineTo(200, 250); x.lineTo(82, 68); x.fill();
-    pGlow(x, 71, 66, 26, P.a, 0.9);
-    x.fillStyle = "rgba(220,220,230,0.07)"; for (let i = 0; i < 5; i++) x.fillRect(0, 170 + i * 16, PW, 10);
-    pGhost(x, 140, 182, 1.15, gc[0], { hat: "detective", arms: true });
-  },
-  space(x, P, R, gc) {
-    pStars(x, R, 160, 300);
-    x.fillStyle = "#3b4a8a"; x.beginPath(); x.arc(196, 210, 46, 0, 7); x.fill();
-    x.fillStyle = "rgba(255,255,255,0.12)"; x.beginPath(); x.arc(184, 198, 46, 0, 7); x.fill();
-    x.strokeStyle = P.a; x.lineWidth = 3; x.beginPath(); x.ellipse(196, 212, 74, 14, -0.25, 0, 7); x.stroke();
-    pGhost(x, 98, 116, 1.45, gc[0], { tilt: 0.35, arms: true, mouth: true });
-    pGhost(x, 214, 70, 0.4, gc[1 % gc.length], { tilt: -0.5 });
-  },
-  train(x, P, R, gc) {
-    pStars(x, R, 50, 140); pHill(x, 214, 10, "#0f0c10", R);
-    x.fillStyle = "rgba(240,235,230,0.22)"; for (let i = 0; i < 5; i++) { x.beginPath(); x.arc(56 - i * 6, 132 - i * 18, 10 + i * 5, 0, 7); x.fill(); }
-    x.fillStyle = DARK; x.fillRect(0, 238, PW, 4);
-    x.fillRect(36, 170, 44, 66); x.fillRect(46, 146, 14, 26); x.fillRect(80, 186, 30, 50); x.fillRect(116, 180, 66, 56); x.fillRect(188, 180, 66, 56);
-    x.fillStyle = P.a; for (const wx of [124, 150, 196, 222]) x.fillRect(wx, 192, 18, 16);
-    x.fillStyle = "#1c1a1e"; for (const wx of [50, 70, 130, 168, 202, 240]) { x.beginPath(); x.arc(wx, 238, 8, 0, 7); x.fill(); }
-    pGhost(x, 159, 182, 0.52, gc[0], { arms: true });
-  },
-  forest(x, P, R, gc) {
-    const g = x.createLinearGradient(0, 250, 0, 160); g.addColorStop(0, "rgba(200,255,220,0.18)"); g.addColorStop(1, "rgba(0,0,0,0)");
-    x.fillStyle = g; x.beginPath(); x.moveTo(110, 160); x.lineTo(146, 160); x.lineTo(200, 260); x.lineTo(56, 260); x.fill();
-    x.strokeStyle = DARK; x.fillStyle = DARK;
-    for (let i = 0; i < 9; i++) { const tx = i < 4 ? 8 + i * 24 + R() * 8 : 150 + (i - 4) * 24 + R() * 8, w = 6 + R() * 6; x.fillRect(tx, 20 + R() * 40, w, 240);
-      x.lineWidth = 3; for (let b = 0; b < 3; b++) { const by = 60 + R() * 120, dir = tx < 128 ? 1 : -1; x.beginPath(); x.moveTo(tx + w / 2, by); x.lineTo(tx + w / 2 + dir * (16 + R() * 18), by - 14 - R() * 16); x.stroke(); } }
-    x.fillStyle = P.a; for (let i = 0; i < 6; i++) { const ex = R() < 0.5 ? 20 + R() * 70 : 170 + R() * 70, ey = 70 + R() * 140; pGlow(x, ex + 3, ey, 8, P.a, 0.6); x.fillStyle = P.a; x.fillRect(ex, ey, 3, 2); x.fillRect(ex + 6, ey, 3, 2); }
-    pGhost(x, 128, 168, 1.0, gc[0], { arms: true });
-  },
-  lighthouse(x, P, R, gc) {
-    pStars(x, R, 60, 160);
-    x.fillStyle = "rgba(255,245,200,0.16)"; x.beginPath(); x.moveTo(150, 74); x.lineTo(PW, 30); x.lineTo(PW, 110); x.closePath(); x.fill();
-    const g = x.createLinearGradient(0, 214, 0, 300); g.addColorStop(0, "#0d1a2c"); g.addColorStop(1, DARK); x.fillStyle = g; x.fillRect(0, 214, PW, 90);
-    x.fillStyle = DARK; x.beginPath(); x.moveTo(90, 230); x.quadraticCurveTo(140, 196, 200, 232); x.fill();
-    x.fillStyle = "#d9d2c3"; x.beginPath(); x.moveTo(126, 96); x.lineTo(158, 96); x.lineTo(168, 214); x.lineTo(116, 214); x.closePath(); x.fill();
-    x.fillStyle = "#9e2a2a"; for (const y of [120, 160, 196]) { x.fillRect(118, y, 48, 14); }
-    x.fillStyle = DARK; x.fillRect(122, 88, 40, 8); x.fillRect(130, 64, 24, 24);
-    pGlow(x, 142, 76, 40, P.a, 1); x.fillStyle = P.a; x.fillRect(134, 68, 16, 14);
-    pGhost(x, 104, 70, 0.42, gc[0], { arms: true });
-  },
-  field(x, P, R, gc) {
-    pStars(x, R, 50, 130); pMoon(x, 196, 60, 30, "#f7efcf"); pHill(x, 196, 6, DARK, R);
-    pGhost(x, 128, 132, 1.25, gc[0], { arms: true, mouth: R() < 0.5 });
-    for (let i = 0; i < 6; i++) { const px = 20 + i * 43 + (R() - 0.5) * 10, py = 214 + (i % 2) * 8, r = 12 + R() * 5;
-      x.fillStyle = "#c2560f"; x.beginPath(); x.ellipse(px, py, r * 1.2, r, 0, 0, 7); x.fill();
-      x.strokeStyle = "rgba(60,20,0,0.6)"; x.lineWidth = 1.5; x.beginPath(); x.ellipse(px, py, r * 0.5, r, 0, 0, 7); x.stroke();
-      x.fillStyle = "#3d4a1c"; x.fillRect(px - 2, py - r - 5, 4, 6);
-      if (R() < 0.6) { pGlow(x, px, py, r * 1.6, P.a, 0.5); x.fillStyle = "#ffd36b"; x.beginPath(); x.moveTo(px - 7, py - 2); x.lineTo(px - 4, py - 7); x.lineTo(px - 1, py - 2); x.moveTo(px + 1, py - 2); x.lineTo(px + 4, py - 7); x.lineTo(px + 7, py - 2); x.fill(); x.fillRect(px - 6, py + 3, 12, 3); } }
-  },
-  pair(x, P, R, gc) {
-    pStars(x, R, 70, 220); pHill(x, 236, 4, DARK, R);
-    const hx = 128, hy = 84; x.fillStyle = P.a; x.shadowColor = P.a; x.shadowBlur = 18;
-    x.beginPath(); x.moveTo(hx, hy + 22); x.bezierCurveTo(hx - 40, hy - 4, hx - 18, hy - 30, hx, hy - 10); x.bezierCurveTo(hx + 18, hy - 30, hx + 40, hy - 4, hx, hy + 22); x.fill(); x.shadowBlur = 0;
-    pGhost(x, 88, 166, 1.15, gc[0], { tilt: 0.18, arms: true, hat: P.wed ? "top" : null, bow: P.wed });
-    pGhost(x, 170, 170, 1.05, gc[1 % gc.length], { tilt: -0.18, arms: true, veil: P.wed });
-  },
-  laundry(x, P, R, gc) {
-    pStars(x, R, 40, 100); pHill(x, 236, 6, "#0b100c", R);
-    x.fillStyle = DARK; x.fillRect(14, 60, 5, 180); x.fillRect(237, 60, 5, 180);
-    x.strokeStyle = "rgba(230,230,220,0.6)"; x.lineWidth = 1.5; x.beginPath(); x.moveTo(17, 70); x.quadraticCurveTo(128, 104, 240, 70); x.stroke();
-    const xs = [56, 104, 152, 200];
-    xs.forEach((sx, i) => { const sy = 70 + Math.sin((sx / 256) * Math.PI) * 17 + 18; pGhost(x, sx, sy, 0.9, i === 2 ? gc[0] : "#e8e4da", { closed: i !== 2, glow: i === 2 }); x.fillStyle = "#8a6a44"; x.fillRect(sx - 3, sy - 22, 6, 9); });
-  },
-  drivein(x, P, R, gc) {
-    pStars(x, R, 60, 60);
-    x.fillStyle = "#e9eef4"; x.fillRect(38, 46, 180, 104); pGlow(x, 128, 98, 120, P.a, 0.35);
-    pGhost(x, 128, 90, 0.85, "#c7d2e2", { mouth: true, glow: false });
-    x.fillStyle = DARK; x.fillRect(60, 150, 6, 80); x.fillRect(190, 150, 6, 80); pHill(x, 228, 2, DARK, R);
-    x.save(); x.translate(0, -26);
-    for (const [cx, col] of [[64, gc[0]], [184, gc[1 % gc.length]]]) {
-      x.fillStyle = "#16121c"; x.beginPath(); x.moveTo(cx - 50, 268); x.lineTo(cx - 44, 236); x.lineTo(cx - 20, 222); x.lineTo(cx + 26, 222); x.lineTo(cx + 46, 238); x.lineTo(cx + 50, 268); x.fill();
-      pGhost(x, cx - 6, 238, 0.45, col, { glow: false }); pGhost(x, cx + 18, 240, 0.4, gc[2 % gc.length], { glow: false });
-      x.fillStyle = "#16121c"; x.fillRect(cx - 50, 250, 100, 20); }
-    x.restore();
-  },
-  city(x, P, R, gc) {
-    pStars(x, R, 60, 140); pMoon(x, 60, 56, 18, "#f2ecd8");
-    for (let bx = 0; bx < PW; bx += 26 + R() * 10) { const bw = 22 + R() * 12, top = 140 + R() * 70; x.fillStyle = "#0a0910"; x.fillRect(bx, top, bw, 270 - top);
-      x.fillStyle = P.a; for (let wy = top + 8; wy < 250; wy += 12) for (let wx = bx + 4; wx < bx + bw - 6; wx += 8) if (R() < 0.18) x.fillRect(wx, wy, 4, 5); }
-    pGhost(x, 140, 112, 1.3, gc[0], { arms: true });
-    x.strokeStyle = "#8a6a44"; x.lineWidth = 3; x.beginPath(); x.moveTo(170, 116); x.lineTo(196, 196); x.stroke(); x.fillStyle = "#d8d0c0"; x.fillRect(186, 194, 22, 8);
-  },
-  stage(x, P, R, gc) {
-    x.fillStyle = "#1a0a0c"; x.fillRect(0, 214, PW, 60);
-    const cone = x.createLinearGradient(128, 0, 128, 230); cone.addColorStop(0, "rgba(255,240,200,0.5)"); cone.addColorStop(1, "rgba(255,240,200,0.06)");
-    x.fillStyle = cone; x.beginPath(); x.moveTo(116, 0); x.lineTo(140, 0); x.lineTo(196, 226); x.lineTo(60, 226); x.fill();
-    x.fillStyle = "rgba(255,240,200,0.25)"; x.beginPath(); x.ellipse(128, 226, 70, 10, 0, 0, 7); x.fill();
-    for (const side of [0, 1]) { for (let i = 0; i < 5; i++) { const cx = side ? PW - 8 - i * 12 : 8 + i * 12; x.fillStyle = i % 2 ? "#6d1220" : "#8a1a2a"; x.fillRect(cx - 6, 0, 12, 260); } }
-    x.fillStyle = "#8a1a2a"; for (let i = 0; i < 9; i++) { x.beginPath(); x.arc(14 + i * 29, 10, 18, 0, Math.PI); x.fill(); }
-    pGhost(x, 128, 176, 1.15, gc[0], { bow: true, arms: true, mouth: true });
-  }
-};
-// Fit a title on one line, or split it into the two most balanced lines.
-function pWrap(x, text, size, maxW) {
-  x.font = size + "px Limelight, Georgia, serif";
-  if (x.measureText(text).width <= maxW) return [text];
-  const words = text.split(" "); let best = null;
-  for (let i = 1; i < words.length; i++) { const a = words.slice(0, i).join(" "), b = words.slice(i).join(" "), w = Math.max(x.measureText(a).width, x.measureText(b).width); if (!best || w < best.w) best = { w, lines: [a, b] }; }
-  return best ? best.lines : [text];
-}
-// Paint a full poster: background, scene, a dark band for the text, studio line,
-// title (shrunk until it fits), tagline, joke credits, and "Coming soon".
-function drawGhostPoster(x, P, seed) {
-  const R = seeded(seed);
-  x.save(); x.scale(x.canvas.width / PW, x.canvas.height / PH);
-  const g = x.createLinearGradient(0, 0, 0, PH); g.addColorStop(0, P.bg[0]); g.addColorStop(1, P.bg[1]); x.fillStyle = g; x.fillRect(0, 0, PW, PH);
-  const gc = []; const start = Math.floor(R() * SHEET_CSS.length); for (let i = 0; i < 3; i++) gc.push(SHEET_CSS[(start + i * 2) % SHEET_CSS.length]);
-  (POSTER_SCENES[P.s] || POSTER_SCENES.moon)(x, P, R, gc);
-  const fade = x.createLinearGradient(0, 236, 0, 300); fade.addColorStop(0, "rgba(5,3,6,0)"); fade.addColorStop(1, "rgba(5,3,6,0.92)"); x.fillStyle = fade; x.fillRect(0, 236, PW, PH - 236);
-  x.fillStyle = "rgba(5,3,6,0.92)"; x.fillRect(0, 300, PW, PH - 300);
-  x.textAlign = "center"; x.textBaseline = "alphabetic";
-  x.font = "700 7px Karla, sans-serif"; x.fillStyle = "rgba(255,255,255,0.6)"; x.fillText("S C R E E N   O N E   P I C T U R E S   P R E S E N T S", PW / 2, 14);
-  let size = 34, lines = pWrap(x, P.t, size, 228);
-  while (size > 18 && lines.some((l) => x.measureText(l).width > 230)) { size -= 2; lines = pWrap(x, P.t, size, 228); }
-  x.font = size + "px Limelight, Georgia, serif"; x.fillStyle = P.a; x.shadowColor = P.a; x.shadowBlur = 10;
-  const y0 = lines.length > 1 ? 280 : 296; lines.forEach((l, i) => x.fillText(l, PW / 2, y0 + i * (size + 2))); x.shadowBlur = 0;
-  x.font = "italic 500 11px Karla, sans-serif"; x.fillStyle = "#e8dccb"; x.fillText(P.g, PW / 2, 334);
-  x.font = "700 6px Karla, sans-serif"; x.fillStyle = "rgba(230,220,200,0.5)";
-  x.fillText("A GHOST MATINEE PRODUCTION  ·  STARRING SEVERAL BEDSHEETS", PW / 2, 350);
-  x.fillText("MUSIC BY THE ORGAN NOBODY PLAYS  ·  RATED BOO-13", PW / 2, 358);
-  x.font = "700 9px Karla, sans-serif"; x.fillStyle = P.a; x.fillText("COMING SOON TO SCREEN ONE", PW / 2, 375);
-  x.restore();
-}
-// Your own posters (optional): posters/posters.json
-// ---- Your own posters ----
-// Filled from posters/posters.json if that file exists on the website.
-let customPosters = [], keepBuiltInPosters = true, posterSeed = Math.floor(Math.random() * 1e9);
+// posterFiles: the poster list from posters.json (or the defaults). posterSeed: this room's shuffle.
+let posterFiles = DEFAULT_POSTERS.slice(), posterSeed = Math.floor(Math.random() * 1e9);
+// Downloaded poster images, by file name, so each is fetched only once.
 const posterImgs = new Map();
-// Every poster that can be shown: the built-in ones (unless switched off) plus your own images.
-function posterPool() {
-  const pool = keepBuiltInPosters || !customPosters.length ? GHOST_POSTERS.map((p) => ({ kind: "art", p })) : [];
-  for (const f of customPosters) pool.push({ kind: "img", file: f });
-  return pool;
-}
-// Draw an uploaded poster image so it fills the frame (cropping the edges if the shape differs).
+// Every poster that can be shown, numbered from 0 in list order ("image 1" to players).
+function posterPool() { return posterFiles.map((file) => ({ kind: "img", file })); }
+// Draw a poster image so it fills its frame (cropping the edges if its shape is different).
 function drawCoverImage(x, img) {
   const W = x.canvas.width, H = x.canvas.height, s = Math.max(W / img.naturalWidth, H / img.naturalHeight);
   const w = img.naturalWidth * s, h = img.naturalHeight * s;
   x.fillStyle = "#000"; x.fillRect(0, 0, W, H); x.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
 }
-// Shuffle the pool with the seed and paint the first six into the poster frames.
-// Your images load in the background; until one has loaded, a built-in poster stands in.
+// What a frame shows while its image is downloading (or if the file is missing): a dark card.
+function drawPosterWaiting(x, missing) {
+  const W = x.canvas.width, H = x.canvas.height;
+  x.fillStyle = "#120708"; x.fillRect(0, 0, W, H);
+  x.strokeStyle = "rgba(216,165,78,0.5)"; x.lineWidth = 6; x.strokeRect(14, 14, W - 28, H - 28);
+  x.fillStyle = "#d8a54e"; x.textAlign = "center"; x.textBaseline = "middle";
+  x.font = "48px Limelight, Georgia, serif"; x.fillText("Coming", W / 2, H / 2 - 30); x.fillText("Soon", W / 2, H / 2 + 30);
+  if (missing) { x.font = "500 18px Karla, sans-serif"; x.fillStyle = "#a39488"; x.fillText("(poster file not found)", W / 2, H - 60); }
+}
 // posterShown[k] = which pool image frame k is showing (for "/admin list posters" and the debug screen).
 // posterGen goes up on every repaint so a slow-loading image can't land in a frame that has since changed.
 let posterShown = [], posterGen = 0;
 // Poster frames set by hand with "/admin set poster": frame number (0-5) -> poster image number (0-based).
 let posterOverrides = {};
+// Pick an image for each of the six frames and draw it. Admin choices come first; the other frames
+// take the next shuffled images that aren't already on a wall. Each frame shows a "Coming soon"
+// card until its image has downloaded.
 function paintPosters(seed) {
   posterSeed = seed >>> 0;
   const gen = ++posterGen;
   const R = seeded(posterSeed), pool = posterPool(), idx = pool.map((_, i) => i);
   for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
-  // Images an admin put in a frame aren't also picked for another frame (no duplicates).
-  const used = new Set(Object.values(posterOverrides).filter((v) => pool[v]));
-  let next = 0;
+  // Each frame's normal pick is the shuffled list in order (frame 1 gets the 1st image, and so on).
+  // Admin choices replace just their own frame. If an admin's image is also some other frame's
+  // normal pick, only that other frame changes, to the next spare image, so nothing shows twice
+  // and the rest of the wall stays put.
+  const frames = posterSlots.length;
+  const chosen = new Set(Object.values(posterOverrides).filter((v) => pool[v]));
+  const base = idx.slice(0, frames);
+  const used = new Set([...chosen, ...base]);
+  let spare = frames;                                   // where to look for spare images in the shuffle
   posterSlots.forEach((tex, k) => {
-    // An admin-chosen image wins; otherwise the next shuffled image that isn't already on a wall.
     const ov = posterOverrides[k];
     let pick;
-    if (ov != null && pool[ov]) pick = ov;
+    if (ov != null && pool[ov]) pick = ov;              // set by an admin
+    else if (k < base.length && !chosen.has(base[k])) pick = base[k]; // its normal pick
     else {
-      while (next < idx.length && used.has(idx[next])) next++;
-      pick = next < idx.length ? idx[next++] : idx[k % idx.length]; // (only repeats if there are fewer images than frames)
-      used.add(pick);
+      while (spare < idx.length && used.has(idx[spare])) spare++;
+      pick = spare < idx.length ? idx[spare++] : idx.length ? idx[k % idx.length] : -1; // repeats only with fewer images than frames
+      if (pick >= 0) used.add(pick);
     }
     posterShown[k] = pick;
-    const item = pool[pick], c = tex.image, x = c.getContext("2d");
-    const fallback = () => { x.clearRect(0, 0, c.width, c.height); drawGhostPoster(x, GHOST_POSTERS[(posterSeed + k) % GHOST_POSTERS.length], posterSeed + k * 7919); tex.needsUpdate = true; };
-    if (item.kind === "art") { x.clearRect(0, 0, c.width, c.height); drawGhostPoster(x, item.p, posterSeed + k * 7919); tex.needsUpdate = true; return; }
+    const c = tex.image, x = c.getContext("2d"), item = pool[pick];
+    if (!item) { drawPosterWaiting(x, true); tex.needsUpdate = true; return; }
+    // Draw it now if we already have it; otherwise show "Coming soon" and draw it when it arrives.
     const draw = (img) => { if (gen !== posterGen) return; drawCoverImage(x, img); tex.needsUpdate = true; };
     const cached = posterImgs.get(item.file);
     if (cached && cached.complete && cached.naturalWidth) { draw(cached); return; }
-    fallback();
+    drawPosterWaiting(x, false); tex.needsUpdate = true;
     const img = cached || new Image(); posterImgs.set(item.file, img);
     img.addEventListener("load", () => draw(img), { once: true });
+    img.addEventListener("error", () => { if (gen === posterGen) { drawPosterWaiting(x, true); tex.needsUpdate = true; } }, { once: true });
     if (!cached) img.src = "posters/" + encodeURIComponent(item.file);
   });
 }
-// Paint once at start with a random seed (watching solo). goLive() repaints with the room code.
-// Repaint again once fonts are ready, and once posters.json has been read.
-paintPosters(posterSeed);
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => paintPosters(posterSeed));
+// Posters are first painted when you enter (solo: a random shuffle; in a room: goLive() uses the
+// room code), so nothing is downloaded while you're on the welcome screen. Meanwhile read
+// posters.json; if it lists different posters, use those (and repaint if already on the wall).
 fetch("posters/posters.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((j) => {
-  if (!j || typeof j !== "object") return;
-  const list = Array.isArray(j.images) ? j.images : [];
-  customPosters = list.map((v) => String(typeof v === "string" ? v : v && v.file || "").trim()).filter((f) => f && !/[\\/]|\.\./.test(f) && /\.(png|jpe?g|webp|gif)$/i.test(f)).slice(0, 200);
-  keepBuiltInPosters = j.keepBuiltInPosters !== false;
-  if (customPosters.length || !keepBuiltInPosters) paintPosters(posterSeed);
+  if (!j || typeof j !== "object" || !Array.isArray(j.images)) return;
+  // Accept plain file names of images directly in the posters folder (no sub-folders, no "..").
+  const list = j.images.map((v) => String(typeof v === "string" ? v : (v && v.file) || "").trim())
+    .filter((f) => f && !/[\\/]|\.\./.test(f) && /\.(png|jpe?g|webp|gif)$/i.test(f)).slice(0, 200);
+  if (!list.length || list.join("|") === posterFiles.join("|")) return;
+  posterFiles = list;
+  if (posterGen > 0) paintPosters(posterSeed);
 }).catch(() => {});
 
 // ---- Where ghosts can go ----
@@ -2550,7 +2363,7 @@ SHEETS.forEach((s, i) => {
 });
 // entered = you've left the welcome screen and can move around.
 let entered = false;
-function enterTheater() { if (entered) return; $("lobby").hidden = true; entered = true; toast("Drag to look around. Load a movie when you're ready."); }
+function enterTheater() { if (entered) return; if (posterGen === 0) paintPosters(posterSeed); $("lobby").hidden = true; entered = true; toast("Drag to look around. Load a movie when you're ready."); }
 $("enter").addEventListener("click", () => host(0));
 
 /* =====================================================================
@@ -3264,12 +3077,19 @@ function applyAdmin(m) {
 
 // ---- What admin commands show on screen ----
 // A poster's name for lists: its title, or the image's file name.
-function poolTitle(item) { return item ? (item.kind === "art" ? item.p.t : item.file) : "?"; }
+function poolTitle(item) {
+  if (!item) return "?";
+  // "the-last-matinee.jpg" -> "The Last Matinee"
+  const t = item.file.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim();
+  // Capitalize words, except little ones like "the" and "of" in the middle of a title.
+  const small = new Set(["a", "an", "the", "of", "to", "in", "on", "at", "and", "or", "for"]);
+  return t ? t.split(" ").map((w, i) => (i > 0 && small.has(w.toLowerCase()) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1))).join(" ") : item.file;
+}
 // Rows for "/admin list posters": what's in each frame now, then every image you can choose.
 function posterListRows() {
   const pool = posterPool(), rows = [];
   posterSlots.forEach((_, k) => rows.push(["Frame " + (k + 1), FRAME_NAMES[k] + ". Showing image " + (posterShown[k] + 1) + ": " + poolTitle(pool[posterShown[k]]) + (posterOverrides[k] != null ? " (set by admin)" : "")]));
-  pool.forEach((item, i) => rows.push(["Image " + (i + 1), poolTitle(item) + (item.kind === "img" ? " (your image)" : "")]));
+  pool.forEach((item, i) => rows.push(["Image " + (i + 1), poolTitle(item) + " (" + item.file + ")"]));
   return rows;
 }
 // Rows for "/admin list people".
