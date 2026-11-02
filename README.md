@@ -4,12 +4,31 @@ A 3D haunted movie theater you can visit with friends as ghosts. Anyone in the r
 
 Play it here: https://michael-hauffe.github.io/Theatre/
 
-## Known good version
+## Known good versions
 
-**v1.0, confirmed working on November 1, 2026.**
-Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/tree/v1.0-working) (commit `96160b4`). Leave that branch alone; new work goes on `main`.
+Each confirmed version is saved as its own branch. Leave those branches alone; new work goes on `main`. If a later change breaks something, the code can be restored from the branch.
 
-Confirmed working in that version:
+### v2.0, confirmed working on November 1, 2026 (latest)
+
+Saved as the branch [`v2.0-working`](https://github.com/Michael-Hauffe/Theatre/tree/v2.0-working). Everything in v1.0, plus:
+
+- **One projector for the room.** Anyone can press Load movie or Share screen. Everyone else's Load movie turns gray, and the person showing gets Stop movie, which clears it for everyone. The room host's browser referees who gets the projector.
+- **Fresh start between showings.** Whenever the projector is freed (Stop movie, Stop sharing, `/admin reset movie`, or the projectionist leaving), every computer discards the old picture and sound connections and sets them up from scratch.
+- **Self-repair.** If a screen share or playing movie shows no picture for 8 seconds, or a playing movie freezes for 8 seconds, that computer reconnects to the projectionist by itself (up to 3 tries in a row, then it shows a notice).
+- **Eating in first person.** Your snack shows in your hand and comes to your mouth with each bite or sip.
+- **Throwing food.** Hold Throw (or T) to charge: a tap is a gentle toss, 2 seconds is a hard throw, 6 seconds is full power. Food bounces off walls, seats, counters and ghosts, everyone sees it, and it disappears after 30 seconds.
+- **Mortimer**, the concession ghost behind the counter. Talk to him with the button, R, or by clicking him.
+- **Lobby posters**: 20 original ghost movies as JPG files, six shown at a time, picked randomly per room, with numbered frames. Add, remove or replace them like any image (below).
+- **Admin commands** typed in chat, for everyone in the room (below).
+- **Show Shortcuts** button that shows the shortcut list only while held.
+- **Debug screen**: hold the ` key to see live details on the room, the projector, picture and sound, snacks and performance. Press **P** to copy it all so you can paste it into a message.
+
+If the picture or sound doesn't reach someone, have them hold ` and press P, then paste what was copied. The "Receiving" section shows whether their computer is connected to the projector and how many frames have arrived.
+
+### v1.0, confirmed working on November 1, 2026
+
+Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/tree/v1.0-working) (commit `96160b4`):
+
 - Hosting and joining rooms with a 5-letter code or invite link
 - Host-only movie file, streamed to guests with picture and sound
 - Synced play, pause and seeking for everyone
@@ -19,23 +38,6 @@ Confirmed working in that version:
 - Hallways, lobby and concession stand, including the employee area behind the counter
 - Buying, holding, eating and drinking snacks with Ghost Bucks
 - Hide HUD button
-
-If a later change breaks something, the v1.0 code can be restored from that branch.
-
-## What's new since v1.0 (not yet confirmed)
-
-- **One projector for the room.** Anyone can press Load movie. Everyone else's Load movie turns gray, and the person showing the movie gets a Stop movie button that clears it for everyone. Screen sharing works the same way and is now open to everyone, not just the host.
-- **Eating in first person.** Your snack shows in your hand and moves to your mouth with each bite or sip.
-- **Throwing food.** Hold Throw (or T) to charge: a tap is a gentle toss, 2 seconds is a hard throw, 6 seconds is full power. Food bounces off walls, seats, counters and ghosts, everyone sees it, and it disappears after 30 seconds.
-- **Mortimer**, the concession ghost behind the counter. Talk to him with the button, R, or by clicking him.
-- **Lobby posters**: 20 original ghost movies as JPG files, six shown at a time, picked randomly per room. Add, remove or replace them like any image (below).
-- **Show Shortcuts** button that shows the shortcut list only while held.
-- **Debug screen**: hold the ` key (top left of the keyboard) to see live details on the room, the projector, picture and sound, your snacks and performance. Press **P** to copy it all to the clipboard so you can paste it into a message. The sound status moved from the main screen into the debug screen.
-
-- **Fresh start between showings.** Whenever the projector is freed (Stop movie, Stop sharing, `/admin reset movie`, or the projectionist leaving), every computer discards the old picture and sound connections and sets them up from scratch.
-- **Self-repair.** If a screen share or playing movie shows no picture for 8 seconds, or a playing movie freezes for 8 seconds, that computer reconnects to the projectionist by itself (up to 3 tries in a row, then it shows a notice).
-
-If the picture or sound doesn't reach someone, have them hold ` and press P, then paste what was copied. The "Receiving" section shows whether their computer is connected to the projector and how many frames have arrived.
 
 ## Admin commands
 

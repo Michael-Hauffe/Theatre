@@ -15,8 +15,9 @@
    react, `applyAdmin()`. Also add them to the table in README.md.
 4. **Keep the debug screen useful.** When you add a feature with state worth checking,
    add a row for it in `dbgRows()`.
-5. **Don't break `v1.0-working`.** That branch holds the version confirmed working on
-   November 1, 2026. New work goes on `main`.
+5. **Never change the `-working` branches.** `v1.0-working` and `v2.0-working` hold versions
+   the owner confirmed working (both on November 1, 2026). New work goes on `main`. When the
+   owner confirms a new version, save it as a new `vX.Y-working` branch and list it in README.md.
 
 ## How the project is laid out
 
