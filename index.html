@@ -253,6 +253,18 @@ input[type=range] { accent-color: var(--brass); }
   box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
 #updateBar button { padding: 6px 10px; }
 
+/* ---- Full view (M) ----
+   The movie or screen share fills the whole window like a normal video player, instead of
+   appearing on the theater screen. It's drawn on #directCv, which sits above the 3D view but
+   below the controls. Name tags are hidden. After 3 seconds without moving the mouse, the
+   controls and the mouse pointer fade away (body.directIdle); any movement brings them back. */
+#directCv { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; background: #000; display: block; }
+body.direct #tags, body.direct #joy, body.direct #updown { display: none !important; }
+body.direct .hud { z-index: 2; transition: opacity 0.4s; }
+body.direct.directIdle .hud { opacity: 0; pointer-events: none; }
+body.direct.directIdle .hud * { pointer-events: none !important; }
+body.direct.directIdle, body.direct.directIdle #directCv { cursor: none; }
+
 /* Hide-HUD mode: only a small, faint button stays */
 body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.nohud #toast { display: none !important; }
 #showHud { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); z-index: 6; opacity: 0.35; padding: 6px 10px; font-size: 12px; }
@@ -292,6 +304,8 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
      ===================================================================== -->
 <!-- The 3D canvas is put inside #stage by the script. #tags holds name tags and speech bubbles. -->
 <div id="stage"></div>
+<!-- Full view (M): the movie drawn straight onto this canvas, filling the window. -->
+<canvas id="directCv" hidden aria-label="Full view of the movie"></canvas>
 <div id="tags"></div>
 
 <!-- Everything you can click while in the theater. -->
@@ -313,7 +327,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
   <!-- Bottom of the screen. -->
   <div class="deck">
     <!-- Appears when you're near the counter / near Mortimer. -->
-    <div id="shopHint" hidden><button class="btn primary" id="openShop" type="button">Order at the counter (O)</button><button class="btn" id="talkNpc" type="button" hidden>Talk to Mortimer (R)</button></div>
+    <div id="shopHint" hidden><button class="btn primary" id="pickBtn" type="button" hidden>Pick up (X)</button><button class="btn primary" id="openShop" type="button">Order at the counter (O)</button><button class="btn" id="talkNpc" type="button" hidden>Talk to Mortimer (R)</button></div>
     <!-- Appears while you're holding a snack. Throw charges up while held (see beginCharge). -->
     <div id="tray" class="bar" hidden>
       <span class="holding" id="holding"></span>
@@ -388,6 +402,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
         <h3>View</h3>
         <dl>
           <dt><kbd>V</kbd></dt><dd>First or third person</dd>
+          <dt><kbd>M</kbd></dt><dd>Full view: just the movie, filling the screen (M or Esc to leave)</dd>
           <dt><kbd>H</kbd></dt><dd>Hide or show the HUD</dd>
           <dt><kbd>`</kbd> <span class="alt">hold</span></dt><dd>Show the debug screen</dd>
           <dt><kbd>P</kbd></dt><dd>Copy the debug screen</dd>
@@ -422,6 +437,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
           <dt><kbd>G</kbd></dt><dd>Switch to your next snack</dd>
           <dt><kbd>T</kbd> <span class="alt">hold</span></dt><dd>Throw it. Hold longer to throw harder</dd>
           <dt><kbd>R</kbd></dt><dd>Talk to Mortimer at the counter</dd>
+          <dt><kbd>X</kbd></dt><dd>Pick up thrown food you're next to (or click it)</dd>
         </dl>
       </section>
     </div>
@@ -1271,10 +1287,12 @@ addEventListener("keydown", (e) => {
   if (!$("shop").hidden) { if (e.key === "Escape" || e.key.toLowerCase() === "o") closeShop(); return; }
   const k = e.key.toLowerCase(); keys.add(k);
   if (k === "v") toggleView();
+  if (k === "m") setDirect(!direct); // full view on/off
   if (k === "h") setHud(document.body.classList.contains("nohud"));
   if (k === "f") eatHeld();
   if (k === "g") switchHeld();
   if (k === "r") talkNpc();
+  if (k === "x") pickUpNearest(); // pick up thrown food
   if (k === "p") copyDebug(); // Copy Debug Screen
   if (k === "o" && nearCounter()) openShop();
   if (k === "b") boo();
@@ -1326,6 +1344,93 @@ for (const [id, dir] of [["up", 1], ["down", -1]]) {
 
 // Switch between first and third person (button or V).
 function toggleView() { firstPerson = !firstPerson; $("view").textContent = firstPerson ? "Third person" : "First person"; }
+
+/* ---------------- FULL VIEW (M) ----------------
+   Watch the movie (or screen share) as if streaming it directly: it fills the whole window,
+   letterboxed with black bars to keep its shape, with subtitles drawn along the bottom. The
+   browser also switches to real full screen when it allows it. Press M or Esc to go back.
+   Everything else keeps running underneath (sync, chat, friends moving), and the 3D theater
+   isn't drawn while full view is on, which saves battery. */
+let direct = false;            // is full view on?
+let directIdleTimer = 0;       // hides the controls after 3 seconds without mouse movement
+const directCv = $("directCv"), dctx = directCv.getContext("2d");
+function setDirect(on) {
+  if (on === direct) return;
+  direct = on;
+  directCv.hidden = !on;
+  document.body.classList.toggle("direct", on);
+  if (on) {
+    sizeDirect(); wakeDirect();
+    // Real full screen hides the browser's own bars too. Some browsers (e.g. iPhone) refuse; then
+    // full view still fills the browser window.
+    const el = document.documentElement;
+    if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    toast("Full view. Press M or Esc to go back to the theater.");
+  } else {
+    clearTimeout(directIdleTimer); document.body.classList.remove("directIdle");
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  }
+}
+// Leaving the browser's full screen (it uses Esc for that itself) also leaves full view.
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && direct) setDirect(false); });
+// Esc leaves full view (unless you're typing, where Esc just leaves the text box). We look at where
+// the key was pressed, because another handler may already have taken focus off the text box.
+addEventListener("keydown", (e) => {
+  const t = e.target, inBox = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+  if (e.key === "Escape" && direct && !inBox) setDirect(false);
+});
+// Match the canvas to the window (sharper on high-density screens, capped to keep it fast).
+function sizeDirect() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  directCv.width = Math.round(innerWidth * dpr); directCv.height = Math.round(innerHeight * dpr);
+}
+addEventListener("resize", () => { if (direct) sizeDirect(); });
+// Show the controls and pointer, then hide them again after 3 quiet seconds.
+function wakeDirect() {
+  document.body.classList.remove("directIdle");
+  clearTimeout(directIdleTimer);
+  directIdleTimer = setTimeout(() => { if (direct) document.body.classList.add("directIdle"); }, 3000);
+}
+for (const ev of ["pointermove", "pointerdown", "keydown"]) addEventListener(ev, () => { if (direct) wakeDirect(); });
+// What's on the theater screen right now, as a video element (same choice as useScreenSource()).
+function screenSourceElement() {
+  const mine = amProj();
+  if (mine && sharing && shareVideo.readyState >= 2) return shareVideo;
+  if (mine && film && video.readyState >= 2) return video;
+  if (!mine && remoteOn && rVideo.readyState >= 2) return rVideo;
+  return null;
+}
+// Draw one frame of full view (called from the main loop): the picture, letterboxed, plus subtitles,
+// or a short message when nothing is showing.
+function drawDirect() {
+  const W = directCv.width, H = directCv.height, x = dctx;
+  x.fillStyle = "#000"; x.fillRect(0, 0, W, H);
+  const src = screenSourceElement();
+  if (src && src.videoWidth) {
+    const s = Math.min(W / src.videoWidth, H / src.videoHeight), w = src.videoWidth * s, h = src.videoHeight * s;
+    try { x.drawImage(src, (W - w) / 2, (H - h) / 2, w, h); } catch {}
+  } else {
+    x.fillStyle = "#a39488"; x.textAlign = "center"; x.textBaseline = "middle";
+    x.font = Math.round(H * 0.035) + "px Karla, sans-serif";
+    x.fillText(placeholderLine || "Nothing on the screen yet", W / 2, H / 2);
+  }
+  // Subtitles (subShown is kept up to date by updateSubs() every frame).
+  if (subShown) {
+    const size = Math.max(16, Math.round(H * 0.045)), lh = size * 1.25;
+    x.font = "700 " + size + "px Karla, 'Segoe UI', sans-serif"; x.textAlign = "center"; x.textBaseline = "alphabetic"; x.lineJoin = "round";
+    const lines = [];
+    for (const para of subShown.split("\n")) { // word-wrap each line to 85% of the width
+      let cur = "";
+      for (const word of para.split(" ")) { const t = cur ? cur + " " + word : word; if (x.measureText(t).width > W * 0.85 && cur) { lines.push(cur); cur = word; } else cur = t; }
+      lines.push(cur);
+    }
+    lines.forEach((ln, i) => {
+      const y = H - H * 0.06 - (lines.length - 1 - i) * lh;
+      x.strokeStyle = "rgba(0,0,0,0.9)"; x.lineWidth = size * 0.2; x.strokeText(ln, W / 2, y);
+      x.fillStyle = "#fffbea"; x.fillText(ln, W / 2, y);
+    });
+  }
+}
 $("view").addEventListener("click", toggleView);
 // Hide HUD mode: hides every control and label; a faint "Show HUD" button stays in the corner.
 function setHud(on) {
@@ -1484,6 +1589,7 @@ netHooks.data = (m) => {
   if (!m || typeof m !== "object") return;
   if (m.t === "proj") { applyProj(m.s); return; }
   if (m.t === "throw") { onThrowMsg(m); return; }
+  if (m.t === "pickup") { onPickupMsg(m); return; }
   // Someone's picture from me stalled: hang up their call; syncCalls() calls them again right away.
   if (m.t === "recall") { if (m.to === myPeerId() && amProj() && typeof m.from === "string") { dropCall(m.from); syncCalls(); } return; }
   if (m.t !== "subs" && m.t !== "suboff") return;
@@ -2048,6 +2154,8 @@ netHooks.gone = (peer) => { if (proj.owner === peer) publishProj(freeProj()); };
 const throwClock = new Map();
 netHooks.allowFwd = (m) => {
   if (m.t === "subs" || m.t === "suboff") return m.from === proj.owner;
+  // Pick-ups: allowed (each just removes one piece of food by its id).
+  if (m.t === "pickup") return true;
   if (m.t === "throw") { const last = throwClock.get(m.from) || 0, now = performance.now(); if (now - last < 150) return false; throwClock.set(m.from, now); return true; }
   // Reconnect requests: at most one per second per person.
   if (m.t === "recall") { const key = "recall:" + m.from, last = throwClock.get(key) || 0, now = performance.now(); if (now - last < 1000) return false; throwClock.set(key, now); return true; }
@@ -2316,7 +2424,7 @@ updateProjUI();
 const PREFIX = "ghostmatinee-v1-";
 let myNick = clean(store.get("gm.nick", ""), 24);
 // Message types a guest may ask the host to pass on to everyone.
-const RELAYED = ["subs", "suboff", "throw", "recall"];
+const RELAYED = ["subs", "suboff", "throw", "recall", "pickup"];
 // Build the room connection. Returns an object with the same functions everywhere in the game:
 // presence(), onPeers(), peers(), join() (a second named channel), toAll() (send to everyone), toHost().
 function makeNet(peerObj, isHost, hostConn, onDown) {
@@ -2366,7 +2474,7 @@ function makeNet(peerObj, isHost, hostConn, onDown) {
       if (!m) return;
       if (m.t === "snap" && Array.isArray(m.d)) m.d.slice(0, 600).forEach((x) => Array.isArray(x) && apply(x[0], x[1], x[2]));
       if (m.t === "p") apply(m.ch, m.peer, m.presence);
-      if (["proj", "subs", "suboff", "throw", "admin", "recall"].includes(m.t) && netHooks.data) netHooks.data(m);
+      if (["proj", "subs", "suboff", "throw", "admin", "recall", "pickup"].includes(m.t) && netHooks.data) netHooks.data(m);
     });
     hostConn.on("close", onDown); hostConn.on("error", onDown);
   }
@@ -2681,6 +2789,12 @@ cv.addEventListener("pointerup", (e) => {
   if (!clickStart || Math.hypot(e.clientX - clickStart.x, e.clientY - clickStart.y) > 6 || performance.now() - clickStart.t > 450) return;
   pickNdc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   pickRay.setFromCamera(pickNdc, camera);
+  // Clicked a piece of thrown food? Pick it up if it's within reach.
+  const foodHit = pickRay.intersectObjects(flying.map((f) => f.mesh), true)[0];
+  if (foodHit) {
+    const f = flying.find((g) => { let o = foodHit.object; while (o) { if (o === g.mesh) return true; o = o.parent; } return false; });
+    if (f) { if (canReach(f)) pickUp(f); else toast("Float closer to pick that up."); return; }
+  }
   const hitN = pickRay.intersectObject(npc.ghost.bodyG, true)[0]; if (!hitN) return;
   const hitW = pickRay.intersectObjects(colliders, false)[0];
   if (hitW && hitW.distance < hitN.distance) return;
@@ -2707,10 +2821,12 @@ const getThrowTargets = () => throwTargets || (throwTargets = colliders.concat([
 // Round to millimeters before sending.
 const r3 = (v) => Math.round(v * 1000) / 1000;
 // Put a flying snack into the world with a random spin.
-function spawnThrow(id, p, v, from) {
+// fid = this piece's own id (the same on every computer, so a pick-up can say which piece);
+// left = bites/sips it still has (you get those back if you pick it up).
+function spawnThrow(id, p, v, from, fid, left) {
   if (!MENU_BY_ID[id]) return;
   const mesh = makeItemMesh(id); mesh.scale.setScalar(1.25); mesh.position.copy(p); scene.add(mesh);
-  flying.push({ mesh, id, from, p: p.clone(), v: v.clone(), w: new THREE.Vector3((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 12), born: nowS(), rest: false, lastHit: null, lastHitAt: 0 });
+  flying.push({ fid: fid || "", left: left || MENU_BY_ID[id].uses, mesh, id, from, p: p.clone(), v: v.clone(), w: new THREE.Vector3((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 12), born: nowS(), rest: false, lastHit: null, lastHitAt: 0 });
   while (flying.length > 40) killThrow(0);
 }
 // Remove one from the world.
@@ -2763,8 +2879,9 @@ function throwHeld(speed) {
   else p.set(me.x, me.y + 0.6, me.z);
   const v = d.multiplyScalar(speed || 8); v.y += 1 + (speed || 8) * 0.12;
   inventory.shift(); me.ghost.throwAt = nowS(); refreshHeld();
-  spawnThrow(h.id, p, v, myPeerId());
-  if (room && room.toAll) room.toAll({ t: "throw", i: h.id, p: [p.x, p.y, p.z].map(r3), v: [v.x, v.y, v.z].map(r3) });
+  const fid = Math.random().toString(36).slice(2, 12); // this piece's id
+  spawnThrow(h.id, p, v, myPeerId(), fid, h.left);
+  if (room && room.toAll) room.toAll({ t: "throw", i: h.id, p: [p.x, p.y, p.z].map(r3), v: [v.x, v.y, v.z].map(r3), fid, left: h.left });
 }
 // A friend threw something: check the numbers are sane, make their ghost lean, and start the same flight here.
 function onThrowMsg(m) {
@@ -2774,7 +2891,55 @@ function onThrowMsg(m) {
   const p = new THREE.Vector3(clamp(pv[0], -13, 13), clamp(pv[1], 0, 9), clamp(pv[2], -15, 37)), v = new THREE.Vector3(...vv);
   if (v.length() > 20) v.setLength(20);
   const o = others.get(m.from); if (o) o.gh.throwAt = nowS();
-  spawnThrow(m.i, p, v, m.from);
+  const fid = typeof m.fid === "string" ? m.fid.slice(0, 20) : "";
+  const left = clamp(Math.round(num(m.left, MENU_BY_ID[m.i].uses)), 1, MENU_BY_ID[m.i].uses);
+  spawnThrow(m.i, p, v, m.from, fid, left);
+}
+
+/* ---------------- picking thrown food back up ----------------
+   Float next to a piece of thrown food (on the floor, on a seat, or still in the air) and press X,
+   the Pick up button, or click it. It goes back in your hands with the bites it had left, and
+   disappears for everyone (a "pickup" message names the piece by its id). */
+const REACH = 1.9; // meters from the middle of your ghost
+// How far a piece is from the middle of your ghost.
+function reachDist(f) { return Math.hypot(f.p.x - me.x, f.p.y - (me.y + 0.5), f.p.z - me.z); }
+function canReach(f) { return entered && reachDist(f) <= REACH; }
+// The closest piece within reach, or null.
+function nearestFood() {
+  let best = null, bd = Infinity;
+  for (const f of flying) { const d = reachDist(f); if (d <= REACH && d < bd) { best = f; bd = d; } }
+  return entered ? best : null;
+}
+// Pick up one piece: into your hands (or pockets), gone from the world, and tell everyone.
+function pickUp(f) {
+  if (!f || !flying.includes(f)) return;
+  if (inventory.length >= 6) { toast("Your hands are full. Eat or throw something first."); return; }
+  const m = MENU_BY_ID[f.id];
+  killThrow(flying.indexOf(f));
+  inventory.push({ id: f.id, left: f.left });
+  if (inventory.length === 1) refreshHeld(); else renderTray();
+  toast("Picked up the " + m.name.toLowerCase() + (f.left < m.uses ? " (" + f.left + " " + (m.verb === "Drink" ? "sips" : "bites") + " left)" : "") + ".");
+  if (f.fid && room && room.toAll) room.toAll({ t: "pickup", fid: f.fid });
+}
+// X / Pick up button: the closest piece in reach.
+function pickUpNearest() { const f = nearestFood(); if (f) pickUp(f); }
+$("pickBtn").addEventListener("click", pickUpNearest);
+// Someone else picked a piece up: remove it here too.
+function onPickupMsg(m) {
+  const fid = typeof m.fid === "string" ? m.fid : "";
+  const i = fid ? flying.findIndex((f) => f.fid === fid) : -1;
+  if (i >= 0) killThrow(i);
+}
+// Every frame: show "Pick up …" while something is in reach (it sits with the counter buttons).
+let lastPickLabel = "";
+function updatePickHint() {
+  const f = nearestFood();
+  const label = f ? "Pick up " + MENU_BY_ID[f.id].name.toLowerCase() + " (X)" : "";
+  if (label === lastPickLabel) return;
+  lastPickLabel = label;
+  $("pickBtn").hidden = !f; if (f) $("pickBtn").textContent = label;
+  // The shared hint row is visible if any of its buttons is.
+  $("shopHint").hidden = $("pickBtn").hidden && $("openShop").hidden && $("talkNpc").hidden;
 }
 // Which way the surface we hit is facing (needed to bounce), including for instanced seats.
 function surfaceNormal(hit, out) {
@@ -2894,7 +3059,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.2 · 2026-11-01";
+const BUILD = "v2.4 · 2026-11-01";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -2982,12 +3147,14 @@ function dbgRows() {
       ["Name", myNick || "(none)"],
       ["Bedsheet", SHEETS[myColor].name],
       ["Where", area + " · x " + me.x.toFixed(1) + " y " + me.y.toFixed(1) + " z " + me.z.toFixed(1)],
-      ["Facing", "yaw " + me.yaw.toFixed(2) + ", pitch " + me.pitch.toFixed(2) + " · " + (firstPerson ? "first person" : "third person")]
+      ["Facing", "yaw " + me.yaw.toFixed(2) + ", pitch " + me.pitch.toFixed(2) + " · " + (firstPerson ? "first person" : "third person")],
+      ["View", direct ? "full view (M)" + (document.fullscreenElement ? ", browser full screen" : "") : "theater"]
     ]],
     ["Snacks", [
       ["Ghost Bucks", money(wallet)],
       ["Holding", inventory.length ? inventory.map((it, i) => (i ? "" : "▶ ") + MENU_BY_ID[it.id].name + " (" + it.left + ")").join(", ") : "nothing"],
       ["Food in the air", flying.length + " (" + flying.filter((f) => f.rest).length + " landed)"],
+      ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
       ["Throw charge", chargeStart ? ((performance.now() - chargeStart) / 1000).toFixed(1) + "s → speed " + throwPower((performance.now() - chargeStart) / 1000).toFixed(1) : "–"]
     ]],
     ["Performance", [
@@ -3364,7 +3531,7 @@ function frame() {
     if (me.y > maxY) me.y += (maxY - me.y) * Math.min(1, dt * 7);
     // Show the counter / Mortimer buttons when you're close.
     const near = nearCounter(), nn = nearNpc();
-    if (near !== lastNear || nn !== lastNearNpc) { lastNear = near; lastNearNpc = nn; $("shopHint").hidden = !(near || nn); $("openShop").hidden = !near; $("talkNpc").hidden = !nn; if (!near) closeShop(); }
+    if (near !== lastNear || nn !== lastNearNpc) { lastNear = near; lastNearNpc = nn; $("openShop").hidden = !near; $("talkNpc").hidden = !nn; $("shopHint").hidden = !(near || nn) && $("pickBtn").hidden; if (!near) closeShop(); }
   }
   poseGhost(me.ghost, me.x, me.y, me.z, me.yaw, t);
   me.ghost.group.visible = !firstPerson; // you can't see your own ghost from inside it
@@ -3437,9 +3604,12 @@ function frame() {
   // Everything else that moves, then draw: the theater first, then (in first person) your hands on top.
   updateNpc(t, dt);
   updateCharge();
+  updatePickHint();
   stepThrows(dt, t);
   updateSubs();
   updateFP(t, dt);
+  // Full view: draw just the movie and skip drawing the 3D theater (nothing would see it).
+  if (direct) { drawDirect(); return; }
   renderer.clear(); renderer.render(scene, camera);
   if (fpRoot.visible) { renderer.clearDepth(); renderer.render(fpScene, camera); }
 }

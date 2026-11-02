@@ -39,6 +39,13 @@ Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/t
 - Buying, holding, eating and drinking snacks with Ghost Bucks
 - Hide HUD button
 
+## New since v2.0 (not yet confirmed)
+
+- **Skip buttons:** −10s and +10s next to Play (or J and L) skip the movie for everyone. Grayed out during a screen share.
+- **Full view:** press **M** to watch just the movie, filling the whole screen like a normal video player (with subtitles). Press **M** or **Esc** to go back to the theater. The controls fade after 3 seconds without moving the mouse.
+- **Pick up thrown food:** float next to it and press **X**, the Pick up button, or click it. It goes back in your hands with the bites it had left, and disappears for everyone.
+- **Update check:** if your browser is showing an old saved copy of the game, a bar offers a Refresh.
+
 ## Admin commands
 
 Anyone in the room can type these in the chat box. Commands that change things are carried out by the host's browser for everyone; a guest's command works just the same.
