@@ -975,6 +975,9 @@ function seeded(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) 
 
 // posterFiles: the poster list from posters.json (or the defaults). posterSeed: this room's shuffle.
 let posterFiles = DEFAULT_POSTERS.slice(), posterSeed = Math.floor(Math.random() * 1e9);
+// The shuffle this session started with ("/admin reset posters" goes back to it): the room code's
+// shuffle in a room, or the first random one when watching solo.
+let originalPosterSeed = 0;
 // Downloaded poster images, by file name, so each is fetched only once.
 const posterImgs = new Map();
 // Every poster that can be shown, numbered from 0 in list order ("image 1" to players).
@@ -999,25 +1002,24 @@ function drawPosterWaiting(x, missing) {
 let posterShown = [], posterGen = 0;
 // Poster frames set by hand with "/admin set poster": frame number (0-5) -> poster image number (0-based).
 let posterOverrides = {};
-// Pick an image for each of the six frames and draw it. Admin choices come first; the other frames
-// take the next shuffled images that aren't already on a wall. Each frame shows a "Coming soon"
-// card until its image has downloaded.
-function paintPosters(seed) {
-  posterSeed = seed >>> 0;
-  const gen = ++posterGen;
-  const R = seeded(posterSeed), pool = posterPool(), idx = pool.map((_, i) => i);
+// Work out which image goes in each frame for a given shuffle seed and admin choices, without
+// drawing anything. Returns one pool number per frame (-1 if there are no images at all).
+// Used to paint the wall, and by admin commands to say what a reset will bring back.
+function posterPicks(seed, overrides) {
+  const R = seeded(seed >>> 0), pool = posterPool(), idx = pool.map((_, i) => i);
   for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
   // Each frame's normal pick is the shuffled list in order (frame 1 gets the 1st image, and so on).
   // Admin choices replace just their own frame. If an admin's image is also some other frame's
   // normal pick, only that other frame changes, to the next spare image, so nothing shows twice
   // and the rest of the wall stays put.
   const frames = posterSlots.length;
-  const chosen = new Set(Object.values(posterOverrides).filter((v) => pool[v]));
+  const chosen = new Set(Object.values(overrides).filter((v) => pool[v]));
   const base = idx.slice(0, frames);
   const used = new Set([...chosen, ...base]);
   let spare = frames;                                   // where to look for spare images in the shuffle
-  posterSlots.forEach((tex, k) => {
-    const ov = posterOverrides[k];
+  const picks = [];
+  for (let k = 0; k < frames; k++) {
+    const ov = overrides[k];
     let pick;
     if (ov != null && pool[ov]) pick = ov;              // set by an admin
     else if (k < base.length && !chosen.has(base[k])) pick = base[k]; // its normal pick
@@ -1026,7 +1028,18 @@ function paintPosters(seed) {
       pick = spare < idx.length ? idx[spare++] : idx.length ? idx[k % idx.length] : -1; // repeats only with fewer images than frames
       if (pick >= 0) used.add(pick);
     }
-    posterShown[k] = pick;
+    picks.push(pick);
+  }
+  return picks;
+}
+// Paint the six frames: work out the picks, then draw each frame's image. A frame shows a
+// "Coming soon" card until its image has downloaded.
+function paintPosters(seed) {
+  posterSeed = seed >>> 0;
+  const gen = ++posterGen, pool = posterPool();
+  posterShown = posterPicks(posterSeed, posterOverrides);
+  posterSlots.forEach((tex, k) => {
+    const pick = posterShown[k];
     const c = tex.image, x = c.getContext("2d"), item = pool[pick];
     if (!item) { drawPosterWaiting(x, true); tex.needsUpdate = true; return; }
     // Draw it now if we already have it; otherwise show "Coming soon" and draw it when it arrives.
@@ -2260,7 +2273,7 @@ function readNick() { myNick = clean($("nick").value, 24).trim(); store.set("gm.
 // Connected! Show the room code, start listening, paint this room's posters, enter the theater.
 async function goLive(net, code, peerObj, isHost, hostId) {
   room = net; roomCode = code; p2p = { peer: peerObj, isHost, hostId };
-  paintPosters(hashStr(code));
+  originalPosterSeed = hashStr(code); paintPosters(originalPosterSeed);
   $("roomCode").textContent = code; $("roomline").hidden = false;
   try { history.replaceState(null, "", "#" + code); } catch {}
   room.onPeers(onPeers);
@@ -2363,7 +2376,7 @@ SHEETS.forEach((s, i) => {
 });
 // entered = you've left the welcome screen and can move around.
 let entered = false;
-function enterTheater() { if (entered) return; if (posterGen === 0) paintPosters(posterSeed); $("lobby").hidden = true; entered = true; toast("Drag to look around. Load a movie when you're ready."); }
+function enterTheater() { if (entered) return; if (posterGen === 0) { originalPosterSeed = posterSeed; paintPosters(posterSeed); } $("lobby").hidden = true; entered = true; toast("Drag to look around. Load a movie when you're ready."); }
 $("enter").addEventListener("click", () => host(0));
 
 /* =====================================================================
@@ -2914,10 +2927,12 @@ function runAdmin(raw) {
 // Turn the typed words into a command object, or { error } if it isn't one we know.
 function parseAdmin(text) {
   const low = text.toLowerCase(); let m;
-  if ((m = low.match(/^set poster (\d+) to (?:image |poster )?(\d+)$/))) return { a: "setposter", slot: +m[1], img: +m[2] };
-  if ((m = low.match(/^reset poster (\d+)$/))) return { a: "resetposter", slot: +m[1] };
-  if (/^reset posters$/.test(low)) return { a: "resetposters" };
-  if (/^shuffle posters$/.test(low)) return { a: "shuffle" };
+  // Posters. Several natural wordings are accepted, e.g. "set poster 2 to image 3", "set frame 2 to 3",
+  // "reset poster 2", "reset frame 2", "reset posters", "reset all posters", "reset the posters".
+  if ((m = low.match(/^set (?:poster|frame|poster frame) #?(\d+) (?:to )?(?:image |poster |picture )?#?(\d+)$/))) return { a: "setposter", slot: +m[1], img: +m[2] };
+  if ((m = low.match(/^reset (?:the )?(?:poster|posters|frame|poster frame) #?(\d+)$/))) return { a: "resetposter", slot: +m[1] };
+  if (/^reset (?:all )?(?:the )?(?:posters?|poster frames|frames)$/.test(low)) return { a: "resetposters" };
+  if (/^(?:shuffle|randomi[sz]e|mix up) (?:the )?posters$/.test(low)) return { a: "shuffle" };
   if (/^(reset|stop) (the )?(movie|projector|screen)$/.test(low)) return { a: "resetmovie" };
   if (/^pause( the)?( movie)?$/.test(low)) return { a: "pause" };
   if (/^clear (the |all )?food$/.test(low)) return { a: "clearfood" };
@@ -2942,13 +2957,20 @@ function execAdmin(from, text) {
       if (c.img < 1 || c.img > pool.length) return fail("Poster images are numbered 1 to " + pool.length + ". Type /admin list posters to see them.");
       posterOverrides[c.slot - 1] = c.img - 1;
       return sendPosters(posterSeed, who + " put “" + poolTitle(pool[c.img - 1]) + "” in poster frame " + c.slot + ".");
-    case "resetposter":
+    case "resetposter": {
       if (c.slot < 1 || c.slot > frames) return fail("Poster frames are numbered 1 to " + frames + ".");
+      if (posterOverrides[c.slot - 1] == null) return fail("Poster frame " + c.slot + " hasn't been changed with /admin, so it's already showing its normal poster (" + poolTitle(pool[posterShown[c.slot - 1]]) + ").");
       delete posterOverrides[c.slot - 1];
-      return sendPosters(posterSeed, who + " reset poster frame " + c.slot + ".");
-    case "resetposters":
+      const back = posterPicks(posterSeed, posterOverrides)[c.slot - 1];
+      return sendPosters(posterSeed, who + " reset poster frame " + c.slot + ". It's showing \u201c" + poolTitle(pool[back]) + "\u201d again.");
+    }
+    case "resetposters": {
+      // "Original" = this room's own shuffle (from the room code) with no admin changes.
+      const original = originalPosterSeed || posterSeed;
+      if (!Object.keys(posterOverrides).length && posterSeed === original) return fail("The posters are already the originals for this room. To change them, try /admin shuffle posters or /admin set poster 2 to image 3.");
       posterOverrides = {};
-      return sendPosters(roomCode ? hashStr(roomCode) : Math.floor(Math.random() * 1e9), who + " put the original posters back.");
+      return sendPosters(original, who + " put the original posters back.");
+    }
     case "shuffle":
       posterOverrides = {};
       return sendPosters(Math.floor(Math.random() * 1e9), who + " shuffled the posters.");
