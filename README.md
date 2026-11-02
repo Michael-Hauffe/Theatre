@@ -32,6 +32,9 @@ If a later change breaks something, the v1.0 code can be restored from that bran
 - **Show Shortcuts** button that shows the shortcut list only while held.
 - **Debug screen**: hold the ` key (top left of the keyboard) to see live details on the room, the projector, picture and sound, your snacks and performance. Press **P** to copy it all to the clipboard so you can paste it into a message. The sound status moved from the main screen into the debug screen.
 
+- **Fresh start between showings.** Whenever the projector is freed (Stop movie, Stop sharing, `/admin reset movie`, or the projectionist leaving), every computer discards the old picture and sound connections and sets them up from scratch.
+- **Self-repair.** If a screen share or playing movie shows no picture for 8 seconds, or a playing movie freezes for 8 seconds, that computer reconnects to the projectionist by itself (up to 3 tries in a row, then it shows a notice).
+
 If the picture or sound doesn't reach someone, have them hold ` and press P, then paste what was copied. The "Receiving" section shows whether their computer is connected to the projector and how many frames have arrived.
 
 ## Admin commands

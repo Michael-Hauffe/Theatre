@@ -1348,8 +1348,9 @@ document.addEventListener("click", (e) => { const b = e.target.closest && e.targ
 // Declared up here because many earlier sections read it.
 let proj = { owner: null, nick: "", kind: "", film: "", at: 0, v: 0 }, projPending = null, projRid = 0, sharedSubsPacket = null;
 // The hidden <video> element that plays the movie file (only used by the person who loaded it).
-const video = document.createElement("video");
-video.playsInline = true; video.preload = "auto"; video.crossOrigin = "anonymous"; video.volume = 0.9;
+// It's built by makeFilmVideo() so that after every showing a brand-new one can replace it
+// (see freshStart() in the STREAMING section): an old <video> stays tied to the old audio setup.
+let video = makeFilmVideo();
 // videoTex = the video as a texture for the screen. film = { n: file name, d: length in seconds } or null.
 let videoTex = null, film = null; // film = {n, d}
 // Shared playback state:
@@ -1362,24 +1363,33 @@ const vt = () => pb.pos + (pb.p ? (performance.now() - pb.at) / 1000 : 0);
 // Is change a newer than change b? Higher epoch wins; on a tie, the higher src wins.
 const keyGt = (a, b) => a.e > b.e || (a.e === b.e && a.src > b.src);
 
-// The projectionist's file is ready: size the screen, start streaming, and reset everyone to the start (paused).
-video.addEventListener("loadedmetadata", () => {
-  if (!film) return;
-  film.d = Math.round(video.duration || 0);
-  fitScreen((video.videoWidth || 16) / (video.videoHeight || 9));
-  if (!videoTex) { videoTex = new THREE.VideoTexture(video); videoTex.encoding = THREE.sRGBEncoding; videoTex.minFilter = THREE.LinearFilter; }
-  outStream = null; useScreenSource(); syncCalls(); sharePresence(true);
-  act(false, 0); try { video.currentTime = 0.01; } catch {}
-  toast("Ready. Press Play to start the show for everyone.");
-  updateNotice(); updateProjUI();
-});
-// The file couldn't be played (often .mkv or unusual formats): give the projector back.
-video.addEventListener("error", () => {
-  if (!film) return;
-  toast("That file wouldn't play here. MP4 (H.264) or WebM work best.");
-  unloadFilm(); if (amProj()) requestProj("release");
-});
-video.addEventListener("seeked", () => { if (videoTex) videoTex.needsUpdate = true; });
+// Build a fresh hidden <video> for the projectionist's movie, with its event handlers.
+// Each handler first checks it still belongs to the CURRENT video, so an old one can't interfere.
+function makeFilmVideo() {
+  const v = document.createElement("video");
+  v.playsInline = true; v.preload = "auto"; v.crossOrigin = "anonymous";
+  v.volume = +$("vol").value; // match the volume slider
+  // The projectionist's file is ready: size the screen, start streaming, and reset everyone to the start (paused).
+  v.addEventListener("loadedmetadata", () => {
+    if (v !== video || !film) return;
+    film.d = Math.round(v.duration || 0);
+    fitScreen((v.videoWidth || 16) / (v.videoHeight || 9));
+    if (!videoTex) { videoTex = new THREE.VideoTexture(v); videoTex.encoding = THREE.sRGBEncoding; videoTex.minFilter = THREE.LinearFilter; }
+    outStream = null; useScreenSource(); syncCalls(); sharePresence(true);
+    act(false, 0); try { v.currentTime = 0.01; } catch {}
+    toast("Ready. Press Play to start the show for everyone.");
+    updateNotice(); updateProjUI();
+  });
+  // The file couldn't be played (often .mkv or unusual formats): give the projector back.
+  v.addEventListener("error", () => {
+    if (v !== video || !film) return;
+    toast("That file wouldn't play here. MP4 (H.264) or WebM work best.");
+    unloadFilm(); if (amProj()) requestProj("release");
+  });
+  // After a jump, show the new frame right away.
+  v.addEventListener("seeked", () => { if (v === video && videoTex) videoTex.needsUpdate = true; });
+  return v;
+}
 
 // Make a playback change for everyone: playing or paused (p) at position pos.
 function act(p, pos) {
@@ -1445,6 +1455,8 @@ netHooks.data = (m) => {
   if (!m || typeof m !== "object") return;
   if (m.t === "proj") { applyProj(m.s); return; }
   if (m.t === "throw") { onThrowMsg(m); return; }
+  // Someone's picture from me stalled: hang up their call; syncCalls() calls them again right away.
+  if (m.t === "recall") { if (m.to === myPeerId() && amProj() && typeof m.from === "string") { dropCall(m.from); syncCalls(); } return; }
   if (m.t !== "subs" && m.t !== "suboff") return;
   if (m.from !== proj.owner) return;
   if (amRoomHost()) { if (m.t === "subs") sharedSubsPacket = m; else if (sharedSubsPacket) sharedSubsPacket.off = num(m.off, 0); }
@@ -1689,6 +1701,7 @@ function updateNotice() {
   let msg = "";
   if (blocked || remoteBlocked) msg = "Your browser held the sound back. Tap anywhere to hear the show.";
   else if (amProj() && film && room && streamUnsupported) msg = "This browser can't send movies to friends. Load movies from Chrome or Edge.";
+  else if (repair.gaveUp && projBusy()) msg = "No picture is arriving from " + (proj.nick || "the projector") + ". Ask them to stop and start again, or type /admin reset movie.";
   else if (projBusy() && !remoteOn) msg = proj.kind === "pick" ? busyText() : "Connecting to " + (proj.nick || "the") + (proj.nick ? "'s" : "") + " projector…";
   el.textContent = msg; el.hidden = !msg;
   const showing = (amProj() && (film || sharing)) || (!amProj() && remoteOn);
@@ -1709,9 +1722,16 @@ let p2p = null, outStream = null, streamUnsupported = false, remoteDur = 0;
 const calls = new Map();
 // Receivers: the incoming picture plays (muted) in this tiny, almost invisible <video>.
 // It has to be on the page, or some browsers refuse to play it.
-const rVideo = document.createElement("video"); rVideo.playsInline = true; rVideo.autoplay = true; rVideo.volume = 0.9;
-rVideo.setAttribute("aria-hidden", "true"); rVideo.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;";
-document.body.appendChild(rVideo);
+// Built by makeRemoteVideo() so freshStart() can swap in a brand-new one.
+let rVideo = makeRemoteVideo();
+function makeRemoteVideo() {
+  const v = document.createElement("video"); v.playsInline = true; v.autoplay = true; v.muted = true;
+  v.setAttribute("aria-hidden", "true"); v.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;";
+  // When the incoming picture's size becomes known (or changes), reshape the theater screen to match.
+  v.addEventListener("resize", () => { if (v === rVideo && !film && remoteOn && v.videoWidth) fitScreen(v.videoWidth / v.videoHeight); });
+  document.body.appendChild(v);
+  return v;
+}
 // remoteOn = we're receiving a picture. remoteBlocked = the browser blocked its sound until a tap.
 let remoteTex = null, remoteOn = false, remoteBlocked = false, currentCall = null;
 // Capture the movie <video> as a live stream that can be sent to friends.
@@ -1845,8 +1865,13 @@ setInterval(syncCalls, 2000);
 // Guests: picture plays muted in rVideo; sound plays in its own <audio> element so neither can stall the other.
 // Receivers: the incoming sound plays in its own <audio> element, separate from the picture,
 // so a stall in one can't silence the other.
-const rAudio = document.createElement("audio"); rAudio.autoplay = true; rAudio.volume = 0.9;
-rAudio.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none;"; document.body.appendChild(rAudio);
+// Built by makeRemoteAudio() so freshStart() can swap in a brand-new one.
+let rAudio = makeRemoteAudio();
+function makeRemoteAudio() {
+  const a = document.createElement("audio"); a.autoplay = true; a.volume = +$("vol").value; // match the volume slider
+  a.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none;"; document.body.appendChild(a);
+  return a;
+}
 // A silent "level meter" on the incoming sound lets the debug screen say whether sound is actually arriving.
 let remoteStream = null, gctx = null, gAnalyser = null, gSrcTrack = null, lastHeard = 0, levelBuf = null;
 // Connect the incoming sound track to the speaker element and the level meter.
@@ -1904,7 +1929,6 @@ $("sound").addEventListener("click", () => {
   else if (t === "No sound in stream") toast("No sound is reaching you from the projector. Ask " + (proj.nick || "them") + " to stop and load the movie again.");
   else if (t === "Sound silent") toast("Sound is connected but quiet. Check your device volume, or a quiet scene.");
 });
-rVideo.addEventListener("resize", () => { if (!film && remoteOn && rVideo.videoWidth) fitScreen(rVideo.videoWidth / rVideo.videoHeight); });
 // Choose what the theater screen shows: my screen share, my movie, the stream I'm receiving,
 // or the placeholder. Also enables Play/seek only while a movie (not a screen share) is on.
 function useScreenSource() {
@@ -1991,6 +2015,8 @@ const throwClock = new Map();
 netHooks.allowFwd = (m) => {
   if (m.t === "subs" || m.t === "suboff") return m.from === proj.owner;
   if (m.t === "throw") { const last = throwClock.get(m.from) || 0, now = performance.now(); if (now - last < 150) return false; throwClock.set(m.from, now); return true; }
+  // Reconnect requests: at most one per second per person.
+  if (m.t === "recall") { const key = "recall:" + m.from, last = throwClock.get(key) || 0, now = performance.now(); if (now - last < 1000) return false; throwClock.set(key, now); return true; }
   return false;
 };
 // When someone joins, the host tells them who has the projector and sends the current subtitles.
@@ -2018,6 +2044,8 @@ function applyProj(s) {
     if (!ownSubs) clearSubs();
     if (amRoomHost()) sharedSubsPacket = null;
   }
+  // The projector was freed: everyone gets a fresh start for pictures and sound (see freshStart).
+  if (prev.owner && !proj.owner) freshStart();
   hostSharing = proj.kind === "screen" && proj.owner !== mine;
   // Stop showing a picture from someone who no longer runs the projector (their call is left alone;
   // they hang it up themselves when they stop)…
@@ -2162,6 +2190,80 @@ function endRemote() {
   useScreenSource(); updateNotice(); updateSound();
 }
 
+// ---- Fresh start between showings ----
+// Runs on EVERY computer whenever the projector is freed (Stop movie, Stop sharing,
+// /admin reset movie, or the projectionist leaving). It hangs up every picture call and throws
+// away all the video and audio pieces from the last showing (the hidden <video>/<audio>
+// elements, their screen textures and both audio setups), then builds new ones, as if the
+// room had just been created. Nothing left over from one showing can spoil the next.
+let mediaResets = 0; // how many fresh starts this page has done (shown on the debug screen)
+function freshStart() {
+  mediaResets++;
+  // -- the sending side (in case this computer was the projectionist) --
+  for (const id of [...calls.keys()]) dropCall(id);
+  const oldSrc = video.getAttribute("src");
+  try { video.pause(); } catch {}
+  video.removeAttribute("src"); try { video.load(); } catch {}
+  if (oldSrc && oldSrc.startsWith("blob:")) URL.revokeObjectURL(oldSrc);
+  video = makeFilmVideo();
+  if (videoTex) { try { videoTex.dispose(); } catch {} videoTex = null; }
+  outStream = null; streamUnsupported = false; blocked = false;
+  if (actx) { try { actx.close(); } catch {} }
+  actx = null; mediaSrc = null; hostGain = null; streamDest = null;
+  // -- the receiving side --
+  for (const [, ic] of inCalls) { try { ic.call.close(); } catch {} }
+  inCalls.clear(); currentCall = null;
+  remoteOn = false; remoteStream = null; remoteBlocked = false;
+  try { rVideo.srcObject = null; rVideo.remove(); } catch {}
+  rVideo = makeRemoteVideo();
+  try { rAudio.srcObject = null; rAudio.remove(); } catch {}
+  rAudio = makeRemoteAudio();
+  if (remoteTex) { try { remoteTex.dispose(); } catch {} remoteTex = null; }
+  if (gctx) { try { gctx.close(); } catch {} }
+  gctx = null; gAnalyser = null; gSrcTrack = null; levelBuf = null; lastHeard = 0;
+  resetRepair();
+  useScreenSource(); updateNotice(); updateSound();
+}
+
+// ---- Self-repair for a black or frozen screen ----
+// Every 2 seconds, a watcher checks the picture it's showing from the projectionist:
+//   - a screen share, or a playing movie, that hasn't delivered a single frame for 8 seconds, or
+//   - a playing movie whose frames stopped arriving for 8 seconds.
+// Then it hangs up that call and asks the projectionist (via a "recall" message) to call again.
+// After 3 tries in a row without success it stops and shows a notice instead of looping forever.
+const repair = { peer: null, since: 0, frames: -1, changedAt: 0, expectSince: 0, tries: 0, gaveUp: false };
+function resetRepair() { Object.assign(repair, { peer: null, since: 0, frames: -1, changedAt: 0, expectSince: 0, tries: 0, gaveUp: false }); }
+setInterval(() => {
+  const now = performance.now();
+  if (!currentCall || !remoteOn || amProj() || currentCall.peer !== proj.owner) { repair.since = 0; repair.expectSince = 0; return; }
+  // A different projectionist than last time: start counting from scratch.
+  if (repair.peer !== currentCall.peer) { resetRepair(); repair.peer = currentCall.peer; }
+  const q = rVideo.getVideoPlaybackQuality ? rVideo.getVideoPlaybackQuality().totalVideoFrames : 0; // frames shown so far
+  if (!repair.since) { repair.since = now; repair.frames = q; repair.changedAt = now; }
+  if (q !== repair.frames) { repair.frames = q; repair.changedAt = now; if (q > 0 && repair.tries) { repair.tries = 0; repair.gaveUp = false; updateNotice(); } }
+  // Only expect frames during a screen share or while the movie is playing (a paused movie sends none).
+  const expect = proj.kind === "screen" || (proj.kind === "movie" && pb.p);
+  if (!expect) { repair.expectSince = 0; return; }
+  if (!repair.expectSince) repair.expectSince = now;
+  const never = q === 0 && now - Math.max(repair.since, repair.expectSince) > 8000;
+  const frozen = q > 0 && proj.kind === "movie" && pb.p && now - Math.max(repair.changedAt, repair.expectSince) > 8000;
+  if (!(never || frozen) || repair.gaveUp) return;
+  if (repair.tries >= 3) { repair.gaveUp = true; updateNotice(); return; }
+  repair.tries++;
+  askForRecall();
+}, 2000);
+// Hang up the stalled picture and ask the projectionist to call again (they do within 2 seconds).
+let repairsTotal = 0; // every reconnect this page has asked for (debug screen)
+function askForRecall() {
+  repairsTotal++;
+  const peer = currentCall.peer, ic = inCalls.get(peer);
+  if (ic) { inCalls.delete(peer); try { ic.call.close(); } catch {} }
+  currentCall = null; endRemote();
+  repair.since = 0; repair.expectSince = 0;
+  if (room && room.toAll) room.toAll({ t: "recall", to: peer });
+  toast("The picture stalled. Reconnecting to " + (proj.nick || "the projector") + "…");
+}
+
 updateProjUI();
 
 /* =====================================================================
@@ -2180,7 +2282,7 @@ updateProjUI();
 const PREFIX = "ghostmatinee-v1-";
 let myNick = clean(store.get("gm.nick", ""), 24);
 // Message types a guest may ask the host to pass on to everyone.
-const RELAYED = ["subs", "suboff", "throw"];
+const RELAYED = ["subs", "suboff", "throw", "recall"];
 // Build the room connection. Returns an object with the same functions everywhere in the game:
 // presence(), onPeers(), peers(), join() (a second named channel), toAll() (send to everyone), toHost().
 function makeNet(peerObj, isHost, hostConn, onDown) {
@@ -2230,7 +2332,7 @@ function makeNet(peerObj, isHost, hostConn, onDown) {
       if (!m) return;
       if (m.t === "snap" && Array.isArray(m.d)) m.d.slice(0, 600).forEach((x) => Array.isArray(x) && apply(x[0], x[1], x[2]));
       if (m.t === "p") apply(m.ch, m.peer, m.presence);
-      if (["proj", "subs", "suboff", "throw", "admin"].includes(m.t) && netHooks.data) netHooks.data(m);
+      if (["proj", "subs", "suboff", "throw", "admin", "recall"].includes(m.t) && netHooks.data) netHooks.data(m);
     });
     hostConn.on("close", onDown); hostConn.on("error", onDown);
   }
@@ -2758,7 +2860,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v1.3 · 2026-11-01";
+const BUILD = "v1.4 · 2026-11-01";
 // Collect everything worth knowing, grouped into sections of [label, value] rows.
 function dbgRows() {
   const pc = currentCall && currentCall.peerConnection;
@@ -2800,6 +2902,8 @@ function dbgRows() {
       ["Showing call from", currentCall ? whoIs(currentCall.peer) : "nobody"],
       ["Picture", remoteOn ? "on, " + rVideo.videoWidth + "×" + rVideo.videoHeight + ", ready " + rVideo.readyState : "off"],
       ["Frames received", rVideo.getVideoPlaybackQuality ? String(rVideo.getVideoPlaybackQuality().totalVideoFrames) : "?"],
+      ["Self-repair", (repair.gaveUp ? "gave up after 3 reconnects" : repair.tries ? "trying: " + repair.tries + " reconnect(s) in a row" : "picture OK") + " · " + repairsTotal + " reconnect(s) in total"],
+      ["Fresh starts", String(mediaResets) + " (one each time the projector is freed)"],
       ["Connection", pc ? pc.iceConnectionState + " / " + pc.connectionState : "–"],
       ["Sound", soundState + (remoteOn ? " · tracks " + vTracks(remoteStream) : "")],
       ["Speaker", rAudio.srcObject ? (rAudio.paused ? "paused" : "playing") + (rAudio.muted ? ", muted" : "") + ", volume " + Math.round(rAudio.volume * 100) + "%" : "–"],
