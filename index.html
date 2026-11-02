@@ -246,6 +246,13 @@ input[type=range] { accent-color: var(--brass); }
 #announceText { font-family: var(--display); font-weight: 400; font-size: clamp(22px, 5vw, 34px); color: var(--brass); line-height: 1.15; overflow-wrap: anywhere; }
 #announceBy { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--smoke); }
 
+/* "A newer version is available" bar across the top, with a Refresh button. Shown even in Hide HUD mode. */
+#updateBar { position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 10;
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 32px);
+  background: rgba(30, 12, 8, 0.95); border: 1px solid var(--brass); border-radius: 6px; padding: 8px 10px 8px 14px; font-size: 13px; color: var(--bone);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+#updateBar button { padding: 6px 10px; }
+
 /* Hide-HUD mode: only a small, faint button stays */
 body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.nohud #toast { display: none !important; }
 #showHud { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); z-index: 6; opacity: 0.35; padding: 6px 10px; font-size: 12px; }
@@ -356,6 +363,8 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
 <div id="updown"><button id="up" type="button">Rise</button><button id="down" type="button">Sink</button></div>
 <!-- Pop-up message, charge meter and the two hold-to-show sheets. -->
 <div id="toast" hidden></div>
+<!-- Appears when this page is an older version than the one on the website (see "STAYING UP TO DATE" in the script). -->
+<div id="updateBar" hidden role="status"><span id="updateText">A newer version of Ghost Matinee is available.</span><button type="button" class="btn primary" id="updateBtn">Refresh</button><button type="button" id="updateLater" aria-label="Dismiss">Later</button></div>
 <div id="charge" hidden aria-hidden="true"><div class="track"><div id="chargeFill"></div><span class="tick" style="left:33.3%"></span><span class="tick" style="left:99.5%"></span></div><span id="chargeLabel">Soft</span></div>
 <div id="debugSheet" hidden role="note" aria-label="Debug screen"><h2>Debug screen</h2><div id="dbgBody"></div></div>
 <!-- Shortcut sheet. If you add a keyboard shortcut in the script, add it here too. -->
@@ -1622,7 +1631,7 @@ function sharePresence(force) {
   if (!room) return;
   const g = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), r: +me.yaw.toFixed(3), c: myColor };
   const patch = { g };
-  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; }
+  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; }
   room.presence(patch).catch(() => {});
 }
 // Send the shared playback state on its own channel.
@@ -1666,6 +1675,10 @@ function nameFor(pe) {
 
 // Someone joined, left or changed: create/move/remove their ghosts, update what they hold and say.
 function onPeers(ch) {
+  // If the host runs a different version of the game than this page, offer a refresh.
+  const hostPe = p2p && !p2p.isHost ? ch.peers.find((pe) => pe.peer === p2p.hostId) : null;
+  const hostVer = hostPe && hostPe.presence && typeof hostPe.presence.ver === "string" ? clean(hostPe.presence.ver, 60) : "";
+  if (hostVer && hostVer !== BUILD) showUpdateBar("The host is running a different version of the game (" + hostVer + "). Refresh to get the latest.");
   peersSnap = ch.peers;
   const seen = new Set();
   for (const pe of ch.peers) {
@@ -2881,7 +2894,39 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.1 · 2026-11-01";
+const BUILD = "v2.2 · 2026-11-01";
+
+/* ---------------- STAYING UP TO DATE ----------------
+   GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
+   an update some people can still be running the old version (for example, missing new buttons).
+   So, shortly after the page opens and then every 5 minutes, it fetches the page from the website
+   again, bypassing the saved copy, and reads the BUILD label in it. If that differs from this
+   page's own BUILD, a bar offers a Refresh. (This is why BUILD must change with every update.) */
+let latestBuild = "", latestCheckedAt = 0, updateDismissed = false;
+// Look for the BUILD label in the downloaded page. The pattern is assembled from two pieces so this
+// line itself can never be mistaken for the label.
+const BUILD_PATTERN = new RegExp("const " + "BUILD = \"([^\"]+)\"");
+function checkForUpdate() {
+  fetch("index.html?check=" + Date.now(), { cache: "no-store" })
+    .then((r) => (r.ok ? r.text() : ""))
+    .then((t) => {
+      const m = t.match(BUILD_PATTERN); if (!m) return;
+      latestBuild = m[1]; latestCheckedAt = Date.now();
+      if (latestBuild !== BUILD) showUpdateBar("A newer version of Ghost Matinee is available (" + clean(latestBuild, 60) + ").");
+    })
+    .catch(() => {}); // offline, or opened from a computer's disk: just skip the check
+}
+setTimeout(checkForUpdate, 1500);
+setInterval(checkForUpdate, 5 * 60 * 1000);
+// Show the update bar (unless the player already chose "Later" this session).
+function showUpdateBar(text) {
+  if (updateDismissed) return;
+  $("updateText").textContent = text;
+  $("updateBar").hidden = false;
+}
+// Refresh loads the latest page (a normal reload asks the website whether the saved copy is still current).
+$("updateBtn").addEventListener("click", () => location.reload());
+$("updateLater").addEventListener("click", () => { updateDismissed = true; $("updateBar").hidden = true; });
 // Collect everything worth knowing, grouped into sections of [label, value] rows.
 function dbgRows() {
   const pc = currentCall && currentCall.peerConnection;
@@ -2893,6 +2938,8 @@ function dbgRows() {
   return [
     ["Room", [
       ["Build", BUILD],
+      ["Latest on website", latestBuild ? latestBuild + (latestBuild === BUILD ? " (up to date)" : " (refresh to update)") + ", checked " + new Date(latestCheckedAt).toLocaleTimeString() : "not checked yet"],
+      ["Host's version", (() => { const h = p2p && !p2p.isHost ? peersSnap.find((pe) => pe.peer === p2p.hostId) : null; return h && h.presence && h.presence.ver ? clean(h.presence.ver, 60) : (amRoomHost() ? "you are the host" : "–"); })()],
       ["Mode", !room ? "solo" : amRoomHost() ? "host" : "guest"],
       ["Room code", roomCode || "–"],
       ["My id", myPeerId().slice(-8)],

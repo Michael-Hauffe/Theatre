@@ -15,7 +15,10 @@
    react, `applyAdmin()`. Also add them to the table in README.md.
 4. **Keep the debug screen useful.** When you add a feature with state worth checking,
    add a row for it in `dbgRows()`.
-5. **Never change the `-working` branches.** `v1.0-working` and `v2.0-working` hold versions
+5. **Change `BUILD` with every update pushed to `main`** (the `const BUILD` line in the script,
+   e.g. "v2.2 · date" -> "v2.3 · date"). Players' pages compare it with the website to offer a
+   Refresh when they're running an old saved copy; if it doesn't change, nobody gets told.
+6. **Never change the `-working` branches.** `v1.0-working` and `v2.0-working` hold versions
    the owner confirmed working (both on November 1, 2026). New work goes on `main`. When the
    owner confirms a new version, save it as a new `vX.Y-working` branch and list it in README.md.
 
