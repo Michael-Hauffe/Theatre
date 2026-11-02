@@ -10,9 +10,12 @@
    - When you change code, update the comments next to it in the same edit.
 2. **Keep the shortcut sheet in sync.** If you add or change a keyboard shortcut in the
    script, update the `#keySheet` list in the HTML too.
-3. **Keep the debug screen useful.** When you add a feature with state worth checking,
+3. **Keep the admin command list in sync.** New `/admin` commands go in `ADMIN_HELP`
+   (what `/admin show commands` shows), `parseAdmin()`, `execAdmin()` and, if everyone must
+   react, `applyAdmin()`. Also add them to the table in README.md.
+4. **Keep the debug screen useful.** When you add a feature with state worth checking,
    add a row for it in `dbgRows()`.
-4. **Don't break `v1.0-working`.** That branch holds the version confirmed working on
+5. **Don't break `v1.0-working`.** That branch holds the version confirmed working on
    November 1, 2026. New work goes on `main`.
 
 ## How the project is laid out

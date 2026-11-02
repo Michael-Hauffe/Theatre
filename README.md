@@ -34,6 +34,28 @@ If a later change breaks something, the v1.0 code can be restored from that bran
 
 If the picture or sound doesn't reach someone, have them hold ` and press P, then paste what was copied. The "Receiving" section shows whether their computer is connected to the projector and how many frames have arrived.
 
+## Admin commands
+
+Anyone in the room can type these in the chat box. Commands that change things are carried out by the host's browser for everyone; a guest's command works just the same.
+
+| Type this | What it does |
+|---|---|
+| `/admin show commands` | Shows this list on your screen |
+| `/admin list posters` | Numbers of the six poster frames (also on brass plaques under each frame) and of every poster image |
+| `/admin set poster 2 to image 3` | Puts image 3 in frame 2, for everyone |
+| `/admin reset poster 2` | Frame 2 goes back to its random pick |
+| `/admin shuffle posters` | A new random set of posters |
+| `/admin reset posters` | Back to the room's original posters |
+| `/admin reset movie` | Stops the movie or screen share; Load movie works again for everyone |
+| `/admin pause` | Pauses the movie for everyone |
+| `/admin clear food` | Removes all thrown food |
+| `/admin announce Showtime!` | A big message across everyone's screen |
+| `/admin mortimer Welcome, folks!` | Mortimer says it |
+| `/admin list people` | Who's in the room |
+| `/admin kick Ben` | Removes someone (they can rejoin with the code). The host can't be kicked |
+| `/admin summon` | Brings everyone to where you are |
+| `/admin give everyone 20` | Gives everyone 1 to 100 Ghost Bucks |
+
 ## Adding your own lobby posters
 
 1. Put your poster images in the [`posters`](posters) folder. JPG, PNG, WebP or GIF all work. Portrait images shaped like a movie poster (2:3, for example 600×900 pixels) look best; other shapes get their edges trimmed to fit the frame.

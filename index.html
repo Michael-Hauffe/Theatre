@@ -224,6 +224,26 @@ input[type=range] { accent-color: var(--brass); }
 .menu-card footer { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 20px 18px; border-top: 1px solid var(--line); align-items: center; }
 .menu-card footer p { margin: 0; color: var(--smoke); font-size: 12px; }
 /* body.nohud is set by the Hide HUD button (or H). */
+/* ---- Admin commands ----
+   The admin panel (lists for /admin show commands, list posters, list people). Unlike the
+   shortcut sheet it can be clicked (to close it) and scrolls if the list is long. */
+#adminSheet { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; cursor: pointer;
+  width: min(720px, calc(100% - 32px)); max-height: calc(100% - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow-y: auto;
+  background: rgba(14, 6, 8, 0.86); border: 1px solid var(--line); border-radius: 6px; padding: 16px 20px 14px;
+  backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 24px 70px rgba(0,0,0,0.55); }
+#adminSheet h2 { font-family: var(--display); font-weight: 400; font-size: 22px; color: var(--brass); margin: 0 0 10px; }
+#adminBody { margin: 0; display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 6px 16px; align-items: baseline; }
+#adminBody dt { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; color: var(--brass); overflow-wrap: anywhere; }
+#adminBody dd { margin: 0; font-size: 13px; color: var(--bone); }
+#adminSheet .adminHint { margin: 12px 0 0; font-size: 11px; color: var(--smoke); }
+@media (max-width: 560px) { #adminBody { grid-template-columns: 1fr; gap: 1px; } #adminBody dd { margin-bottom: 6px; } }
+/* "/admin announce": a big message across the top of everyone's screen. */
+#announce { position: fixed; left: 50%; top: calc(15% + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 9; pointer-events: none;
+  width: max-content; max-width: calc(100% - 32px); text-align: center; background: rgba(14, 6, 8, 0.88); border: 1px solid var(--brass);
+  border-radius: 6px; padding: 14px 24px 12px; box-shadow: 0 0 40px rgba(216,165,78,0.25); display: grid; gap: 4px; }
+#announceText { font-family: var(--display); font-weight: 400; font-size: clamp(22px, 5vw, 34px); color: var(--brass); line-height: 1.15; overflow-wrap: anywhere; }
+#announceBy { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--smoke); }
+
 /* Hide-HUD mode: only a small, faint button stays */
 body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.nohud #toast { display: none !important; }
 #showHud { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); z-index: 6; opacity: 0.35; padding: 6px 10px; font-size: 12px; }
@@ -314,10 +334,11 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
       <button id="keysBtn" type="button" aria-pressed="false" aria-controls="keySheet" title="Hold to see every shortcut">Show Shortcuts</button>
       <button id="hudBtn" type="button" title="Hide all controls and labels (H)">Hide HUD</button>
     </div>
-    <!-- Chat: what you type appears as a speech bubble over your ghost. -->
+    <!-- Chat: what you type appears as a speech bubble over your ghost.
+         Lines starting with /admin are admin commands instead (see ADMIN COMMANDS in the script). -->
     <div class="bar">
       <form id="chat" autocomplete="off">
-        <input id="say" maxlength="80" placeholder="Whisper to the room…" aria-label="Message">
+        <input id="say" maxlength="200" placeholder="Whisper to the room…" aria-label="Message">
         <button type="submit">Say</button>
         <button type="button" id="boo">Boo!</button>
       </form>
@@ -374,6 +395,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
           <dt><kbd>Enter</kbd></dt><dd>Type a message</dd>
           <dt><kbd>Esc</kbd></dt><dd>Leave the message box</dd>
           <dt><kbd>B</kbd></dt><dd>Boo!</dd>
+          <dt><span class="act">/admin…</span></dt><dd>Admin commands. Type /admin show commands</dd>
         </dl>
       </section>
       <section>
@@ -391,6 +413,9 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
   </div>
 </div>
 <!-- The only thing left on screen in Hide HUD mode. -->
+<!-- Admin panel and the big announcement banner (both filled in by the ADMIN COMMANDS section). -->
+<div id="adminSheet" hidden role="dialog" aria-labelledby="adminTitle"><h2 id="adminTitle">Admin commands</h2><dl id="adminBody"></dl><p class="adminHint">Click here or press Esc to close. Closes by itself after 30 seconds.</p></div>
+<div id="announce" hidden role="status" aria-live="polite"><b id="announceText"></b><span id="announceBy"></span></div>
 <button id="showHud" type="button" hidden title="Bring the controls back (H)">Show HUD</button>
 <!-- Concession menu. The rows are built by renderShop() from the MENU list in the script. -->
 <div id="shop" hidden role="dialog" aria-label="Concession stand">
@@ -799,7 +824,15 @@ const MENU_BY_ID = Object.fromEntries(MENU.map((m) => [m.id, m]));
       const frame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.3, 0.06), brass0()); frame.position.set(a, 2.6, LOBBY.z0 + 0.33); scene.add(frame);
       pm.position.set(a, 2.6, LOBBY.z0 + 0.37);
     }
-    scene.add(pm); posterSlots.push(tex);
+    scene.add(pm);
+    // A small brass plaque under each frame with its number, for "/admin set poster N to image M".
+    const num1 = posterSlots.length + 1;
+    const plaqueTex = canvasTex(64, 40, (x, w, h) => { x.fillStyle = "#d8a54e"; x.fillRect(0, 0, w, h); x.fillStyle = "#2a1606"; x.font = "bold 28px Karla, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(String(num1), w / 2, h / 2 + 1); });
+    const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.14), new THREE.MeshBasicMaterial({ map: plaqueTex }));
+    if (sx) { plaque.rotation.y = -sx * Math.PI / 2; plaque.position.set(sx * (ROOM.x - 0.08), 1.32, a); }
+    else plaque.position.set(a, 1.32, LOBBY.z0 + 0.37);
+    scene.add(plaque);
+    posterSlots.push(tex);
   }
   // benches
   for (const [x, z] of [[-9.6, 27.5], [9.6, 27.5]]) {
@@ -1159,15 +1192,34 @@ function drawCoverImage(x, img) {
 }
 // Shuffle the pool with the seed and paint the first six into the poster frames.
 // Your images load in the background; until one has loaded, a built-in poster stands in.
+// posterShown[k] = which pool image frame k is showing (for "/admin list posters" and the debug screen).
+// posterGen goes up on every repaint so a slow-loading image can't land in a frame that has since changed.
+let posterShown = [], posterGen = 0;
+// Poster frames set by hand with "/admin set poster": frame number (0-5) -> poster image number (0-based).
+let posterOverrides = {};
 function paintPosters(seed) {
   posterSeed = seed >>> 0;
+  const gen = ++posterGen;
   const R = seeded(posterSeed), pool = posterPool(), idx = pool.map((_, i) => i);
   for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+  // Images an admin put in a frame aren't also picked for another frame (no duplicates).
+  const used = new Set(Object.values(posterOverrides).filter((v) => pool[v]));
+  let next = 0;
   posterSlots.forEach((tex, k) => {
-    const item = pool[idx[k % idx.length]], c = tex.image, x = c.getContext("2d");
+    // An admin-chosen image wins; otherwise the next shuffled image that isn't already on a wall.
+    const ov = posterOverrides[k];
+    let pick;
+    if (ov != null && pool[ov]) pick = ov;
+    else {
+      while (next < idx.length && used.has(idx[next])) next++;
+      pick = next < idx.length ? idx[next++] : idx[k % idx.length]; // (only repeats if there are fewer images than frames)
+      used.add(pick);
+    }
+    posterShown[k] = pick;
+    const item = pool[pick], c = tex.image, x = c.getContext("2d");
     const fallback = () => { x.clearRect(0, 0, c.width, c.height); drawGhostPoster(x, GHOST_POSTERS[(posterSeed + k) % GHOST_POSTERS.length], posterSeed + k * 7919); tex.needsUpdate = true; };
     if (item.kind === "art") { x.clearRect(0, 0, c.width, c.height); drawGhostPoster(x, item.p, posterSeed + k * 7919); tex.needsUpdate = true; return; }
-    const draw = (img) => { if (posterSeed !== (seed >>> 0)) return; drawCoverImage(x, img); tex.needsUpdate = true; };
+    const draw = (img) => { if (gen !== posterGen) return; drawCoverImage(x, img); tex.needsUpdate = true; };
     const cached = posterImgs.get(item.file);
     if (cached && cached.complete && cached.naturalWidth) { draw(cached); return; }
     fallback();
@@ -2336,7 +2388,7 @@ function makeNet(peerObj, isHost, hostConn, onDown) {
       cn.on("data", (m) => {
         if (!m || typeof m !== "object") return;
         if (m.t === "p") { if (typeof m.ch !== "string" || m.ch.length > 24) return; apply(m.ch, cn.peer, m.presence); sendAll({ t: "p", ch: m.ch, peer: cn.peer, presence: m.presence }, cn.peer); return; }
-        if (m.t === "projreq") { if (netHooks.hostReq) netHooks.hostReq(cn.peer, m); return; }
+        if (m.t === "projreq" || m.t === "adminreq") { if (netHooks.hostReq) netHooks.hostReq(cn.peer, m); return; }
         if (m.t === "fwd" && m.m && typeof m.m === "object" && RELAYED.includes(m.m.t)) {
           const inner = Object.assign({}, m.m, { from: cn.peer });
           if (netHooks.allowFwd && !netHooks.allowFwd(inner)) return;
@@ -2352,7 +2404,7 @@ function makeNet(peerObj, isHost, hostConn, onDown) {
       if (!m) return;
       if (m.t === "snap" && Array.isArray(m.d)) m.d.slice(0, 600).forEach((x) => Array.isArray(x) && apply(x[0], x[1], x[2]));
       if (m.t === "p") apply(m.ch, m.peer, m.presence);
-      if (["proj", "subs", "suboff", "throw"].includes(m.t) && netHooks.data) netHooks.data(m);
+      if (["proj", "subs", "suboff", "throw", "admin"].includes(m.t) && netHooks.data) netHooks.data(m);
     });
     hostConn.on("close", onDown); hostConn.on("error", onDown);
   }
@@ -2371,7 +2423,11 @@ function makeNet(peerObj, isHost, hostConn, onDown) {
       onConnection(fn) { Promise.resolve().then(() => fn(true)); return () => {}; },
       join(n) { return Promise.resolve(api(n)); },
       toAll(m) { if (isHost) sendAll(Object.assign({}, m, { from: myPid })); else if (hostConn.open) { try { hostConn.send({ t: "fwd", m }); } catch {} } },
-      toHost(m) { if (isHost) { if (netHooks.hostReq) netHooks.hostReq(myPid, m); } else if (hostConn.open) { try { hostConn.send(m); } catch {} } }
+      toHost(m) { if (isHost) { if (netHooks.hostReq) netHooks.hostReq(myPid, m); } else if (hostConn.open) { try { hostConn.send(m); } catch {} } },
+      // HOST ONLY: send a message to one guest (used for admin replies and the kick notice).
+      sendTo(pid, m) { const cn = isHost && conns.get(pid); if (cn && cn.open) { try { cn.send(Object.assign({}, m, { from: myPid })); } catch {} } },
+      // HOST ONLY: disconnect one guest (/admin kick).
+      drop(pid) { const cn = isHost && conns.get(pid); if (cn) { try { cn.close(); } catch {} } }
     };
   }
   return api("lobby");
@@ -2413,7 +2469,8 @@ function roomDown() {
   updateProjUI(); useScreenSource();
   for (const o of others.values()) { removeGhost(o.gh); o.tag.el.remove(); } others.clear();
   $("roomline").hidden = true; renderCrowd(); updateNotice();
-  toast("The host left, so the room closed. You can keep watching solo.");
+  toast(kickedOut ? "You were removed from the room. You can rejoin with the room code, or keep watching solo." : "The host left, so the room closed. You can keep watching solo.");
+  kickedOut = false;
 }
 // Host a showing: register the room id with PeerJS (retrying with a new code if it's taken).
 function host(tries) {
@@ -2473,7 +2530,13 @@ function say(text) {
   sharePresence(true);
 }
 function boo() { say("Boo!"); }
-$("chat").addEventListener("submit", (e) => { e.preventDefault(); say($("say").value); $("say").value = ""; $("say").blur(); });
+// Send button / Enter in the chat box. A line starting with "/admin" is an admin command, not speech.
+$("chat").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = $("say").value.trim();
+  if (/^\/admin\b/i.test(v)) runAdmin(v.slice(6)); else say(v);
+  $("say").value = ""; $("say").blur();
+});
 $("boo").addEventListener("click", boo);
 
 /* ---------------- welcome screen: bedsheet picker and entering ---------------- */
@@ -2869,7 +2932,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v1.2 · 2026-11-01";
+const BUILD = "v1.3 · 2026-11-01";
 // Collect everything worth knowing, grouped into sections of [label, value] rows.
 function dbgRows() {
   const pc = currentCall && currentCall.peerConnection;
@@ -2884,7 +2947,9 @@ function dbgRows() {
       ["Mode", !room ? "solo" : amRoomHost() ? "host" : "guest"],
       ["Room code", roomCode || "–"],
       ["My id", myPeerId().slice(-8)],
-      ["People here", String(peersSnap.filter((p) => !p.sameTab).length + 1)]
+      ["People here", String(peersSnap.filter((p) => !p.sameTab).length + 1)],
+      ["Poster frames", posterShown.map((pi, k) => (k + 1) + "=" + (pi + 1) + (posterOverrides[k] != null ? "*" : "")).join(" ") + " (* = set by admin)"],
+      ["Poster seed", String(posterSeed)]
     ]],
     ["Projector", [
       ["Held by", ownerName + (proj.kind ? " (" + proj.kind + ")" : "")],
@@ -2977,6 +3042,266 @@ function showDebug(on) {
   addEventListener("blur", () => { dbgKeyHeld = false; showDebug(false); });
 }
 
+
+/* =====================================================================
+   ADMIN COMMANDS
+   Type "/admin <command>" in the chat box. Anyone in the room can use them.
+   - Commands that only SHOW something (show commands, list posters, list people) run on
+     your own screen.
+   - Commands that CHANGE the room are carried out by the room host's browser (the same
+     referee that decides who runs the projector), which then tells everyone. A guest's
+     command is sent to the host first. When watching solo, your own browser does it.
+   To add a command: add a line to ADMIN_HELP, a pattern in parseAdmin(), what the host does
+   in execAdmin(), and (if everyone needs to react) a case in applyAdmin().
+   ===================================================================== */
+
+// The list shown by "/admin show commands": [what to type, what it does].
+const ADMIN_HELP = [
+  ["/admin show commands", "Show this list"],
+  ["/admin list posters", "Number of every poster frame and every poster image"],
+  ["/admin set poster 2 to image 3", "Put image 3 in poster frame 2 (frames are numbered on the wall)"],
+  ["/admin reset poster 2", "Frame 2 goes back to its random pick"],
+  ["/admin shuffle posters", "Pick a new random set of posters"],
+  ["/admin reset posters", "Back to this room's original posters"],
+  ["/admin reset movie", "Stop the movie or screen share, so anyone can press Load movie"],
+  ["/admin pause", "Pause the movie for everyone"],
+  ["/admin clear food", "Remove all thrown food"],
+  ["/admin announce Showtime!", "Show a big message on everyone's screen"],
+  ["/admin mortimer Welcome, folks!", "Make Mortimer say something"],
+  ["/admin list people", "Who's in the room"],
+  ["/admin kick Ben", "Remove someone from the room (they can rejoin with the code)"],
+  ["/admin summon", "Bring everyone to where you are"],
+  ["/admin give everyone 20", "Give everyone Ghost Bucks (1 to 100)"]
+];
+
+// (posterOverrides, the frames set by hand, lives in the LOBBY POSTERS section because posters are painted at startup.)
+// Set when the host removes us, so the goodbye message says so instead of "the host left".
+let kickedOut = false;
+
+// Where each poster frame is, for "/admin list posters" (the frames also have number plaques).
+const FRAME_NAMES = ["Left wall, near the hallways", "Left wall, near the counter", "Right wall, near the hallways",
+  "Right wall, near the counter", "Hallway wall, left side", "Hallway wall, right side"];
+
+// Chat entry point: everything typed after "/admin".
+function runAdmin(raw) {
+  const text = String(raw || "").trim().replace(/\s+/g, " ");
+  const low = text.toLowerCase();
+  // Commands that only show information: handled right here.
+  if (!text || /^(show commands|show command|commands|help|\?)$/.test(low)) { showAdminSheet("Admin commands", ADMIN_HELP); return; }
+  if (/^list posters?$/.test(low)) { showAdminSheet("Posters", posterListRows()); return; }
+  if (/^(list people|who)$/.test(low)) { showAdminSheet("People here", peopleRows()); return; }
+  // Catch typos straight away instead of waiting for the host to answer.
+  const c = parseAdmin(text);
+  if (c.error) { toast(c.error); return; }
+  // Everything else changes the room, so the host's browser carries it out.
+  if (room && !amRoomHost()) { room.toHost({ t: "adminreq", cmd: text.slice(0, 200) }); return; }
+  execAdmin(myPeerId(), text);
+}
+
+// Turn the typed words into a command object, or { error } if it isn't one we know.
+function parseAdmin(text) {
+  const low = text.toLowerCase(); let m;
+  if ((m = low.match(/^set poster (\d+) to (?:image |poster )?(\d+)$/))) return { a: "setposter", slot: +m[1], img: +m[2] };
+  if ((m = low.match(/^reset poster (\d+)$/))) return { a: "resetposter", slot: +m[1] };
+  if (/^reset posters$/.test(low)) return { a: "resetposters" };
+  if (/^shuffle posters$/.test(low)) return { a: "shuffle" };
+  if (/^(reset|stop) (the )?(movie|projector|screen)$/.test(low)) return { a: "resetmovie" };
+  if (/^pause( the)?( movie)?$/.test(low)) return { a: "pause" };
+  if (/^clear (the |all )?food$/.test(low)) return { a: "clearfood" };
+  if ((m = text.match(/^announce\s+(.+)$/i))) return { a: "announce", text: m[1] };
+  if ((m = text.match(/^mortimer(?:\s+says?)?\s+(.+)$/i))) return { a: "mortimer", text: m[1] };
+  if ((m = text.match(/^kick\s+(.+)$/i))) return { a: "kick", name: m[1].trim() };
+  if (/^summon( everyone| everybody| all)?$/.test(low)) return { a: "summon" };
+  if ((m = low.match(/^give (?:everyone|everybody|all) \$?(\d+)(?: ghost bucks| bucks| dollars)?$/))) return { a: "give", n: +m[1] };
+  return { error: "Unknown admin command. Type /admin show commands to see them all." };
+}
+
+// HOST (or solo) ONLY: carry out a command typed by `from` and tell everyone what happened.
+function execAdmin(from, text) {
+  const c = parseAdmin(String(text || "").trim().replace(/\s+/g, " "));
+  const who = from === myPeerId() ? (myNick || (room ? "The host" : "You")) : whoIs(from); // name for messages
+  const fail = (msg) => tellUser(from, msg);                                                  // error back to the typer only
+  if (c.error) return fail(c.error);
+  const pool = posterPool(), frames = posterSlots.length;
+  switch (c.a) {
+    case "setposter":
+      if (c.slot < 1 || c.slot > frames) return fail("Poster frames are numbered 1 to " + frames + ".");
+      if (c.img < 1 || c.img > pool.length) return fail("Poster images are numbered 1 to " + pool.length + ". Type /admin list posters to see them.");
+      posterOverrides[c.slot - 1] = c.img - 1;
+      return sendPosters(posterSeed, who + " put “" + poolTitle(pool[c.img - 1]) + "” in poster frame " + c.slot + ".");
+    case "resetposter":
+      if (c.slot < 1 || c.slot > frames) return fail("Poster frames are numbered 1 to " + frames + ".");
+      delete posterOverrides[c.slot - 1];
+      return sendPosters(posterSeed, who + " reset poster frame " + c.slot + ".");
+    case "resetposters":
+      posterOverrides = {};
+      return sendPosters(roomCode ? hashStr(roomCode) : Math.floor(Math.random() * 1e9), who + " put the original posters back.");
+    case "shuffle":
+      posterOverrides = {};
+      return sendPosters(Math.floor(Math.random() * 1e9), who + " shuffled the posters.");
+    case "resetmovie":
+      if (!proj.owner) return fail("Nothing is on the screen right now.");
+      act(false, 0);                 // rewind everyone to the start, paused
+      publishProj(freeProj());       // free the projector: the projectionist's own browser unloads/stops sharing
+      return broadcastAdmin({ a: "note", msg: who + " reset the projector. Anyone can load a movie now." });
+    case "pause":
+      if (proj.kind !== "movie") return fail("There's no movie playing.");
+      act(false, Math.max(0, vt()));
+      return broadcastAdmin({ a: "note", msg: who + " paused the movie." });
+    case "clearfood":
+      return broadcastAdmin({ a: "clearfood", msg: who + " cleared away all the thrown food." });
+    case "announce":
+      return broadcastAdmin({ a: "announce", text: clean(c.text, 140), by: who });
+    case "mortimer":
+      return broadcastAdmin({ a: "mortimer", text: clean(c.text, 140) });
+    case "kick": {
+      if (!room) return fail("Kicking only works in a room with other people.");
+      const want = c.name.toLowerCase();
+      const people = peersSnap.filter((pe) => !pe.sameTab && pe.kind === "viewer");
+      let hits = people.filter((pe) => nameFor(pe).toLowerCase() === want);
+      if (!hits.length) hits = people.filter((pe) => nameFor(pe).toLowerCase().startsWith(want));
+      // The host isn't in their own list of other people, so check their name separately.
+      if (!hits.length && amRoomHost() && myNick && myNick.toLowerCase().startsWith(want)) return fail("The host can't be kicked: their browser keeps the room open.");
+      if (!hits.length) return fail("Nobody here is called “" + clean(c.name, 24) + "”. Type /admin list people.");
+      if (hits.length > 1) return fail("More than one person matches “" + clean(c.name, 24) + "”. Type more of the name.");
+      const target = hits[0], name = nameFor(target);
+      if (target.peer === from) return fail("You can't kick yourself. Just close the tab!");
+      if (amRoomHost() && target.peer === myPeerId()) return fail("The host can't be kicked: their browser keeps the room open.");
+      if (p2p && target.peer === p2p.hostId) return fail("The host can't be kicked: their browser keeps the room open.");
+      room.sendTo(target.peer, { t: "admin", a: "kicked", by: who });
+      setTimeout(() => room.drop(target.peer), 400);      // give the goodbye message a moment to arrive
+      return broadcastAdmin({ a: "note", msg: name + " was removed from the room by " + who + "." });
+    }
+    case "summon": {
+      // Bring everyone to the person who typed it (their last reported position).
+      let pos = { x: me.x, y: me.y, z: me.z };
+      if (from !== myPeerId()) { const pe = peersSnap.find((p) => p.peer === from), g = pe && pe.presence && pe.presence.g; if (g) pos = { x: num(g.x, 0), y: num(g.y, 0.3), z: num(g.z, 0) }; }
+      return broadcastAdmin({ a: "summon", x: pos.x, y: pos.y, z: pos.z, by: who, who: from });
+    }
+    case "give":
+      if (c.n < 1 || c.n > 100) return fail("You can give 1 to 100 Ghost Bucks at a time.");
+      return broadcastAdmin({ a: "give", n: c.n, by: who });
+  }
+}
+
+// HOST: send a message back to just the person who typed the command.
+function tellUser(peer, msg) {
+  if (peer === myPeerId() || !room) toast(msg);
+  else room.sendTo(peer, { t: "admin", a: "tell", msg });
+}
+// HOST: tell everyone (and apply it here too).
+function broadcastAdmin(m) {
+  m.t = "admin";
+  if (room && room.toAll) room.toAll(m);
+  applyAdmin(m);
+}
+// HOST: share the poster choice (seed for the random pick + hand-set frames) with everyone.
+function sendPosters(seed, msg) { broadcastAdmin({ a: "posters", seed: seed >>> 0, over: Object.assign({}, posterOverrides), msg }); }
+
+// EVERYONE: react to an admin message from the host.
+function applyAdmin(m) {
+  if (!m || typeof m !== "object") return;
+  switch (m.a) {
+    case "tell": case "note": toast(clean(m.msg, 200)); break;
+    case "posters": {
+      // Only accept small whole numbers: frame 0-5 -> image 0-199.
+      const over = {};
+      if (m.over && typeof m.over === "object") for (const k of Object.keys(m.over).slice(0, 12)) {
+        const f = parseInt(k, 10), v = num(m.over[k], -1);
+        if (f >= 0 && f < posterSlots.length && Number.isInteger(v) && v >= 0 && v < 200) over[f] = v;
+      }
+      posterOverrides = over;
+      paintPosters(num(m.seed, posterSeed) >>> 0);
+      if (m.msg) toast(clean(m.msg, 200));
+      break;
+    }
+    case "clearfood": while (flying.length) killThrow(0); toast(clean(m.msg, 200)); break;
+    case "announce": showAnnouncement(clean(m.text, 140), clean(m.by, 40)); break;
+    case "mortimer": { const line = clean(m.text, 140); npcSay(line); toast("Mortimer: " + line); break; }
+    case "kicked": kickedOut = true; break;
+    case "summon": {
+      const x = num(m.x, NaN), y = num(m.y, NaN), z = num(m.z, NaN);
+      if (![x, y, z].every(isFinite)) break;
+      if (m.who === myPeerId()) { toast("Everyone has been summoned to you."); break; }
+      if (!entered) break;
+      // Land in a little circle around them (or right on their spot if that would be inside a wall).
+      const a = Math.random() * Math.PI * 2, r = 0.8 + Math.random() * 0.6, nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r;
+      if (walkable(nx, nz)) { me.x = nx; me.z = nz; } else if (walkable(x, z)) { me.x = x; me.z = z; }
+      me.y = clamp(y, 0.05, 5.6);
+      toast(clean(m.by, 40) + " summoned everyone.");
+      break;
+    }
+    case "give": {
+      const n = clamp(Math.round(num(m.n, 0)), 0, 100);
+      wallet = Math.min(999, Math.round((wallet + n) * 100) / 100); saveWallet();
+      if (!$("shop").hidden) renderShop();
+      toast(clean(m.by, 40) + " gave everyone " + money(n) + " in Ghost Bucks.");
+      break;
+    }
+  }
+}
+
+// Hook into the networking layer: the host carries out guests' commands; everyone accepts admin
+// messages only when they really come from the host (guests can't fake them: the host never relays them).
+{
+  const prevHostReq = netHooks.hostReq;
+  netHooks.hostReq = (from, m) => {
+    if (m && m.t === "adminreq") execAdmin(from, String(m.cmd || "").slice(0, 200));
+    else if (prevHostReq) prevHostReq(from, m);
+  };
+  const prevData = netHooks.data;
+  netHooks.data = (m) => {
+    if (m && m.t === "admin") { if (p2p && m.from === p2p.hostId) applyAdmin(m); return; }
+    if (prevData) prevData(m);
+  };
+  const prevWelcome = netHooks.welcome;
+  netHooks.welcome = (send) => {
+    if (prevWelcome) prevWelcome(send);
+    // A newcomer gets this room's posters, including any frames an admin changed.
+    send({ t: "admin", a: "posters", seed: posterSeed >>> 0, over: Object.assign({}, posterOverrides), from: myPeerId() });
+  };
+}
+
+// ---- What admin commands show on screen ----
+// A poster's name for lists: its title, or the image's file name.
+function poolTitle(item) { return item ? (item.kind === "art" ? item.p.t : item.file) : "?"; }
+// Rows for "/admin list posters": what's in each frame now, then every image you can choose.
+function posterListRows() {
+  const pool = posterPool(), rows = [];
+  posterSlots.forEach((_, k) => rows.push(["Frame " + (k + 1), FRAME_NAMES[k] + ". Showing image " + (posterShown[k] + 1) + ": " + poolTitle(pool[posterShown[k]]) + (posterOverrides[k] != null ? " (set by admin)" : "")]));
+  pool.forEach((item, i) => rows.push(["Image " + (i + 1), poolTitle(item) + (item.kind === "img" ? " (your image)" : "")]));
+  return rows;
+}
+// Rows for "/admin list people".
+function peopleRows() {
+  const rows = [["You", (myNick || "(no name)") + (amRoomHost() || !room ? " · host" : " · guest") + (amProj() ? " · running the projector" : "")]];
+  for (const pe of peersSnap) {
+    if (pe.sameTab || pe.kind !== "viewer") continue;
+    rows.push([nameFor(pe), (p2p && pe.peer === p2p.hostId ? "host" : "guest") + (pe.peer === proj.owner ? " · running the projector" : "")]);
+  }
+  return rows;
+}
+// Show the admin panel with a title and [left, right] rows. Closes by itself after 30 seconds,
+// or when clicked, or with Esc.
+let adminTimer = 0;
+function showAdminSheet(title, rows) {
+  $("adminTitle").textContent = title;
+  const dl = $("adminBody"); dl.textContent = "";
+  for (const [k, v] of rows) { const dt = document.createElement("dt"), dd = document.createElement("dd"); dt.textContent = k; dd.textContent = v; dl.append(dt, dd); }
+  $("adminSheet").hidden = false; $("adminSheet").scrollTop = 0;
+  clearTimeout(adminTimer); adminTimer = setTimeout(hideAdminSheet, 30000);
+}
+function hideAdminSheet() { clearTimeout(adminTimer); $("adminSheet").hidden = true; }
+$("adminSheet").addEventListener("click", hideAdminSheet);
+addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("adminSheet").hidden) hideAdminSheet(); });
+// A big announcement across the top of everyone's screen for 7 seconds.
+let announceTimer = 0;
+function showAnnouncement(text, by) {
+  if (!text) return;
+  $("announceText").textContent = text; $("announceBy").textContent = by ? "From " + by : "";
+  $("announce").hidden = false;
+  clearTimeout(announceTimer); announceTimer = setTimeout(() => ($("announce").hidden = true), 7000);
+}
 
 /* =====================================================================
    MAIN LOOP
