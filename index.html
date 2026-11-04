@@ -2723,7 +2723,7 @@ npc.tag.nm.textContent = "Mortimer · Concessions";
 })(npc.ghost);
 // Things Mortimer says. Add more lines here any time.
 const NPC_LINES = [
-  "AAAAAAAAAAAAA A GHOST!!!!",
+  "AAAAAAAAAAAAA!!!! A GHOST!!!!",
   "Popcorn's fresh. Well, fresh-ish. Nothing's really fresh around here.",
   "Please don't throw food at the screen. I'm the one who has to float up there and wipe it.",
   "The blue raspberry slushie gives you brain freeze. Don't ask me how a ghost gets brain freeze.",
@@ -2739,10 +2739,23 @@ const NPC_LINES = [
   "Napkins are on the counter. You won't need them, but they make people feel better.",
   "The pretzel salt comes from the Dead Sea. Seemed fitting.",
   "Mind the velvet ropes. They were here before me, and they'll be here after.",
-  "If you see the manager, tell him I've been on break since 1958."
+  "My wife and I used to enjoy going to the cinema together.",
+  "BOO!! Hehehehehe",
+  "I promised myself I'd never behave that way again.",
+  "I once had a rather serious problem with my temper. Now I'm positively boo-tiful company!",
+  "I struck them repeatedly. Good heavens, what a dreadful thing to say.",
+  "I don't believe I've ever seen so many policemen in one room.",
+  "Throwing food used to set me off, but thankfully I'm a changed man now",
+  "The children used to throw food at me...used to",
+  "I've always appreciated a good slasher film. They remind me of... never mind.",
+  "Did you know repeated strikes to the head kills people? Those kids knew eventually",
+  "I appreciate your kindness. It's nice not to be feared",
+  "If you see the manager, tell him I've been on break since 1958.",
+  "I believe it was a meatball that finally pushed me over the edge.",
+  "I asked them nicely to stop. Several times, in fact."
 ];
 // What he says when food hits him.
-const NPC_HIT = ["Hey! Food is for eating, not throwing!", "Right in the vest. I had this pressed in 1946.", "I'll pretend I didn't see that.", "That's coming out of your Ghost Bucks. Kidding. Mostly."];
+const NPC_HIT = ["Hey! Food is for eating, not throwing!", "Right in the vest. I had this pressed in 1946.", "I'll pretend I didn't see that.", "That's coming out of your Ghost Bucks. Kidding. Mostly.","That's okay... You can throw food at me... I probably deserve it","We have a strict no-food-throwing policy. I cannot stress that enough.","This bedsheet is dry clean only. Very inconsiderate"];
 const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
 // Close enough to talk (3.4 m).
 const nearNpc = () => Math.hypot(me.x - npc.x, me.z - npc.z) < 3.4;
