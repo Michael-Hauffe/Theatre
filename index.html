@@ -2702,8 +2702,10 @@ let lastNear = false, lastNearNpc = false;
 /* ---------------- Mortimer, the concession ghost ---------------- */
 // Current time in seconds (the same clock the main loop uses for animations).
 const nowS = () => performance.now() / 1000;
-// Mortimer's position (behind the register), facing, speech bubble and conversation memory.
-const npc = { x: 2.3, y: 0.3, z: 34.68, yaw: 0, tyaw: 0, ghost: makeGhost(0), tag: makeTag(), say: "", sayAt: -99, last: -1, talks: 0, faceUntil: 0, lastHitTalk: 0 };
+// Mortimer's position (behind the register), facing, speech bubble and conversation memory
+// (last / lastBack = the last everyday and backstory lines he said, so he doesn't repeat them right away;
+// talks / backTold = how many times you've talked to him, and how many of those were about his past).
+const npc = { x: 2.3, y: 0.3, z: 34.68, yaw: 0, tyaw: 0, ghost: makeGhost(0), tag: makeTag(), say: "", sayAt: -99, last: -1, lastBack: -1, backTold: 0, talks: 0, faceUntil: 0, lastHitTalk: 0 };
 npc.tag.nm.textContent = "Mortimer · Concessions";
 (function dressUsher(gh) {
   const red = new THREE.MeshStandardMaterial({ color: 0x9e1b2a, roughness: 0.55, side: THREE.DoubleSide });
@@ -2722,6 +2724,9 @@ npc.tag.nm.textContent = "Mortimer · Concessions";
   badge.position.set(Math.sin(ba) * 0.545, 0.6, Math.cos(ba) * 0.545); badge.rotation.y = ba; gh.bodyG.add(badge);
 })(npc.ghost);
 // Things Mortimer says. Add more lines here any time.
+// There are two lists. NPC_LINES is his everyday chatter and is what you hear most of the time.
+// NPC_BACKSTORY is about his past (see the note above that list) and only comes up now and then.
+// To make a line common, put it in NPC_LINES; to make it rare, put it in NPC_BACKSTORY.
 const NPC_LINES = [
   "AAAAAAAAAAAAA!!!! A GHOST!!!!",
   "Popcorn's fresh. Well, fresh-ish. Nothing's really fresh around here.",
@@ -2739,8 +2744,36 @@ const NPC_LINES = [
   "Napkins are on the counter. You won't need them, but they make people feel better.",
   "The pretzel salt comes from the Dead Sea. Seemed fitting.",
   "Mind the velvet ropes. They were here before me, and they'll be here after.",
-  "My wife and I used to enjoy going to the cinema together.",
   "BOO!! Hehehehehe",
+  "I appreciate your kindness. It's nice not to be feared",
+  "If you see the manager, tell him I've been on break since 1958.",
+  // Added November 4, 2026:
+  "The candy here is to die for. Most of our customers already have.",
+  "Cash, card or ectoplasm. We're not picky.",
+  "Please keep your feet off the seats. Well. If you have feet.",
+  "The nachos come with cheese. The cheese came with the building.",
+  "Somebody left a coat in Screen One in 1952. I'm still holding it for them.",
+  "Large or small? The large is the same as the small, but with more ambition.",
+  "We don't have a lost and found. We have a lost and lost.",
+  "I polish this counter every night. It has never been cleaner, and nobody has ever noticed.",
+  "Mind the third step on the balcony stairs. It creaks. Or someone's sitting on it.",
+  "The soda fountain hasn't been serviced since Eisenhower. It has a lot of personality.",
+  "Nobody has ever bought the licorice. It's been sitting there for decades, waiting. Like me.",
+  "Please silence your phones. And your chains.",
+  "I went on a diet once. Now you can see right through me. I can't recommend it.",
+  "Our ushers walk the aisles with flashlights. The light goes right through most of the audience.",
+  "Real butter on the popcorn. Real old, anyway.",
+  "A good movie makes time fly. Around here, time is all we've got, so pick a long one.",
+  "I'd offer you a mint, but they're haunted. Just the one tin. It knows what it did."
+];
+// Rare lines about Mortimer's past. His story, as the game's owner wrote it: he was a married man.
+// One day some children followed him down the street throwing food at him. He asked them several
+// times to stop; they wouldn't, so he grabbed a jawbreaker and struck them until they died. He went
+// to prison and was rehabilitated, and when he got out his wife met him and killed him for what he'd done.
+// He tells it the way he tells everything else: polite, dry, a little sheepish, never gory.
+// Only about 1 talk in 10 picks from this list (BACKSTORY_CHANCE below), so these stay a surprise.
+const NPC_BACKSTORY = [
+  "My wife and I used to enjoy going to the cinema together.",
   "I promised myself I'd never behave that way again.",
   "I once had a rather serious problem with my temper. Now I'm positively boo-tiful company!",
   "I struck them repeatedly. Good heavens, what a dreadful thing to say.",
@@ -2749,20 +2782,51 @@ const NPC_LINES = [
   "The children used to throw food at me...used to",
   "I've always appreciated a good slasher film. They remind me of... never mind.",
   "Did you know repeated strikes to the head kills people? Those kids knew eventually",
-  "I appreciate your kindness. It's nice not to be feared",
-  "If you see the manager, tell him I've been on break since 1958.",
   "I believe it was a meatball that finally pushed me over the edge.",
-  "I asked them nicely to stop. Several times, in fact."
+  "I asked them nicely to stop. Several times, in fact.",
+  // Added November 4, 2026:
+  "We don't sell jawbreakers. Haven't for years. That was my idea.",
+  "They call it a jawbreaker. Frankly, that's underselling it.",
+  "Prison taught me woodworking, patience, and that candy is not a tool.",
+  "My wife met me at the prison gate. Lovely reunion. Very short.",
+  "Till death do us part, she said. She took it as more of a to-do list.",
+  "I hold no grudge against my wife. I'd have done the same. Well, I did do the same. That's rather the point.",
+  "The parole board said I was a changed man. My wife respectfully disagreed. Firmly.",
+  "Rehabilitation is a wonderful thing. I recommend getting it before the incident, not after.",
+  "I've done anger management twice. Once alive, once dead. The second one stuck.",
+  "Children are always welcome here. Supervised. By somebody other than me, ideally.",
+  "My cellmate taught me to knit. I made my wife a scarf. She wore it to my funeral, which was thoughtful.",
+  "Food fights? I've been on both ends of one. Neither end went well.",
+  "I still wear my wedding ring. She kept hers too. And, I imagine, the murder weapon.",
+  "I'm told I have anger issues. I prefer to call it one very busy afternoon.",
+  "Don't ask what the 'M' on my badge stands for. It's Mortimer. What did you think it stood for?"
 ];
-// What he says when food hits him.
-const NPC_HIT = ["Hey! Food is for eating, not throwing!", "Right in the vest. I had this pressed in 1946.", "I'll pretend I didn't see that.", "That's coming out of your Ghost Bucks. Kidding. Mostly.","That's okay... You can throw food at me... I probably deserve it","We have a strict no-food-throwing policy. I cannot stress that enough.","This bedsheet is dry clean only. Very inconsiderate"];
+// How often a talk dips into his past instead of everyday chatter (0.1 = about 1 in 10).
+const BACKSTORY_CHANCE = 0.1;
+// What he says when food hits him. The first list is what you'll usually hear;
+// NPC_HIT_BACKSTORY is for the rare times it reminds him of that day in the street.
+const NPC_HIT = ["Hey! Food is for eating, not throwing!", "Right in the vest. I had this pressed in 1946.", "I'll pretend I didn't see that.", "That's coming out of your Ghost Bucks. Kidding. Mostly.","We have a strict no-food-throwing policy. I cannot stress that enough.","This bedsheet is dry clean only. Very inconsiderate",
+  // Added November 4, 2026:
+  "Was that a nacho? I'm going to need that back, along with an apology.",
+  "Lovely arm. Terrible aim. You were going for the trash can, I assume.",
+  "I'll be sweeping that up until the heat death of the universe. Thanks."];
+const NPC_HIT_BACKSTORY = ["That's okay... You can throw food at me... I probably deserve it",
+  // Added November 4, 2026:
+  "Deep breaths, Mortimer. Count to ten. You're a changed ghost.",
+  "Food on the vest. This is exactly how it started last time. I'm fine. I'm FINE.",
+  "I'd ask you to stop, but historically that hasn't gone well for anybody."];
+// How often a hit gets one of the backstory reactions instead of an everyday one.
+const HIT_BACKSTORY_CHANCE = 0.2;
 const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
 // Close enough to talk (3.4 m).
 const nearNpc = () => Math.hypot(me.x - npc.x, me.z - npc.z) < 3.4;
 // Show a line in his bubble and turn him toward you for 8 seconds.
 function npcSay(text) { npc.say = text; npc.sayAt = nowS(); npc.faceUntil = nowS() + 8; }
-// Pick something to say: a welcome the first time, then either a line about what's going on
-// (your snack, your money, the movie, flying food) or a random line, never the same one twice in a row.
+// Pick a random spot in a list, but not the one used last time (so he never says the same line twice in a row).
+function pickFresh(list, last) { let i; do { i = Math.floor(Math.random() * list.length); } while (i === last && list.length > 1); return i; }
+// Pick something to say: a welcome the first time; after that, now and then a line about his past,
+// otherwise either a line about what's going on (your snack, your money, the movie, flying food)
+// or a random everyday line. He never says the same line twice in a row.
 function talkNpc() {
   if (!nearNpc()) { toast("Get closer to the counter to talk to Mortimer."); return; }
   npc.talks++;
@@ -2778,8 +2842,12 @@ function talkNpc() {
     else if (proj.kind === "screen") ctx.push((proj.nick || "Somebody") + " has their screen up on the big screen. In my day we had newsreels.");
     else if (!proj.owner) ctx.push("Nothing on the screen yet. Anybody can put a movie up with the Load movie button.");
     if (flying.length > 3) ctx.push("Somebody's been throwing food. I'll find out who. I always find out who.");
-    if (ctx.length && Math.random() < 0.45) line = pickOne(ctx);
-    else { let i; do { i = Math.floor(Math.random() * NPC_LINES.length); } while (i === npc.last && NPC_LINES.length > 1); npc.last = i; line = NPC_LINES[i]; }
+    // Roughly 1 talk in 10, he lets something slip about his past (the rare list).
+    if (Math.random() < BACKSTORY_CHANCE) { npc.lastBack = pickFresh(NPC_BACKSTORY, npc.lastBack); line = NPC_BACKSTORY[npc.lastBack]; npc.backTold++; }
+    // Otherwise, a bit under half the time, a remark about what's going on right now (if anything is).
+    else if (ctx.length && Math.random() < 0.45) line = pickOne(ctx);
+    // Otherwise his everyday chatter.
+    else { npc.last = pickFresh(NPC_LINES, npc.last); line = NPC_LINES[npc.last]; }
   }
   npcSay(line);
 }
@@ -2971,7 +3039,7 @@ function whoIs(peer) { if (peer === myPeerId()) return "You"; return nameFor(pee
 function onGhostHit(g, f, t) {
   g.gh.booAt = t;
   if (g.me && f.from !== myPeerId()) toast("Bonk! " + whoIs(f.from) + " hit you with " + MENU_BY_ID[f.id].name.toLowerCase() + ".");
-  if (g.npc && t - npc.lastHitTalk > 2.5) { npc.lastHitTalk = t; npcSay(pickOne(NPC_HIT)); }
+  if (g.npc && t - npc.lastHitTalk > 2.5) { npc.lastHitTalk = t; npcSay(pickOne(Math.random() < HIT_BACKSTORY_CHANCE ? NPC_HIT_BACKSTORY : NPC_HIT)); } // now and then the hit stirs up old memories
 }
 // Move all flying food for this frame. Small sub-steps (90 per second) so fast throws can't
 // skip through thin walls. Each sub-step: gravity, a ray along the motion to find surfaces,
@@ -3073,7 +3141,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.4 · 2026-11-01";
+const BUILD = "v2.5 · 2026-11-04";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -3169,6 +3237,7 @@ function dbgRows() {
       ["Holding", inventory.length ? inventory.map((it, i) => (i ? "" : "▶ ") + MENU_BY_ID[it.id].name + " (" + it.left + ")").join(", ") : "nothing"],
       ["Food in the air", flying.length + " (" + flying.filter((f) => f.rest).length + " landed)"],
       ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
+      ["Mortimer", npc.talks + " talks, " + npc.backTold + " about his past (" + NPC_LINES.length + " everyday lines, " + NPC_BACKSTORY.length + " backstory lines)"],
       ["Throw charge", chargeStart ? ((performance.now() - chargeStart) / 1000).toFixed(1) + "s → speed " + throwPower((performance.now() - chargeStart) / 1000).toFixed(1) : "–"]
     ]],
     ["Performance", [

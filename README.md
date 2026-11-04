@@ -44,6 +44,7 @@ Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/t
 - **Skip buttons:** −10s and +10s next to Play (or J and L) skip the movie for everyone. Grayed out during a screen share.
 - **Full view:** press **M** to watch just the movie, filling the whole screen like a normal video player (with subtitles). Press **M** or **Esc** to go back to the theater. The controls fade after 3 seconds without moving the mouse.
 - **Pick up thrown food:** float next to it and press **X**, the Pick up button, or click it. It goes back in your hands with the bites it had left, and disappears for everyone.
+- **More from Mortimer:** about 20 new everyday lines and reactions to being hit with food. Now and then (about 1 talk in 10) he lets slip something about his past; those lines are in their own list, `NPC_BACKSTORY`, in `index.html`.
 - **Update check:** if your browser is showing an old saved copy of the game, a bar offers a Refresh.
 
 ## Admin commands
