@@ -46,6 +46,7 @@ Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/t
 - **Pick up thrown food:** float next to it and press **X**, the Pick up button, or click it. It goes back in your hands with the bites it had left, and disappears for everyone.
 - **More from Mortimer:** about 20 new everyday lines and reactions to being hit with food. Now and then (about 1 talk in 10) he lets slip something about his past; those lines are in their own list, `NPC_BACKSTORY`, in `index.html`.
 - **Sharper picture for bigger groups:** whoever shows the movie uploads a separate copy to each viewer, so with several people the bandwidth runs thin. Each viewer's copy now drops to a smaller picture size (1080, 720, 540 or 360 lines) when its bandwidth can't keep the full size sharp, and steps back up when it can. The debug screen shows each viewer's bandwidth, picture size and what's limiting it.
+- **See-through ghosts:** Hide HUD (or H) also makes every ghost, you and Mortimer included, see-through, so nobody blocks the movie. Snacks in their hands stay solid.
 - **Update check:** if your browser is showing an old saved copy of the game, a bar offers a Refresh.
 
 ## Admin commands
