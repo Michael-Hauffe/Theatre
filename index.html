@@ -358,7 +358,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
       <button id="view" title="Switch camera (V)">First person</button>
       <!-- Shows its sheet only while held down (not a toggle). The debug screen is keyboard-only: hold ` (see the script). -->
       <button id="keysBtn" type="button" aria-pressed="false" aria-controls="keySheet" title="Hold to see every shortcut">Show Shortcuts</button>
-      <button id="hudBtn" type="button" title="Hide all controls and labels, and make the ghosts see-through (H)">Hide HUD</button>
+      <button id="hudBtn" type="button" title="Hide all controls and labels, and make the ghosts invisible (H)">Hide HUD</button>
     </div>
     <!-- Chat: what you type appears as a speech bubble over your ghost.
          Lines starting with /admin are admin commands instead (see ADMIN COMMANDS in the script). -->
@@ -403,7 +403,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
         <dl>
           <dt><kbd>V</kbd></dt><dd>First or third person</dd>
           <dt><kbd>M</kbd></dt><dd>Full view: just the movie, filling the screen (M or Esc to leave)</dd>
-          <dt><kbd>H</kbd></dt><dd>Hide or show the HUD (hiding it also hides names, makes every ghost see-through and hides snacks in hands)</dd>
+          <dt><kbd>H</kbd></dt><dd>Hide or show the HUD (hiding it also hides names, ghosts and snacks in hands; thrown food stays visible)</dd>
           <dt><kbd>`</kbd> <span class="alt">hold</span></dt><dd>Show the debug screen</dd>
           <dt><kbd>P</kbd></dt><dd>Copy the debug screen</dd>
         </dl>
@@ -1271,7 +1271,7 @@ function setGhostColor(gh, idx) {
 function removeGhost(gh) { scene.remove(gh.group); scene.remove(gh.shadow); }
 // Place and animate a ghost for this frame: bobbing, boo puff, eating, throw lean and wind-up,
 // a gentle sway, and its shadow (fainter and bigger the higher it floats). Also applies the Hide HUD
-// see-through fade. t = time in seconds.
+// fade-out. t = time in seconds.
 function poseGhost(gh, x, y, z, ry, t) {
   const bob = Math.sin(t * 2 + gh.phase) * 0.06;
   gh.group.position.set(x, y + bob, z); gh.group.rotation.y = ry;
@@ -1282,20 +1282,20 @@ function poseGhost(gh, x, y, z, ry, t) {
     const wu = gh.windup || 0;
     gh.held.position.set(0.56 - mu * 0.5, 0.42 + mu * 0.2 + wu * 0.22, -0.3 - mu * 0.22 + wu * 0.4); gh.held.rotation.set(-mu * 0.6 + wu * 0.8, 0, mu * 0.3);
     if (mu > 0) gh.mouth.scale.set(0.8 + mu * 0.5, 1.1 + Math.abs(Math.sin(t * 20)) * mu * 1.4, 0.5); }
-  fadeGhost(gh); // see-through in Hide HUD mode (see below)
+  fadeGhost(gh); // fades out in Hide HUD mode (see below)
   if (gh.held) gh.held.visible = heldSnacksShown(); // held snack disappears in Hide HUD mode
   gh.bodyG.rotation.z = Math.sin(t * 1.3 + gh.phase) * 0.05;
   const thr = Math.sin(clamp((t - gh.throwAt) / 0.35, 0, 1) * Math.PI); gh.bodyG.rotation.x = -thr * 0.35 + (gh.windup || 0) * 0.12;
   gh.shadow.position.set(x, 0.02, z); const k = clamp(1 - y / 5, 0.15, 1); gh.shadow.material.opacity = k * ghostFade; // the shadow fades with the ghost in Hide HUD mode gh.shadow.scale.setScalar(0.7 + y * 0.15);
 }
 
-/* ---------------- see-through ghosts in Hide HUD mode ----------------
-   Hiding the HUD is for watching the movie, so it also turns every ghost (you, your friends and
-   Mortimer) see-through, letting you watch the screen through anyone floating in front of it.
+/* ---------------- ghosts fade out in Hide HUD mode ----------------
+   Hiding the HUD is for watching the movie, so it also fades every ghost (you, your friends and
+   Mortimer) away completely (and their shadows), so nobody floating in front of the screen blocks it.
    Snacks held in a ghost's hand (or yours in first person) disappear completely; thrown snacks stay
    fully visible. Name tags and chat bubbles are hidden by the Hide HUD style rules (body.nohud).
    The fade is gradual (about half a second). */
-const HIDDEN_HUD_GHOST_OPACITY = 0.2;   // how solid ghosts look with the HUD hidden (1 = normal, 0 = invisible)
+const HIDDEN_HUD_GHOST_OPACITY = 0;     // how solid ghosts look with the HUD hidden (1 = normal, 0 = invisible): fully invisible
 let ghostFade = 1;                       // the current level, easing toward the target every frame
 // Snacks held in hands vanish completely while the HUD is hidden (they switch off halfway through the fade).
 // We hide the snack's 3D object rather than fading its colors, so thrown snacks, which are separate
@@ -1520,7 +1520,7 @@ function drawDirect() {
 }
 $("view").addEventListener("click", toggleView);
 // Hide HUD mode: hides every control and label; a faint "Show HUD" button stays in the corner.
-// Ghosts also turn see-through while it's on (updateGhostFade / fadeGhost in the ghosts section).
+// Ghosts also turn invisible while it's on (updateGhostFade / fadeGhost in the ghosts section).
 function setHud(on) {
   document.body.classList.toggle("nohud", !on); $("showHud").hidden = on;
   if (!on) { closeShop(); if (document.activeElement) document.activeElement.blur(); }
@@ -3327,7 +3327,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.10 · 2026-11-04";
+const BUILD = "v2.11 · 2026-11-04";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -3422,7 +3422,7 @@ function dbgRows() {
       ["Bedsheet", SHEETS[myColor].name],
       ["Where", area + " · x " + me.x.toFixed(1) + " y " + me.y.toFixed(1) + " z " + me.z.toFixed(1)],
       ["Facing", "yaw " + me.yaw.toFixed(2) + ", pitch " + me.pitch.toFixed(2) + " · " + (firstPerson ? "first person" : "third person")],
-      ["Ghosts", ghostFade >= 0.999 ? "solid" : "see-through (" + Math.round(ghostFade * 100) + "% of normal, HUD hidden)" + (heldSnacksShown() ? "" : ", held snacks hidden")],
+      ["Ghosts", ghostFade >= 0.999 ? "solid" : (ghostFade <= 0.001 ? "invisible (HUD hidden)" : "fading (" + Math.round(ghostFade * 100) + "% of normal)") + (heldSnacksShown() ? "" : ", held snacks hidden")],
       ["View", direct ? "full view (M)" + (document.fullscreenElement ? ", browser full screen" : "") : "theater"]
     ]],
     ["Snacks", [
@@ -3781,7 +3781,7 @@ const angLerp = (a, b, k) => { let d = ((b - a + Math.PI) % (Math.PI * 2) + Math
 function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), 0.05), t = performance.now() / 1000;
-  updateGhostFade(dt); // ghosts turn see-through while the HUD is hidden
+  updateGhostFade(dt); // ghosts fade out while the HUD is hidden
   fpsFrames++; if (performance.now() - fpsT >= 1000) { fps = fpsFrames * 1000 / (performance.now() - fpsT); fpsFrames = 0; fpsT = performance.now(); }
 
   // On the welcome screen, slowly pan the view back and forth as a backdrop.
