@@ -707,11 +707,13 @@ subPlane.position.set(0, SCREEN.cy, SCREEN.z + 0.03); subPlane.renderOrder = 2; 
 // The lobby TVs (built later, with the lobby). They're listed here because fitScreen() resizes them too.
 const lobbyTVs = [];
 let screenAspect = 16 / 9;   // the current picture's width/height, remembered for TVs built after the first fit
+const screenSize = { w: SCREEN.maxW, h: SCREEN.maxW * 9 / 16 };   // the picture's size on the theater screen, in meters
 // Resize the screen (and its border, beam and subtitle strip) to match a video's width/height ratio.
 // The lobby TVs get the same shape, so a wide movie shows with black bars instead of being stretched.
 function fitScreen(aspect) {
   screenAspect = aspect;
   let w = SCREEN.maxW, h = w / aspect; if (h > SCREEN.maxH) { h = SCREEN.maxH; w = h * aspect; }
+  screenSize.w = w; screenSize.h = h;   // remembered for drawing tomato splats in full view
   screen.scale.set(w, h, 1); mask.scale.set(w + 0.5, h + 0.5, 1); fitBeam(w, h);
   subPlane.scale.set(w, w, 1); subPlane.position.y = SCREEN.cy - h / 2 + (w * 0.25) / 2 + h * 0.03;
   for (const tv of lobbyTVs) fitTV(tv);
@@ -1585,13 +1587,26 @@ function drawDirect() {
   const W = directCv.width, H = directCv.height, x = dctx;
   x.fillStyle = "#000"; x.fillRect(0, 0, W, H);
   const src = screenSourceElement();
+  // Where the picture sits in full view (letterboxed to keep its shape): used for the tomato splats too.
+  const ar = src && src.videoWidth ? src.videoWidth / src.videoHeight : screenSize.w / screenSize.h;
+  const fs = Math.min(W / ar, H), pw = fs * ar, ph = fs, px = (W - pw) / 2, py = (H - ph) / 2;
   if (src && src.videoWidth) {
-    const s = Math.min(W / src.videoWidth, H / src.videoHeight), w = src.videoWidth * s, h = src.videoHeight * s;
-    try { x.drawImage(src, (W - w) / 2, (H - h) / 2, w, h); } catch {}
+    try { x.drawImage(src, px, py, pw, ph); } catch {}
   } else {
     x.fillStyle = "#a39488"; x.textAlign = "center"; x.textBaseline = "middle";
     x.font = Math.round(H * 0.035) + "px Karla, sans-serif";
     x.fillText(placeholderLine || "Nothing on the screen yet", W / 2, H / 2);
+  }
+  // Tomato splats, in the same places they are on the theater screen (see "Tomato splats").
+  // The theater picture is screenSize.w by screenSize.h meters, centered at (0, SCREEN.cy), so a
+  // splat's position on it becomes a position on the picture here. Drawn under the subtitles.
+  for (const sp of splats) {
+    const sw = screenSize.w, sh = screenSize.h;
+    const cx = px + (sp.x / sw + 0.5) * pw, cy = py + (0.5 - (sp.y - SCREEN.cy) / sh) * ph;
+    const size = (1.3 / sw) * pw;   // splats are 1.3 m wide on the theater screen
+    x.save(); x.beginPath(); x.rect(px, py, pw, ph); x.clip();   // stay on the picture, like on the real screen
+    x.globalAlpha = sp.fade; x.translate(cx, cy); x.rotate(-sp.rot);   // canvas angles turn the other way
+    x.drawImage(sp.img, -size / 2, -size / 2, size, size); x.restore();
   }
   // Subtitles (subShown is kept up to date by updateSubs() every frame).
   if (subShown) {
@@ -3710,11 +3725,13 @@ function onGhostHit(g, f, t) {
 const SPLAT_LIFE = 20, SPLAT_FADE = 4, MAX_SPLATS = 25;   // seconds on screen, seconds of fading at the end, most at once
 const splats = [];                                        // { mesh, born }
 let splatTexs = null;                                     // three splat pictures, drawn the first time one is needed
+let splatImgs = null;                                     // the same three pictures as plain drawings (full view uses these)
 let splatsTotal = 0;                                      // splats so far on this page (debug screen)
 // Draw a splat picture: a lumpy red blob with spatters, seeds and a couple of drips running down.
-function makeSplatTex(seed) {
+function makeSplatImg(seed) {
   let r = seed * 9301 + 49297; const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);   // same splat shapes on every computer
-  return canvasTex(256, 256, (x, w, h) => {
+  const c = document.createElement("canvas"); c.width = c.height = 256;
+  ((x, w, h) => {
     const cx = w / 2, cy = h * 0.42;
     x.fillStyle = "rgba(150, 22, 14, 0.95)";
     x.beginPath(); for (let i = 0; i <= 24; i++) { const a = (i / 24) * Math.PI * 2, rr = 52 + rnd() * 30; x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.85); } x.fill();
@@ -3722,17 +3739,21 @@ function makeSplatTex(seed) {
     for (let i = 0; i < 3; i++) { const dx = cx - 40 + rnd() * 80, len = 50 + rnd() * 70; x.fillRect(dx - 4, cy + 30, 8, len); x.beginPath(); x.arc(dx, cy + 30 + len, 7, 0, Math.PI * 2); x.fill(); }   // drips
     x.fillStyle = "rgba(200, 50, 30, 0.9)"; x.beginPath(); x.arc(cx - 10, cy - 8, 30, 0, Math.PI * 2); x.fill();   // juicier middle
     x.fillStyle = "rgba(235, 200, 90, 0.95)"; for (let i = 0; i < 12; i++) { x.beginPath(); x.ellipse(cx - 40 + rnd() * 80, cy - 30 + rnd() * 60, 4, 2.5, rnd() * 3, 0, Math.PI * 2); x.fill(); }   // seeds
-  });
+  })(c.getContext("2d"), 256, 256);
+  return c;
 }
+// Turn a splat drawing into a picture the 3D scene can use.
+function splatTexFrom(c) { const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; }
 // Stick a splat on the screen where the tomato hit.
 function splatOnScreen(point) {
-  if (!splatTexs) splatTexs = [1, 2, 3].map(makeSplatTex);
+  if (!splatTexs) { splatImgs = [1, 2, 3].map(makeSplatImg); splatTexs = splatImgs.map(splatTexFrom); }
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.3), new THREE.MeshBasicMaterial({ map: splatTexs[splatsTotal % 3], transparent: true, depthWrite: false, toneMapped: false }));
   // Just in front of the picture (a tiny bit further for each splat so overlapping ones don't flicker);
   // drawn before the subtitles so subtitles stay readable on top.
   mesh.position.set(point.x, point.y, SCREEN.z + 0.02 + (splatsTotal % 20) * 0.0005);
-  mesh.rotation.z = (Math.random() - 0.5) * 0.6; mesh.renderOrder = 1;
-  scene.add(mesh); splats.push({ mesh, born: nowS() }); splatsTotal++;
+  const rot = (Math.random() - 0.5) * 0.6; mesh.rotation.z = rot; mesh.renderOrder = 1;
+  // x, y, rot, img and fade are kept here too, for drawing the same splat in full view.
+  scene.add(mesh); splats.push({ mesh, born: nowS(), x: point.x, y: point.y, rot, img: splatImgs[splatsTotal % 3], fade: 1 }); splatsTotal++;
   while (splats.length > MAX_SPLATS) removeSplat(0);
 }
 function removeSplat(i) { const sp = splats[i]; scene.remove(sp.mesh); sp.mesh.geometry.dispose(); sp.mesh.material.dispose(); splats.splice(i, 1); }
@@ -3743,8 +3764,8 @@ function stepSplats(dt, t) {
   for (let i = splats.length - 1; i >= 0; i--) {
     const sp = splats[i], age = t - sp.born;
     if (age > SPLAT_LIFE) { removeSplat(i); continue; }
-    sp.mesh.position.y -= dt * 0.025;
-    sp.mesh.material.opacity = clamp((SPLAT_LIFE - age) / SPLAT_FADE, 0, 1);
+    sp.y -= dt * 0.025; sp.mesh.position.y = sp.y;
+    sp.fade = clamp((SPLAT_LIFE - age) / SPLAT_FADE, 0, 1); sp.mesh.material.opacity = sp.fade;
   }
 }
 
@@ -3849,7 +3870,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.14 · 2026-11-05";
+const BUILD = "v2.15 · 2026-11-05";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
