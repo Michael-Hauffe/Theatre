@@ -344,7 +344,9 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
       <input type="file" id="file" accept="video/mp4,video/webm,video/*" hidden>
       <label class="btn" for="subs" id="subsLbl" title="Load an .srt or .vtt subtitle file">Subtitles</label>
       <input type="file" id="subs" hidden>
-      <button id="subsToggle" hidden title="Show or hide subtitles (U)">Hide subs</button>
+      <button id="subsToggle" hidden title="Show or hide subtitles, just for you (U)">Hide subs</button>
+      <!-- Subtitle size, just for you: each click goes to the next size (also - and = keys). Shown only while there are subtitles. -->
+      <button id="subsSize" type="button" hidden title="Subtitle size, just for you (- and = keys)">Subs: M</button>
       <button id="shareBtn" type="button" title="Put a window or monitor on the theater screen">Share screen</button>
       <!-- Skip back / Play / skip forward. All three are grayed out unless a movie is on (not during a screen share). -->
       <button id="back10" type="button" disabled title="Back 10 seconds, for everyone (J)" aria-label="Back 10 seconds">&minus;10s</button>
@@ -415,7 +417,8 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
         <dl>
           <dt><kbd>K</kbd></dt><dd>Play or pause for everyone</dd>
           <dt><kbd>J</kbd> <kbd>L</kbd></dt><dd>Back or forward 10 seconds</dd>
-          <dt><kbd>U</kbd></dt><dd>Subtitles on or off</dd>
+          <dt><kbd>U</kbd></dt><dd>Subtitles on or off (just for you)</dd>
+          <dt><kbd>-</kbd> <kbd>=</kbd></dt><dd>Subtitles smaller or bigger (just for you)</dd>
           <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Subtitles half a second later or earlier</dd>
         </dl>
       </section>
@@ -425,6 +428,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
           <dt><kbd>Enter</kbd></dt><dd>Type a message</dd>
           <dt><kbd>Esc</kbd></dt><dd>Leave the message box</dd>
           <dt><kbd>B</kbd></dt><dd>Boo!</dd>
+          <dt><kbd>1</kbd> to <kbd>5</kbd></dt><dd>Emotes: scream, laugh, cry, clap, shush</dd>
           <dt><span class="act">/admin…</span></dt><dd>Admin commands. Type /admin show commands</dd>
         </dl>
       </section>
@@ -1250,17 +1254,20 @@ function makeGhost(colorIdx) {
   const col = new THREE.Color(SHEETS[colorIdx].hex);
   const mat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.22, roughness: 0.85, transparent: true, opacity: 0.94, side: THREE.DoubleSide });
   const group = new THREE.Group(), bodyG = new THREE.Group(); group.add(bodyG);
+  const arms = [];   // left arm, then right arm
   bodyG.add(new THREE.Mesh(ghostGeo, mat));
   for (const s of [-1, 1]) {
     const eye = new THREE.Mesh(eyeGeo, eyeMat); eye.scale.set(1, 1.45, 0.55); eye.position.set(s * 0.14, 0.8, -0.445); bodyG.add(eye);
     const a = new THREE.Mesh(armGeo, mat); a.scale.set(0.9, 0.7, 1.5); a.position.set(s * 0.5, 0.48, -0.08); a.rotation.z = s * 0.5; bodyG.add(a);
+    arms.push(a);   // kept so emotes can move the arms (clapping, shushing)
   }
   const mouth = new THREE.Mesh(eyeGeo, eyeMat); mouth.scale.set(0.8, 1.1, 0.5); mouth.position.set(0, 0.6, -0.48); bodyG.add(mouth);
   const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.3), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
   shadow.rotation.x = -Math.PI / 2; scene.add(shadow); scene.add(group);
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(...col.toArray().map((c) => Math.round(c * 255))), transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false }));
   glow.scale.set(2.4, 2.4, 1); glow.position.y = 0.6; group.add(glow);
-  return { group, bodyG, mat, shadow, colorIdx, mouth, booAt: -10, munchAt: -10, throwAt: -10, windup: 0, phase: Math.random() * 6, held: null, heldId: null };
+  // emote / emoteAt: the emote being acted out (see EMOTES) and when it started.
+  return { group, bodyG, mat, shadow, colorIdx, mouth, arms, booAt: -10, munchAt: -10, throwAt: -10, windup: 0, phase: Math.random() * 6, held: null, heldId: null, emote: null, emoteAt: -10 };
 }
 // Change a ghost's sheet color (when a friend picks a different one).
 function setGhostColor(gh, idx) {
@@ -1286,7 +1293,69 @@ function poseGhost(gh, x, y, z, ry, t) {
   if (gh.held) gh.held.visible = heldSnacksShown(); // held snack disappears in Hide HUD mode
   gh.bodyG.rotation.z = Math.sin(t * 1.3 + gh.phase) * 0.05;
   const thr = Math.sin(clamp((t - gh.throwAt) / 0.35, 0, 1) * Math.PI); gh.bodyG.rotation.x = -thr * 0.35 + (gh.windup || 0) * 0.12;
-  gh.shadow.position.set(x, 0.02, z); const k = clamp(1 - y / 5, 0.15, 1); gh.shadow.material.opacity = k * ghostFade; // the shadow fades with the ghost in Hide HUD mode gh.shadow.scale.setScalar(0.7 + y * 0.15);
+  actEmote(gh, t); // scream, laugh, cry, clap or shush (see EMOTES)
+  gh.shadow.position.set(x, 0.02, z); const k = clamp(1 - y / 5, 0.15, 1); gh.shadow.material.opacity = k * ghostFade; gh.shadow.scale.setScalar(0.7 + y * 0.15); // the shadow fades with the ghost in Hide HUD mode
+}
+
+/* ---------------- emotes (number keys 1 to 5) ----------------
+   Quick reactions you can do without typing: each one puts a speech bubble over your ghost and
+   makes it act the emotion out for a moment. They travel to everyone as an ordinary speech bubble
+   (the same way chat does), and every computer recognizes the exact text and plays the animation.
+   To add one: add a line here, a case in actEmote() and a row in the shortcut sheet (#keySheet). */
+const EMOTES = [
+  { key: "1", kind: "scream", text: "😱 AAAAAH!" },
+  { key: "2", kind: "laugh",  text: "😂 Hahaha!" },
+  { key: "3", kind: "cry",    text: "😢 *sniff*" },
+  { key: "4", kind: "clap",   text: "👏 *clap clap*" },
+  { key: "5", kind: "shush",  text: "🤫 Shhh!" }
+];
+const EMOTE_BY_TEXT = new Map(EMOTES.map((e) => [e.text, e]));   // bubble text -> emote, to recognize friends' emotes
+const EMOTE_TIME = 1.8;                                           // seconds each animation lasts
+let lastEmoteAt = 0;                                              // so holding a number key doesn't spam bubbles
+// Do emote number i (0 to 4): say its line (which everyone sees) and start the animation.
+function emote(i) {
+  const e = EMOTES[i]; if (!e) return;
+  const now = performance.now() / 1000; if (now - lastEmoteAt < 0.8) return; lastEmoteAt = now;
+  say(e.text);
+  startEmote(me.ghost, e.kind, now);
+}
+// Start a ghost's emote animation. A scream also uses the Boo "puff up".
+function startEmote(gh, kind, t) { gh.emote = kind; gh.emoteAt = t; if (kind === "scream") gh.booAt = t; }
+// Every frame, from poseGhost(): act out the current emote, if any. Each emote swells in and out
+// smoothly (env goes 0 -> 1 -> 0 over EMOTE_TIME) so it starts and ends without a jump.
+function actEmote(gh, t) {
+  // Start from the normal pose each frame: arms back in place, body at its usual height.
+  if (gh.arms) gh.arms.forEach((a, i) => { const sd = i ? 1 : -1; a.position.set(sd * 0.5, 0.48, -0.08); a.rotation.set(0, 0, sd * 0.5); });
+  gh.bodyG.position.y = 0;
+  if (!gh.emote) return;
+  const pr = (t - gh.emoteAt) / EMOTE_TIME; if (pr >= 1 || pr < 0) { gh.emote = null; return; }
+  const env = Math.sin(pr * Math.PI);   // 0 at the start and end, 1 in the middle
+  const L = gh.arms && gh.arms[0], R = gh.arms && gh.arms[1];
+  switch (gh.emote) {
+    case "scream":   // shake all over with both arms thrown up
+      gh.bodyG.rotation.z += Math.sin(t * 55) * 0.07 * env;
+      if (L && R) { L.position.y += 0.3 * env; R.position.y += 0.3 * env; L.rotation.z -= 0.6 * env; R.rotation.z += 0.6 * env; }
+      break;
+    case "laugh":    // bounce up and down and rock side to side, mouth wide open
+      gh.bodyG.position.y = Math.abs(Math.sin(t * 16)) * 0.09 * env;
+      gh.bodyG.rotation.z += Math.sin(t * 8) * 0.13 * env;
+      gh.mouth.scale.set(0.8 + 0.6 * env, 1.1 + Math.abs(Math.sin(t * 16)) * 1.6 * env, 0.5);
+      break;
+    case "cry":      // droop, hang the head and tremble; arms come up to the eyes
+      gh.bodyG.scale.y *= 1 - 0.1 * env; gh.bodyG.rotation.x += 0.28 * env;
+      gh.bodyG.rotation.z += Math.sin(t * 30) * 0.02 * env;
+      if (L && R) { L.position.set(-0.5 + 0.28 * env, 0.48 + 0.3 * env, -0.08 - 0.3 * env); R.position.set(0.5 - 0.28 * env, 0.48 + 0.3 * env, -0.08 - 0.3 * env); }
+      break;
+    case "clap": {   // both arms swing in front and meet, over and over
+      const c = (Math.sin(t * 22) + 1) / 2;   // 0 = apart, 1 = together
+      if (L && R) { const spread = 0.5 - (0.18 + 0.2 * c) * env; L.position.set(-spread, 0.48 + 0.1 * env, -0.08 - 0.38 * env); R.position.set(spread, 0.48 + 0.1 * env, -0.08 - 0.38 * env); L.rotation.y = 0.9 * env; R.rotation.y = -0.9 * env; }
+      break;
+    }
+    case "shush":    // lean in with one arm raised to the mouth
+      gh.bodyG.rotation.x += 0.16 * env;
+      if (R) R.position.set(0.5 - 0.42 * env, 0.48 + 0.14 * env, -0.08 - 0.42 * env);
+      break;
+  }
 }
 
 /* ---------------- ghosts fade out in Hide HUD mode ----------------
@@ -1383,6 +1452,9 @@ addEventListener("keydown", (e) => {
   if (k === "p") copyDebug(); // Copy Debug Screen
   if (k === "o" && nearCounter()) openShop();
   if (k === "b") boo();
+  { const ei = EMOTES.findIndex((em) => em.key === k); if (ei >= 0) emote(ei); } // 1 to 5: emotes
+  if (k === "-") setSubSize(subSize - 1);            // subtitles smaller (just for you)
+  if (k === "=" || k === "+") setSubSize(subSize + 1); // subtitles bigger (just for you)
   if (k === "enter") { e.preventDefault(); $("say").focus(); }
   if (k === "k") togglePlay();
   if (k === "j") skip(-10); // back 10 seconds
@@ -1503,7 +1575,7 @@ function drawDirect() {
   }
   // Subtitles (subShown is kept up to date by updateSubs() every frame).
   if (subShown) {
-    const size = Math.max(16, Math.round(H * 0.045)), lh = size * 1.25;
+    const size = Math.max(16, Math.round(H * 0.045 * SUB_SIZES[subSize].s)), lh = size * 1.25;   // your personal subtitle size
     x.font = "700 " + size + "px Karla, 'Segoe UI', sans-serif"; x.textAlign = "center"; x.textBaseline = "alphabetic"; x.lineJoin = "round";
     const lines = [];
     for (const para of subShown.split("\n")) { // word-wrap each line to 85% of the width
@@ -1679,7 +1751,7 @@ netHooks.data = (m) => {
   if (m.t === "throw") { onThrowMsg(m); return; }
   if (m.t === "pickup") { onPickupMsg(m); return; }
   // Someone's picture from me stalled: hang up their call; syncCalls() calls them again right away.
-  if (m.t === "recall") { if (m.to === myPeerId() && amProj() && typeof m.from === "string") { dropCall(m.from); syncCalls(); } return; }
+  if (m.t === "recall") { if (m.to === myPeerId() && typeof m.from === "string" && myChildren().includes(m.from)) { dropCall(m.from); syncCalls(); } return; }   // we feed them (as projectionist or passing it along)
   if (m.t !== "subs" && m.t !== "suboff") return;
   if (m.from !== proj.owner) return;
   if (amRoomHost()) { if (m.t === "subs") sharedSubsPacket = m; else if (sharedSubsPacket) sharedSubsPacket.off = num(m.off, 0); }
@@ -1757,16 +1829,33 @@ function decodeSubs(buf) {
   if (z0 > n * 0.2) return new TextDecoder("utf-16be").decode(buf);
   try { return new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch { return new TextDecoder("windows-1252").decode(buf); }
 }
-// Draw the current subtitle text (word-wrapped, white with a black outline) onto the subtitle canvas.
+// ---- Subtitle size (personal) ----
+// Everyone picks their own size; it only changes how subtitles look on this computer, and it's
+// remembered for next time. It applies to the big screen, the lobby TVs and full view.
+const SUB_SIZES = [{ n: "Small", tag: "S", s: 0.75 }, { n: "Medium", tag: "M", s: 1 }, { n: "Large", tag: "L", s: 1.3 }, { n: "Extra large", tag: "XL", s: 1.6 }];
+let subSize = clamp(num(store.get("gm.subsize", 1), 1) | 0, 0, SUB_SIZES.length - 1);
+// Change the size (wraps around when clicked past the largest), redraw, remember it.
+function setSubSize(i, wrap) {
+  const n = SUB_SIZES.length; i = wrap ? (i + n) % n : clamp(i, 0, n - 1);
+  subSize = i; store.set("gm.subsize", i); subShown = null;   // clearing subShown makes the next frame redraw at the new size
+  $("subsSize").textContent = "Subs: " + SUB_SIZES[i].tag;
+  toast("Subtitle size: " + SUB_SIZES[i].n + " (just for you)");
+}
+$("subsSize").textContent = "Subs: " + SUB_SIZES[subSize].tag;
+$("subsSize").addEventListener("click", () => setSubSize(subSize + 1, true));
+// Draw the current subtitle text (word-wrapped, white with a black outline) onto the subtitle canvas,
+// at your chosen size.
 function drawSub(text) {
   const x = subCv.getContext("2d"), W = subCv.width, H = subCv.height; x.clearRect(0, 0, W, H);
   if (text) {
-    x.font = "700 60px Karla, 'Segoe UI', sans-serif"; x.textAlign = "center"; x.textBaseline = "alphabetic"; x.lineJoin = "round";
+    const sc = SUB_SIZES[subSize].s;   // your personal size
+    x.font = "700 " + Math.round(60 * sc) + "px Karla, 'Segoe UI', sans-serif"; x.textAlign = "center"; x.textBaseline = "alphabetic"; x.lineJoin = "round";
     const lines = [];
     for (const para of text.split("\n")) { let cur = ""; for (const w of para.split(" ")) { const t = cur ? cur + " " + w : w; if (x.measureText(t).width > W - 120 && cur) { lines.push(cur); cur = w; } else cur = t; } lines.push(cur); }
-    const shown = lines.slice(-5), lh = 72;
+    // Bigger text fits fewer lines on the strip; keep the newest lines.
+    const lh = 72 * sc, fit = Math.max(1, Math.min(5, Math.floor((H - 26 - 60 * sc) / lh) + 1)), shown = lines.slice(-fit);
     shown.forEach((ln, i) => { const y = H - 26 - (shown.length - 1 - i) * lh;
-      x.strokeStyle = "rgba(0,0,0,0.92)"; x.lineWidth = 12; x.strokeText(ln, W / 2, y); x.fillStyle = "#fffbea"; x.fillText(ln, W / 2, y); });
+      x.strokeStyle = "rgba(0,0,0,0.92)"; x.lineWidth = 12 * sc; x.strokeText(ln, W / 2, y); x.fillStyle = "#fffbea"; x.fillText(ln, W / 2, y); });
   }
   subTex.needsUpdate = true;
 }
@@ -1782,6 +1871,8 @@ function updateSubs() {
     text = parts.join("\n");
   }
   if (text !== subShown) { subShown = text; drawSub(text); }
+  // The size button appears whenever the Hide subs button does.
+  const sh = $("subsToggle").hidden; if ($("subsSize").hidden !== sh) $("subsSize").hidden = sh;
 }
 // A subtitle file was picked. Catch common mistakes (picking a video, or picture-based subtitles) with a clear message.
 $("subs").addEventListener("change", async (e) => {
@@ -1825,7 +1916,7 @@ function sharePresence(force) {
   if (!room) return;
   const g = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), r: +me.yaw.toFixed(3), c: myColor };
   const patch = { g };
-  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; }
+  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; if (amRoomHost()) patch.heirs = heirList(); patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
   room.presence(patch).catch(() => {});
 }
 // Send the shared playback state on its own channel.
@@ -1874,6 +1965,7 @@ function onPeers(ch) {
   const hostVer = hostPe && hostPe.presence && typeof hostPe.presence.ver === "string" ? clean(hostPe.presence.ver, 60) : "";
   if (hostVer && hostVer !== BUILD) showUpdateBar("The host is running a different version of the game (" + hostVer + "). Refresh to get the latest.");
   peersSnap = ch.peers;
+  noteHeirs();   // keep the "who takes over" list up to date (see "Keeping the room alive")
   const seen = new Set();
   for (const pe of ch.peers) {
     if (pe.sameTab || pe.kind !== "viewer") continue;
@@ -1887,7 +1979,7 @@ function onPeers(ch) {
     const s = pe.presence.say;
     const sk = s && typeof s === "object" ? String(s.k) + "|" + String(s.t) : null;
     if (sk && sk !== o.sayKey) {
-      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); if (o.sayText.toLowerCase().startsWith("boo")) o.gh.booAt = performance.now() / 1000; if (o.sayText.startsWith("*")) o.gh.munchAt = performance.now() / 1000; }
+      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); if (o.sayText.toLowerCase().startsWith("boo")) o.gh.booAt = performance.now() / 1000; { const em = EMOTE_BY_TEXT.get(o.sayText); if (em) startEmote(o.gh, em.kind, performance.now() / 1000); } /* an emote: act it out */ if (o.sayText.startsWith("*")) o.gh.munchAt = performance.now() / 1000; }
       o.sayKey = sk;
     } else if (!sk) o.sayKey = "";
   }
@@ -1926,7 +2018,8 @@ function renderCrowd() {
 function updateNotice() {
   const el = $("notice");
   let msg = "";
-  if (blocked || remoteBlocked) msg = "Your browser held the sound back. Tap anywhere to hear the show.";
+  if (reconn) msg = "Reconnecting to the room… (" + Math.round((Date.now() - reconn.since) / 1000) + "s)" + (reconn.heirIdx === 0 ? " You're next in line to host if the host has left." : "");
+  else if (blocked || remoteBlocked) msg = "Your browser held the sound back. Tap anywhere to hear the show.";
   else if (amProj() && film && room && streamUnsupported) msg = "This browser can't send movies to friends. Load movies from Chrome or Edge.";
   else if (repair.gaveUp && projBusy()) msg = "No picture is arriving from " + (proj.nick || "the projector") + ". Ask them to stop and start again, or type /admin reset movie.";
   else if (projBusy() && !remoteOn) msg = proj.kind === "pick" ? busyText() : "Connecting to " + (proj.nick || "the") + (proj.nick ? "'s" : "") + " projector…";
@@ -2071,13 +2164,18 @@ async function boostSenders(call) {
 }
 // Hang up the call to one friend.
 function dropCall(id) { const c = calls.get(id); if (c) { try { c.call.close(); } catch {} calls.delete(id); } }
-// Runs every 2 s and whenever something changes: as projectionist, make sure every friend has a call
-// carrying the current tracks; otherwise hang up all calls.
+// Runs every 2 s and whenever something changes: make sure everyone we should be sending the picture to
+// (as projectionist, or when passing it along) has a call carrying the current tracks; hang up the rest.
 function syncCalls() {
-  if (!p2p || !room || !amProj() || !(film || sharing)) { for (const id of [...calls.keys()]) dropCall(id); return; }
-  const want = new Set(peersSnap.filter((pe) => !pe.sameTab).map((pe) => pe.peer));
+  // The projectionist sends to its direct viewers; a viewer passing the picture along (see "Passing the
+  // picture along") sends what it receives to the viewers assigned to it. Everyone else sends nothing.
+  const showing = amProj() ? !!(film || sharing) : !!(remoteOn && remoteStream);
+  if (!p2p || !room || !showing) { for (const id of [...calls.keys()]) dropCall(id); if (amProj()) publishFeed([]); return; }
+  if (amProj()) publishFeed(planFeed());
+  const want = new Set(myChildren());
   for (const id of [...calls.keys()]) if (!want.has(id)) dropCall(id);
-  const tracks = outTracks(); if (!tracks) return;
+  if (!want.size) return;
+  const tracks = amProj() ? outTracks() : relayTracks(); if (!tracks) return;
   const sig = tracks.map((tr) => tr.id).sort().join(",");
   for (const id of want) {
     const have = calls.get(id); if (have && have.sig === sig) continue;
@@ -2092,6 +2190,91 @@ function syncCalls() {
   }
 }
 setInterval(syncCalls, 2000);
+
+/* ---------------- Passing the picture along ----------------
+   The projectionist's upload has to carry one copy of the video per viewer, so in a big room it
+   runs out. So the projectionist sends straight to at most `maxDirect` viewers (3 unless changed
+   with /admin direct viewers), and each of those passes the picture on to up to 2 more, who can
+   pass it on again, like a phone tree. Who gets it from whom (the "feed plan") is decided by the
+   projectionist and shared in their presence, so everyone agrees. With few enough viewers the plan
+   is empty and everyone gets the picture directly, exactly as before.
+   Only viewers whose own picture is arriving fine are asked to pass it on; if someone's picture
+   fails, the people they were feeding are moved elsewhere at the next check (every 2 seconds).
+   A passed-along picture has been through one more computer, so it can be a little softer and
+   about a fifth of a second behind; sound and subtitles still stay together with it. */
+let maxDirect = 3;                    // how many viewers the projectionist feeds directly (room-wide setting)
+const RELAY_CHILDREN = 2;            // how many viewers each viewer passes the picture on to
+let feedPlan = [];                   // projectionist: the current plan, as [viewer, gets it from] pairs
+let sentFeed = "";                   // projectionist: the plan everyone was last told
+let lastPic = null;                  // viewer: what we last told everyone about our picture (working or not)
+// Is this viewer's picture working well enough to pass on? (From their presence.)
+const picOk = (pe) => !!(pe && pe.presence && pe.presence.pic);
+// PROJECTIONIST: work out who gets the picture from whom. Keeps the previous plan where it still works,
+// so pictures aren't shuffled around every 2 seconds.
+function planFeed() {
+  const viewers = peersSnap.filter((pe) => !pe.sameTab);
+  if (viewers.length <= maxDirect) return [];   // small room: everyone directly
+  const byId = new Map(viewers.map((pe) => [pe.peer, pe]));
+  const prevParent = new Map(feedPlan);
+  // Direct viewers: those who were direct before (still here), then good-picture viewers, then the rest.
+  const wasDirect = (pe) => !prevParent.has(pe.peer);
+  const order = [...viewers].sort((a, b) => (wasDirect(b) - wasDirect(a)) || (picOk(b) - picOk(a)));
+  const direct = order.slice(0, maxDirect).map((pe) => pe.peer), rest = order.slice(maxDirect).map((pe) => pe.peer);
+  // Who can pass it on: viewers already placed in the tree whose picture works. spots = free places each has left.
+  const spots = new Map(direct.filter((id) => picOk(byId.get(id))).map((id) => [id, RELAY_CHILDREN]));
+  const plan = [], placed = [...spots.keys()];
+  // Keep each viewer with their previous feeder if that still works, then fill the gaps in order.
+  const take = (id, parent) => { plan.push([id, parent]); spots.set(parent, spots.get(parent) - 1); if (picOk(byId.get(id))) { spots.set(id, RELAY_CHILDREN); placed.push(id); } };
+  const unplaced = [];
+  for (const id of rest) { const pp = prevParent.get(id); if (pp && (spots.get(pp) || 0) > 0) take(id, pp); else unplaced.push(id); }
+  for (const id of unplaced) {
+    const parent = placed.find((pid) => pid !== id && (spots.get(pid) || 0) > 0);
+    if (parent) take(id, parent);   // otherwise nobody can pass it on yet: this viewer gets it directly
+  }
+  return plan;
+}
+// PROJECTIONIST: remember the plan, and tell everyone if it changed.
+function publishFeed(plan) {
+  feedPlan = plan; const sig = JSON.stringify(plan);
+  if (sig !== sentFeed) { sentFeed = sig; sharePresence(true); }
+}
+// The projectionist's current plan, as everyone sees it (from their presence).
+function sharedPlan() {
+  if (amProj()) return feedPlan;
+  const pe = peersSnap.find((x) => x.peer === proj.owner), plan = pe && pe.presence && pe.presence.feed;
+  return Array.isArray(plan) ? plan.filter((pr) => Array.isArray(pr) && typeof pr[0] === "string" && typeof pr[1] === "string").slice(0, 60) : [];
+}
+// Whose picture we should show: the projectionist's, or the viewer the plan says passes it to us.
+function myFeeder() {
+  if (!proj.owner || amProj()) return proj.owner;
+  const mine = sharedPlan().find((pr) => pr[0] === myPeerId());
+  return mine ? mine[1] : proj.owner;
+}
+// Who we send the picture to: as projectionist, every viewer not assigned to someone else;
+// as a viewer, the viewers assigned to us.
+function myChildren() {
+  const plan = sharedPlan(), me0 = myPeerId();
+  if (amProj()) { const relayed = new Set(plan.map((pr) => pr[0])); return peersSnap.filter((pe) => !pe.sameTab && !relayed.has(pe.peer)).map((pe) => pe.peer); }
+  return plan.filter((pr) => pr[1] === me0).map((pr) => pr[0]);
+}
+// A viewer passing the picture on sends exactly what it receives: the live picture and sound tracks.
+function relayTracks() {
+  if (!remoteStream) return null;
+  const live = (tr) => tr.readyState === "live";
+  const v = remoteStream.getVideoTracks().filter(live)[0]; if (!v) return null;
+  const a = remoteStream.getAudioTracks().filter(live)[0];
+  return hint(a ? [v, a] : [v]);
+}
+// Every second: show the picture from whoever the plan says feeds us, as soon as it has arrived
+// (until then the old picture stays up, so a change of plan doesn't blank the screen), and tell
+// everyone whether our picture works (so the projectionist knows if we can pass it on).
+setInterval(() => {
+  if (!room || !p2p) return;
+  const f = myFeeder();
+  if (f && !amProj() && (!currentCall || currentCall.peer !== f)) { const w = inCalls.get(f); if (w && w.stream) showRemote(w); }
+  const pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp;
+  if (pic !== lastPic) { lastPic = pic; sharePresence(true); }
+}, 1000);
 
 /* ---------------- Picture quality for each viewer ----------------
    Whoever shows the movie sends a separate copy of the video to every viewer, so their upload
@@ -2112,6 +2295,13 @@ const QUALITY_LADDER = [
   { h: 360, need: 0 }        // the floor: used whatever the bandwidth
 ];
 const QUALITY_SETTLE_S = 8;  // after a viewer connects, the browser needs a few seconds to find out how fast the connection is
+// From a connection's statistics: is it going straight to the other computer, or through a relay server?
+function routeOf(rep) {
+  let pair = null; const local = {};
+  rep.forEach((r) => { if (r.type === "local-candidate") local[r.id] = r.candidateType; if (r.type === "candidate-pair" && r.nominated && r.state === "succeeded") pair = r; });
+  if (!pair) return "";
+  return local[pair.localCandidateId] === "relay" ? "via relay server" : "direct";
+}
 // Read the browser's live statistics for one connection and boil them down to a few numbers:
 // how much bandwidth the connection could use (avail), how much video is actually going out (kbps),
 // the picture size and frame rate being sent, and what (if anything) is holding the quality back.
@@ -2128,14 +2318,14 @@ async function senderStats(pc, prev) {
       q.why = r.qualityLimitationReason || ""; q.codecId = r.codecId;   // "bandwidth", "cpu" or "none"
     }
   });
-  q.codec = codecs[q.codecId] || "";
+  q.codec = codecs[q.codecId] || ""; q.route = routeOf(rep);   // direct, or through a relay server
   // Video actually sent per second, worked out from how many bytes went out since the last check.
   if (prev && prev.bytes && q.bytes >= prev.bytes) q.kbps = ((q.bytes - prev.bytes) * 8) / (q.at - prev.at);
   return q;
 }
 // Every 2 seconds, while you're showing something: measure each viewer's copy and adjust its picture size.
 async function tuneSenders() {
-  if (!amProj()) return;
+  if (!calls.size) return;   // only while sending the picture to someone (as projectionist or passing it along)
   for (const [id, e] of calls) {
     const pc = e.call.peerConnection; if (!pc || !pc.getStats) continue;
     const sn = pc.getSenders().find((x) => x.track && x.track.kind === "video"); if (!sn) continue;
@@ -2155,7 +2345,7 @@ async function tuneSenders() {
       if (e.down >= 2) { i = fit; e.down = 0; } else if (e.up >= 3) { i--; e.up = 0; }
       // The size of the picture we're sending from (the movie file or the shared screen).
       const set = sn.track.getSettings ? sn.track.getSettings() : {};
-      const srcH = set.height || (sharing ? 0 : video.videoHeight) || 1080;
+      const srcH = set.height || (amProj() ? (sharing ? 0 : video.videoHeight) : rVideo.videoHeight) || 1080;   // passing along: the size we receive
       // How much to shrink it: e.g. a 1080-line movie on the 720 step is shrunk by 1.5. Never enlarged.
       const scale = Math.max(1, srcH / QUALITY_LADDER[i].h);
       if (i !== e.step || Math.abs((e.scale || 1) - scale) > 0.01) {
@@ -2176,6 +2366,7 @@ async function tuneReceiver() {
   try {
     const rep = await pc.getStats(); const q = { at: performance.now(), bytes: 0, kbps: 0, w: 0, h: 0, fps: 0, lost: 0 };
     rep.forEach((r) => { if (r.type === "inbound-rtp" && r.kind === "video") { q.bytes = r.bytesReceived || 0; q.w = r.frameWidth || 0; q.h = r.frameHeight || 0; q.fps = r.framesPerSecond || 0; q.lost = r.packetsLost || 0; } });
+    q.route = routeOf(rep);   // direct, or through a relay server
     if (rxQ && rxQ.bytes && q.bytes >= rxQ.bytes) q.kbps = ((q.bytes - rxQ.bytes) * 8) / (q.at - rxQ.at);
     rxQ = q;
   } catch {}
@@ -2322,7 +2513,7 @@ function hostProjRequest(from, m) {
 // REFEREE ONLY: announce the projector state to everyone (and apply it here).
 // `ans` says which request this answers, so the asker knows.
 function publishProj(s, ans) {
-  const msg = { t: "proj", s: Object.assign({}, s, { v: (proj.v || 0) + 1, ans: ans || null }) };
+  const msg = { t: "proj", s: Object.assign({}, s, { v: (proj.v || 0) + 1, ans: ans || null, moved: movedNote() }) };   // moved: see takeOverAsHost()
   if (room && room.toAll) room.toAll(msg);
   applyProj(msg.s);
 }
@@ -2330,7 +2521,13 @@ function publishProj(s, ans) {
 setInterval(() => { if ((amRoomHost() || !room) && proj.kind === "pick" && Date.now() - proj.at > 120000) publishProj(freeProj()); }, 5000);
 // Hook the referee into the networking layer: requests, people leaving (frees their projector)…
 netHooks.hostReq = (from, m) => { if (m && m.t === "projreq") hostProjRequest(from, m); };
-netHooks.gone = (peer) => { if (proj.owner === peer) publishProj(freeProj()); };
+// If the projectionist drops out, wait 10 seconds before freeing the projector: if their internet only
+// blipped, they reconnect (see "Keeping the room alive") and their showing carries on.
+const PROJ_GRACE_MS = 10000;
+netHooks.gone = (peer) => {
+  if (proj.owner !== peer) return;
+  setTimeout(() => { if (amRoomHost() && proj.owner === peer && !peersSnap.some((pe) => pe.peer === peer)) publishProj(freeProj()); }, PROJ_GRACE_MS);
+};
 // …and which relayed messages the host passes on: subtitles only from the projectionist,
 // thrown food at most about 6 per second per person.
 const throwClock = new Map();
@@ -2345,7 +2542,7 @@ netHooks.allowFwd = (m) => {
 };
 // When someone joins, the host tells them who has the projector and sends the current subtitles.
 netHooks.welcome = (send) => {
-  send({ t: "proj", s: Object.assign({}, proj, { ans: null }), from: myPeerId() });
+  send({ t: "proj", s: Object.assign({}, proj, { ans: null, moved: movedNote() }), from: myPeerId() });
   if (sharedSubsPacket) send(sharedSubsPacket);
 };
 
@@ -2373,9 +2570,11 @@ function applyProj(s) {
   hostSharing = proj.kind === "screen" && proj.owner !== mine;
   // Stop showing a picture from someone who no longer runs the projector (their call is left alone;
   // they hang it up themselves when they stop)…
-  if (currentCall && currentCall.peer !== proj.owner) { currentCall = null; endRemote(); }
+  // (Unless the projectionist just became the host and changed ids: keep their old picture until the new one comes.)
+  const movedFrom = typeof s.moved === "string" ? s.moved.slice(0, 120) : null;
+  if (currentCall && currentCall.peer !== myFeeder() && currentCall.peer !== movedFrom) { currentCall = null; endRemote(); }
   // …and if the new projectionist's picture already arrived before this news did, show it now.
-  const waiting = proj.owner && proj.owner !== mine ? inCalls.get(proj.owner) : null;
+  const waiting = proj.owner && proj.owner !== mine ? inCalls.get(myFeeder()) : null;
   if (waiting && waiting.stream && currentCall !== waiting.call) showRemote(waiting);
   // The referee's answer to my own request
   const ans = s.ans && typeof s.ans === "object" ? s.ans : null;
@@ -2483,7 +2682,7 @@ function onCall(call) {
   // "stream" fires once per track (picture, then sound), always with the same stream object.
   call.on("stream", (st) => {
     entry.stream = st;
-    if (call.peer === proj.owner && !amProj()) showRemote(entry);
+    if (call.peer === myFeeder() && !amProj()) showRemote(entry);   // the projectionist, or whoever passes the picture to us
   });
   // Call ended: forget it, and if it was on screen, go back to the placeholder.
   const end = () => {
@@ -2559,7 +2758,7 @@ const repair = { peer: null, since: 0, frames: -1, changedAt: 0, expectSince: 0,
 function resetRepair() { Object.assign(repair, { peer: null, since: 0, frames: -1, changedAt: 0, expectSince: 0, tries: 0, gaveUp: false }); }
 setInterval(() => {
   const now = performance.now();
-  if (!currentCall || !remoteOn || amProj() || currentCall.peer !== proj.owner) { repair.since = 0; repair.expectSince = 0; return; }
+  if (!currentCall || !remoteOn || amProj() || currentCall.peer !== myFeeder()) { repair.since = 0; repair.expectSince = 0; return; }
   // A different projectionist than last time: start counting from scratch.
   if (repair.peer !== currentCall.peer) { resetRepair(); repair.peer = currentCall.peer; }
   const q = rVideo.getVideoPlaybackQuality ? rVideo.getVideoPlaybackQuality().totalVideoFrames : 0; // frames shown so far
@@ -2595,6 +2794,9 @@ updateProjUI();
    PeerJS gives every browser an id and connects them directly. The room host's id is
    "ghostmatinee-v1-" + the 5-letter room code, so guests can find it.
    Guests connect only to the host; the host relays presence and messages to everyone.
+   If the host leaves, the next person in line takes over (see "Keeping the room alive").
+   Presence also carries: heirs (host: who takes over next), feed (projectionist: who passes the
+   picture to whom, see "Passing the picture along") and pic (viewer: my picture works).
    Message types:
      p        presence update          projreq  claim/release the projector (to the host)
      snap     everyone's presence (sent to a newcomer)
@@ -2698,19 +2900,27 @@ function readNick() { myNick = clean($("nick").value, 24).trim(); store.set("gm.
 
 // Connected! Show the room code, start listening, paint this room's posters, enter the theater.
 async function goLive(net, code, peerObj, isHost, hostId) {
-  room = net; roomCode = code; p2p = { peer: peerObj, isHost, hostId };
+  roomCode = code; p2p = { peer: peerObj, isHost, hostId };
   originalPosterSeed = hashStr(code); paintPosters(originalPosterSeed);
   $("roomCode").textContent = code; $("roomline").hidden = false;
   try { history.replaceState(null, "", "#" + code); } catch {}
+  await attachRoom(net);
+  enterTheater();
+}
+// Start using a room connection: listen for people and the movie's play/pause state, and announce
+// ourselves. Used when first joining, and again after reconnecting or taking over as host.
+async function attachRoom(net) {
+  room = net;
   room.onPeers(onPeers);
   syncRoom = await room.join("projector");
   syncRoom.onPeers((ch) => considerPb(ch.peers));
-  enterTheater(); sharePresence(true); if (pb.e > 0) pushPb(); renderCrowd(); updateProjUI();
+  sharePresence(true); if (pb.e > 0) pushPb(); renderCrowd(); updateProjUI(); updateNotice();
 }
 // We lost the host: clean up everything multiplayer and keep going solo
 // (keeping your movie or screen share on your own screen if you were the projectionist).
-function roomDown() {
+function roomDown(why) {
   if (!room) return;
+  reconn = null;
   room = null; syncRoom = null; peersSnap = [];
   for (const id of [...calls.keys()]) dropCall(id);
   if (currentCall) { try { currentCall.close(); } catch {} } currentCall = null; remoteOn = false; remoteStream = null; rVideo.srcObject = null; rAudio.srcObject = null; hostSharing = false;
@@ -2721,35 +2931,206 @@ function roomDown() {
   updateProjUI(); useScreenSource();
   for (const o of others.values()) { removeGhost(o.gh); o.tag.el.remove(); } others.clear();
   $("roomline").hidden = true; renderCrowd(); updateNotice();
-  toast(kickedOut ? "You were removed from the room. You can rejoin with the room code, or keep watching solo." : "The host left, so the room closed. You can keep watching solo.");
+  toast(kickedOut ? "You were removed from the room. You can rejoin with the room code, or keep watching solo." : typeof why === "string" ? why : "The room closed. You can keep watching solo.");
   kickedOut = false;
 }
+/* ---------------- Keeping the room alive: reconnecting and a new host ----------------
+   Guests are connected only to the host, so two things can cut a guest off:
+     1. the guest's own internet blips (Wi-Fi dropping for a moment), or
+     2. the host leaves (closes the page) or loses their internet.
+   Either way, the guest doesn't give up: it stays in the theater (same ghost, money and snacks),
+   shows "Reconnecting…" and keeps trying to reach the room for up to 90 seconds.
+   For case 2, someone has to become the new host. The host shares a "next in line" list (heirList,
+   everyone in the order they joined). When the host disappears, the first person on that list takes
+   over the room's address (ghostmatinee-v1-CODE) and becomes the host; everyone else's reconnect
+   attempts then reach them. If the first in line is gone too, the second tries 6 seconds later, and
+   so on. Taking over can only succeed once the old host is really gone (an address can only belong
+   to one browser), so a guest whose own Wi-Fi blipped can't steal the room by accident.
+   A movie or screen share shown by someone other than the old host keeps playing throughout: the
+   picture goes straight from the projectionist to each viewer, not through the host. */
+const ROOM_ID = () => PREFIX + roomCode;   // the room's address
+const RECONNECT_GIVE_UP_MS = 90000;        // stop trying after 90 seconds and continue solo
+const HEIR_STAGGER_MS = 6000;              // each person further down the line waits this much longer before taking over
+let reconn = null;                         // while reconnecting: { since, pending, claiming, lastClaim, heirIdx, oldHost }
+let lastHeirs = [];                        // the host's latest "next in line" list (guests keep a copy)
+let sentHeirs = "";                        // host: the list we last told everyone
+let reconnectsDone = 0;                    // successful reconnects on this page (debug screen)
+// NEW HOST that was running the projector: our old and new ids, for 20 s. Sent with the projector news
+// ("moved") so viewers keep the old picture on screen until the one from our new id arrives.
+let projMoved = null;
+const movedNote = () => projMoved && Date.now() < projMoved.until && proj.owner === projMoved.to ? projMoved.from : undefined;
+// HOST: the "next in line" list: everyone else in the room, in the order they joined (at most 12).
+function heirList() { return peersSnap.filter((pe) => !pe.sameTab).map((pe) => pe.peer).slice(0, 12); }
+// Called whenever the people in the room change. The host re-announces the list if it changed;
+// guests keep the host's latest list so they know their place in line.
+function noteHeirs() {
+  if (!p2p) return;
+  if (p2p.isHost) { const h = heirList().join(","); if (h !== sentHeirs) { sentHeirs = h; sharePresence(true); } return; }
+  const hostPe = peersSnap.find((pe) => pe.peer === p2p.hostId);
+  const hs = hostPe && hostPe.presence && hostPe.presence.heirs;
+  if (Array.isArray(hs)) lastHeirs = hs.filter((x) => typeof x === "string").slice(0, 12).map((x) => x.slice(0, 120));
+}
+// Make a guest's room connection. If the link to the host drops, start reconnecting
+// (but only for the connection currently in use; an old one closing late is ignored).
+function guestNet(peerObj, cn) { const net = makeNet(peerObj, false, cn, () => { if (room === net) onHostLost(); }); return net; }
+// The link to the host dropped.
+function onHostLost() {
+  if (!p2p || p2p.isHost || reconn) return;
+  if (kickedOut) { roomDown(); return; }   // removed by an admin: don't come back
+  const idx = lastHeirs.indexOf(myPeerId());
+  reconn = { since: Date.now(), pending: null, claiming: false, lastClaim: 0, heirIdx: idx, oldHost: p2p.hostId };
+  toast("Lost the connection to the room. Reconnecting…");
+  updateNotice(); reconnTick();
+}
+// Runs every second while reconnecting: try to reach the room; if we're next in line and the host
+// seems gone, try to take over; give up after 90 seconds.
+async function reconnTick() {
+  if (!reconn || !p2p) return;
+  const r = reconn, el = Date.now() - r.since;
+  updateNotice();   // refresh the "Reconnecting… (12s)" countdown
+  if (el > RECONNECT_GIVE_UP_MS) { reconn = null; roomDown("Couldn't get back into the room. You can keep watching solo, or rejoin with the code."); return; }
+  let pr = p2p.peer;
+  // Our own link to the matchmaking server: reconnect it if it dropped, or start over if it's gone for good.
+  if (pr.destroyed) { if (r.renewing) return; r.renewing = true; const np = new Peer(await peerOptions()); np.on("call", onCall); np.on("open", () => { if (reconn !== r) { try { np.destroy(); } catch {} return; } p2p.peer = np; r.renewing = false; }); return; }
+  if (pr.disconnected) { try { pr.reconnect(); } catch {} return; }
+  if (!pr.open) return;
+  // Knock on the room's door (one try at a time, each given 2 seconds).
+  if (!r.pending) {
+    const cn = pr.connect(ROOM_ID(), { reliable: true }); r.pending = cn;
+    cn.on("open", () => { if (reconn !== r || r.pending !== cn) { try { cn.close(); } catch {} return; } rejoinAsGuest(cn); });
+    setTimeout(() => { if (reconn === r && r.pending === cn && !cn.open) { try { cn.close(); } catch {} r.pending = null; } }, 2000);
+    // Nobody at that address (yet): knock again on the next tick instead of waiting out the 2 seconds.
+    if (!pr.__gmKnockHook) { pr.__gmKnockHook = true; pr.on("error", (err) => { if (reconn && err && err.type === "peer-unavailable" && reconn.pending && !reconn.pending.open) { try { reconn.pending.close(); } catch {} reconn.pending = null; } }); }
+  }
+  // Next in line: try to take over the room (first in line right away, then every 5 s; others later).
+  if (r.heirIdx >= 0 && el >= r.heirIdx * HEIR_STAGGER_MS && !r.claiming && Date.now() - r.lastClaim > 5000) claimHost(r);
+}
+setInterval(reconnTick, 1000);
+// Back in: use the new connection, and tell everyone we're here again.
+async function rejoinAsGuest(cn) {
+  reconn = null; reconnectsDone++;
+  await attachRoom(guestNet(p2p.peer, cn));
+  if (amProj() && cues.length && !ownSubs) shareSubs();   // if we run the projector, the (maybe new) host needs our subtitles
+  toast("Reconnected to the room.");
+}
+// Try to become the host by claiming the room's address. Fails harmlessly if someone still has it.
+async function claimHost(r) {
+  r.claiming = true; r.lastClaim = Date.now();
+  const np = new Peer(ROOM_ID(), await peerOptions());
+  let settled = false;
+  const giveUp = () => { if (settled) return; settled = true; try { np.destroy(); } catch {} r.claiming = false; };
+  np.on("error", (err) => { if (!settled && err && err.type === "unavailable-id") giveUp(); });   // someone has it: keep knocking instead
+  np.on("open", () => { if (settled) return; settled = true; if (reconn !== r) { try { np.destroy(); } catch {} return; } takeOverAsHost(np, r); });
+  setTimeout(giveUp, 8000);
+}
+// We got the room's address: become the host. Everything that knew us by our old network id
+// moves to the new one, and the projector is sorted out (see the comments below).
+async function takeOverAsHost(np, r) {
+  const old = p2p.peer, oldId = old.id;
+  const iHadProj = proj.owner === oldId, hostHadProj = proj.owner === r.oldHost;
+  reconn = null; reconnectsDone++;
+  // Our old network identity retires gently: pictures we're sending (or receiving) under it keep going
+  // for 12 more seconds, while new ones are set up under our new id, so nobody's screen goes black.
+  const retiring = [...calls.values()]; calls.clear();   // syncCalls() will call everyone again from the new id
+  setTimeout(() => { for (const c of retiring) { try { c.call.close(); } catch {} } try { old.destroy(); } catch {} }, 12000);
+  if (iHadProj) projMoved = { from: oldId, to: np.id, until: Date.now() + 20000 };
+  np.on("call", onCall); hookHostPeer(np);
+  p2p = { peer: np, isHost: true, hostId: np.id };
+  // Our copy of who has the projector, translated to our new id, before anyone else hears it.
+  if (iHadProj) proj = Object.assign({}, proj, { owner: np.id });   // we were showing: keep showing under the new id
+  await attachRoom(makeNet(np, true, null, roomDown));
+  if (hostHadProj) publishProj(freeProj());   // the old host was showing: the projector is free again (fresh start for all)
+  else publishProj(proj);                     // re-announce (as the new referee)
+  if (iHadProj && cues.length && !ownSubs) shareSubs();   // newcomers get our subtitles from us now
+  toast("The host left, so you're the host now. Everyone is reconnecting to you.");
+}
+// HOST: watch our room address. If our internet dropped long enough for someone else to take over
+// as host, our address is gone: we become a guest of the new host.
+function hookHostPeer(p) {
+  p.on("error", async (err) => {
+    if (!room || !p2p || p2p.peer !== p || !p2p.isHost || !err || err.type !== "unavailable-id") return;
+    try { p.destroy(); } catch {}
+    if (film) unloadFilm(); if (sharing) stopShare(false);
+    proj = freeProj(); proj.v = 0;
+    const np = new Peer(await peerOptions()); np.on("call", onCall);
+    p2p = { peer: np, isHost: false, hostId: ROOM_ID() };
+    reconn = { since: Date.now(), pending: null, claiming: false, lastClaim: 0, heirIdx: -1, oldHost: ROOM_ID() };
+    toast("Someone else took over as host while you were offline. Rejoining as a guest…"); updateNotice();
+  });
+}
+// When this page closes, hang up properly so friends notice at once and the room's address frees
+// up quickly for the next host (instead of everyone waiting for a timeout).
+addEventListener("pagehide", () => { try { if (p2p) p2p.peer.destroy(); } catch {} });
+
+// ---- Relay servers for tough networks (TURN) ----
+// Normally friends' browsers connect straight to each other. Some home and office networks block
+// that, which shows up as a black screen with the connection stuck on "checking". A relay
+// (TURN) server fixes it: when a direct connection can't be made, the video passes through the
+// relay instead. Browsers only use it when they have to, so it costs nothing otherwise.
+// We list two free relays:
+//   - Open Relay by Metered (staticauth.openrelay.metered.ca), 20 GB a month free with no account. Its login is
+//     made from a public "shared secret" (the standard way TURN servers hand out temporary logins).
+//   - PeerJS's own relay servers (what PeerJS uses when nothing is set up).
+// For a private, more reliable relay: make a free account at metered.ca, create an app, and paste its
+// "TURN credentials" address (…/api/v1/turn/credentials?apiKey=…) into TURN_API_URL below.
+const TURN_API_URL = "";
+const OPENRELAY = { host: "staticauth.openrelay.metered.ca", secret: "openrelayprojectsecret" };
+let iceInfo = "not set up yet";   // what was set up, for the debug screen
+// Build the list of servers that help browsers find each other (STUN) and relay when needed (TURN).
+async function iceServers() {
+  const list = [{ urls: "stun:stun.l.google.com:19302" }];
+  // A private Metered relay, if one is set up above (wait at most 4 seconds for it).
+  if (TURN_API_URL) {
+    try {
+      const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 4000);
+      const got = await (await fetch(TURN_API_URL, { signal: ctl.signal })).json(); clearTimeout(timer);
+      if (Array.isArray(got) && got.length) { iceInfo = "private Metered relay (" + got.length + " servers)"; return list.concat(got.slice(0, 6)); }
+    } catch {}
+  }
+  // Open Relay: the login is "<expiry time>:<any name>" and the password is a signature of it made
+  // with the shared secret (HMAC-SHA1, as TURN servers expect). Good for 24 hours.
+  try {
+    const user = Math.floor(Date.now() / 1000) + 86400 + ":ghostmatinee", enc = new TextEncoder();
+    const key = await crypto.subtle.importKey("raw", enc.encode(OPENRELAY.secret), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+    const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(user)));
+    const credential = btoa(String.fromCharCode(...sig));
+    list.push({ urls: ["turn:" + OPENRELAY.host + ":80", "turn:" + OPENRELAY.host + ":443?transport=tcp", "turns:" + OPENRELAY.host + ":443?transport=tcp"], username: user, credential });
+    iceInfo = "Open Relay + PeerJS relays";
+  } catch { iceInfo = "PeerJS relays only (this browser can't make the Open Relay login)"; }
+  list.push({ urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"], username: "peerjs", credential: "peerjsp" });
+  return list;
+}
+// The options every PeerJS connection is created with.
+async function peerOptions() { return { config: { iceServers: await iceServers() } }; }
+
 // Host a showing: register the room id with PeerJS (retrying with a new code if it's taken).
-function host(tries) {
+async function host(tries) {
   if (typeof Peer === "undefined") { lobbyMsg("Couldn't load the connection library. Check your internet connection."); return; }
   readNick(); setBusy(true); lobbyMsg("Opening the theater…");
-  const code = makeCode(), p = new Peer(PREFIX + code);
+  const code = makeCode(), p = new Peer(PREFIX + code, await peerOptions());   // with the relay servers (see above)
   p.on("call", onCall);
   p.on("open", () => goLive(makeNet(p, true, null, roomDown), code, p, true, p.id));
+  hookHostPeer(p);   // what to do if this host later loses its room address (see "Keeping the room alive")
   p.on("error", (err) => {
+    if (room) return;   // already hosting: hookHostPeer() handles errors from here on
     if (err && err.type === "unavailable-id" && (tries || 0) < 4) { p.destroy(); host((tries || 0) + 1); return; }
     if (!entered) { setBusy(false); lobbyMsg("Couldn't open a room (" + (err && err.type || "network") + "). Try again in a moment."); }
   });
 }
 // Join a friend's room by code. Gives up after 15 s with a helpful message.
-function join(code) {
+async function join(code) {
   if (typeof Peer === "undefined") { lobbyMsg("Couldn't load the connection library. Check your internet connection."); return; }
   code = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (code.length !== 5) { lobbyMsg("Room codes are 5 characters, like K7QPM."); return; }
   readNick(); setBusy(true); lobbyMsg("Finding room " + code + "…");
-  const p = new Peer();
+  const p = new Peer(await peerOptions());   // with the relay servers (see "Relay servers" above)
   p.on("call", onCall);
   let done = false;
   const fail = (msg) => { if (done) return; done = true; try { p.destroy(); } catch {} setBusy(false); lobbyMsg(msg); };
   const timer = setTimeout(() => fail("No answer from room " + code + ". Check the code, and make sure the host still has the page open."), 15000);
   p.on("open", () => {
     const cn = p.connect(PREFIX + code, { reliable: true });
-    cn.on("open", () => { if (done) return; done = true; clearTimeout(timer); goLive(makeNet(p, false, cn, roomDown), code, p, false, PREFIX + code); });
+    cn.on("open", () => { if (done) return; done = true; clearTimeout(timer); goLive(guestNet(p, cn), code, p, false, PREFIX + code); });
   });
   p.on("error", (err) => {
     clearTimeout(timer);
@@ -2802,7 +3183,7 @@ SHEETS.forEach((s, i) => {
 });
 // entered = you've left the welcome screen and can move around.
 let entered = false;
-function enterTheater() { if (entered) return; if (posterGen === 0) { originalPosterSeed = posterSeed; paintPosters(posterSeed); } $("lobby").hidden = true; entered = true; toast("Drag to look around. Load a movie when you're ready."); }
+function enterTheater() { if (entered) return; countVisit(); /* Mortimer counts your visits */ if (posterGen === 0) { originalPosterSeed = posterSeed; paintPosters(posterSeed); } $("lobby").hidden = true; entered = true; toast("Drag to look around. Load a movie when you're ready."); }
 $("enter").addEventListener("click", () => host(0));
 
 /* =====================================================================
@@ -2845,6 +3226,7 @@ function buyItem(id) {
   inventory.push({ id, left: m.uses });
   if (inventory.length === 1) refreshHeld(); else renderTray();
   renderShop(); toast("Got " + m.name.toLowerCase() + ". Press F to " + m.verb.toLowerCase() + ".");
+  mortNoteOrder(id);   // Mortimer remembers (and may comment on a repeat order)
 }
 // After your held snack changes: update your ghost's hand, the tray, and tell everyone.
 function refreshHeld() { setHeld(me.ghost, heldItem() ? heldItem().id : null); renderTray(); sharePresence(true); }
@@ -3007,6 +3389,74 @@ const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
 const nearNpc = () => Math.hypot(me.x - npc.x, me.z - npc.z) < 3.4;
 // Show a line in his bubble and turn him toward you for 8 seconds.
 function npcSay(text) { npc.say = text; npc.sayAt = nowS(); npc.faceUntil = nowS() + 8; }
+/* ---------------- Mortimer remembers you ----------------
+   Mortimer keeps notes on you in this browser (saved under "gm.mort", so they survive closing the
+   page): how many times you've visited, when you last came, every snack you've bought, and how often
+   you've hit him with food. He uses them to greet you by name, comment on your snack habits and hold
+   a (polite) grudge. Each player's Mortimer only knows about that player. */
+const mortMem = (() => {
+  const m = store.get("gm.mort", null), ok = m && typeof m === "object";
+  const bought = {};
+  if (ok && m.bought && typeof m.bought === "object") for (const id of Object.keys(MENU_BY_ID)) bought[id] = clamp(num(m.bought[id], 0) | 0, 0, 1e6);
+  return { visits: ok ? clamp(num(m.visits, 0) | 0, 0, 1e6) : 0, last: ok ? num(m.last, 0) : 0, bought, hits: ok ? clamp(num(m.hits, 0) | 0, 0, 1e6) : 0, name: ok ? clean(m.name, 24) : "" };
+})();
+// Tonight's notes (this visit only): snacks bought and hits, plus what he knew before you arrived.
+const tonight = { bought: {}, hits: 0, prevLast: 0, prevName: "", commentedAt: 0 };
+function saveMort() { store.set("gm.mort", mortMem); }
+// Called when you enter the theater: count a new visit (unless you were here in the last 3 hours).
+function countVisit() {
+  const now = Date.now();
+  tonight.prevLast = mortMem.last; tonight.prevName = mortMem.name;
+  if (now - mortMem.last > 3 * 3600e3) mortMem.visits++;
+  mortMem.last = now; if (myNick) mortMem.name = myNick; saveMort();
+}
+// What Mortimer calls you: your name, or "friend" if you didn't type one.
+const yourName = () => myNick || "friend";
+// "first", "second" … for counting snacks.
+const ORDINALS = ["zeroth", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+const ordinal = (n) => ORDINALS[n] || n + "th";
+// Your all-time favorite snack (bought at least 3 times), or null.
+function favoriteSnack() { let best = null; for (const id in mortMem.bought) if (mortMem.bought[id] >= 3 && (!best || mortMem.bought[id] > mortMem.bought[best])) best = id; return best; }
+// His greeting the first time you talk to him this visit: a stranger gets the introduction; a
+// returning guest gets greeted by name, with a remark on how long it's been.
+function mortGreeting() {
+  const intro = "Welcome to Screen One! I'm Mortimer. I've worked this counter since 1931. Press O when you're ready to order.";
+  if (mortMem.visits <= 1 || !tonight.prevLast) return intro;
+  const days = Math.floor((Date.now() - tonight.prevLast) / 86400e3), n = mortMem.visits;
+  if (tonight.prevName && myNick && tonight.prevName.toLowerCase() !== myNick.toLowerCase())
+    return "You look familiar. Didn't you used to go by " + tonight.prevName + "? Never mind. Welcome back, " + myNick + ". I won't tell.";
+  if ([5, 10, 25, 50, 100].includes(n)) return "Visit number " + n + ", " + yourName() + "! We should get you a loyalty card. Or a plaque. Or a seat with your name on it.";
+  if (days < 1) return pickOne(["Back again, " + yourName() + "? Couldn't stay away. Nobody ever can.", "Oh, " + yourName() + "! Didn't you just leave? Time is strange here."]);
+  if (days < 14) return pickOne([yourName() + "! Welcome back. It's been " + days + " day" + (days === 1 ? "" : "s") + ". I kept your seat warm. Well, room temperature.", "Ah, " + yourName() + ". " + days + " day" + (days === 1 ? "" : "s") + " since your last visit. I counted. I have a lot of free time."]);
+  const weeks = Math.floor(days / 7);
+  return "Well, if it isn't " + yourName() + ". " + (weeks < 9 ? weeks + " weeks" : "Months") + " since your last visit. I was starting to think you'd moved on. To the other side, I mean.";
+}
+// Things he might mention when you talk to him, based on what he remembers about you.
+function mortMemoryLines() {
+  const out = [], fav = favoriteSnack();
+  if (fav) out.push("The usual, " + yourName() + "? " + MENU_BY_ID[fav].name + ", if memory serves. And it always does. It's all I have left.");
+  for (const id in tonight.bought) if (tonight.bought[id] >= 3) out.push("That's " + tonight.bought[id] + " " + MENU_BY_ID[id].name.toLowerCase() + " orders tonight. I admire the commitment.");
+  if (mortMem.hits >= 3) out.push("You've hit me with food " + mortMem.hits + " times now, " + yourName() + ". I keep a list. It's a short list. You're on it.");
+  if (tonight.hits >= 1) out.push("I saw that throw earlier. I'm choosing to be the bigger ghost.");
+  const total = Object.values(mortMem.bought).reduce((a, b) => a + b, 0);
+  if (total >= 20) out.push(total + " snacks over the years, " + yourName() + ". You're single-handedly keeping this place open.");
+  return out;
+}
+// You bought a snack: note it, and if it's a repeat tonight he may say something about it.
+function mortNoteOrder(id) {
+  mortMem.bought[id] = (mortMem.bought[id] || 0) + 1; tonight.bought[id] = (tonight.bought[id] || 0) + 1; saveMort();
+  const n = tonight.bought[id], name = MENU_BY_ID[id].name.toLowerCase();
+  if (n < 2 || Math.random() > 0.7 || nowS() - tonight.commentedAt < 20) return;   // not every time, and not twice in 20 seconds
+  tonight.commentedAt = nowS();
+  npcSay(pickOne([
+    "A " + ordinal(n) + " " + name + "? I'm not judging. I'm counting, but I'm not judging.",
+    ordinal(n)[0].toUpperCase() + ordinal(n).slice(1) + " " + name + " tonight, " + yourName() + ". A connoisseur.",
+    "Another " + name + "? You know, that's how it starts. Then you're ninety years behind a counter."
+  ]));
+}
+// You hit him with something you threw: he remembers.
+function mortNoteHit() { mortMem.hits++; tonight.hits++; saveMort(); }
+
 // Pick a random spot in a list, but not the one used last time (so he never says the same line twice in a row).
 function pickFresh(list, last) { let i; do { i = Math.floor(Math.random() * list.length); } while (i === last && list.length > 1); return i; }
 // Pick something to say: a welcome the first time; after that, now and then a line about his past,
@@ -3016,7 +3466,7 @@ function talkNpc() {
   if (!nearNpc()) { toast("Get closer to the counter to talk to Mortimer."); return; }
   npc.talks++;
   let line;
-  if (npc.talks === 1) line = "Welcome to Screen One! I'm Mortimer. I've worked this counter since 1931. Press O when you're ready to order.";
+  if (npc.talks === 1) line = mortGreeting();   // a stranger gets introduced; a regular gets greeted by name
   else {
     const ctx = [];
     const h = heldItem();
@@ -3027,6 +3477,7 @@ function talkNpc() {
     else if (proj.kind === "screen") ctx.push((proj.nick || "Somebody") + " has their screen up on the big screen. In my day we had newsreels.");
     else if (!proj.owner) ctx.push("Nothing on the screen yet. Anybody can put a movie up with the Load movie button.");
     if (flying.length > 3) ctx.push("Somebody's been throwing food. I'll find out who. I always find out who.");
+    ctx.push(...mortMemoryLines());   // what he remembers about you (see "Mortimer remembers you")
     // Roughly 1 talk in 10, he lets something slip about his past (the rare list).
     if (Math.random() < BACKSTORY_CHANCE) { npc.lastBack = pickFresh(NPC_BACKSTORY, npc.lastBack); line = NPC_BACKSTORY[npc.lastBack]; npc.backTold++; }
     // Otherwise, a bit under half the time, a remark about what's going on right now (if anything is).
@@ -3224,6 +3675,7 @@ function whoIs(peer) { if (peer === myPeerId()) return "You"; return nameFor(pee
 function onGhostHit(g, f, t) {
   g.gh.booAt = t;
   if (g.me && f.from !== myPeerId()) toast("Bonk! " + whoIs(f.from) + " hit you with " + MENU_BY_ID[f.id].name.toLowerCase() + ".");
+  if (g.npc && f.from === myPeerId()) mortNoteHit();   // your throw hit Mortimer: he'll remember
   if (g.npc && t - npc.lastHitTalk > 2.5) { npc.lastHitTalk = t; npcSay(pickOne(Math.random() < HIT_BACKSTORY_CHANCE ? NPC_HIT_BACKSTORY : NPC_HIT)); } // now and then the hit stirs up old memories
 }
 // Move all flying food for this frame. Small sub-steps (90 per second) so fast throws can't
@@ -3327,7 +3779,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.11 · 2026-11-04";
+const BUILD = "v2.12 · 2026-11-05";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -3374,6 +3826,9 @@ function dbgRows() {
       ["Latest on website", latestBuild ? latestBuild + (latestBuild === BUILD ? " (up to date)" : " (refresh to update)") + ", checked " + new Date(latestCheckedAt).toLocaleTimeString() : "not checked yet"],
       ["Host's version", (() => { const h = p2p && !p2p.isHost ? peersSnap.find((pe) => pe.peer === p2p.hostId) : null; return h && h.presence && h.presence.ver ? clean(h.presence.ver, 60) : (amRoomHost() ? "you are the host" : "–"); })()],
       ["Mode", !room ? "solo" : amRoomHost() ? "host" : "guest"],
+      ["Room link", reconn ? "reconnecting for " + Math.round((Date.now() - reconn.since) / 1000) + "s" + (reconn.heirIdx >= 0 ? " (number " + (reconn.heirIdx + 1) + " in line to host" + (reconn.claiming ? ", trying to take over" : "") + ")" : "") : room ? "connected" : "–"],
+      ["Next in line to host", (amRoomHost() ? heirList() : lastHeirs).map((id) => id === myPeerId() ? "you" : whoIs(id)).join(", ") || "–"],
+      ["Reconnects", String(reconnectsDone)],
       ["Room code", roomCode || "–"],
       ["My id", myPeerId().slice(-8)],
       ["People here", String(peersSnap.filter((p) => !p.sameTab).length + 1)],
@@ -3399,15 +3854,18 @@ function dbgRows() {
       ["Tracks out", sharing ? vTracks(shareStream) : outStream ? vTracks(outStream) + (streamDest ? " + mixed audio" : "") : "–"],
       // One entry per viewer: video actually sent / bandwidth available, picture size and frame rate,
       // and what's limiting quality ("bandwidth" = upload is stretched; "cpu" = this computer is too busy encoding).
-      ["Video to each", calls.size ? [...calls.entries()].map(([id, c]) => { const q = c.q; if (!q) return whoIs(id) + ": measuring"; return whoIs(id) + ": " + rate(q.kbps) + " of " + (q.avail ? rate(q.avail) : "?") + " available, " + q.w + "×" + q.h + " " + Math.round(q.fps) + "fps" + (q.codec ? " " + q.codec : "") + (q.why && q.why !== "none" ? ", limited by " + q.why : "") + " (size step " + QUALITY_LADDER[c.step || 0].h + ")"; }).join("; ") : "–"],
+      ["Passing along", amProj() ? (feedPlan.length ? feedPlan.length + " viewer(s) get the picture passed along; direct to " + myChildren().length + " (limit " + maxDirect + ")" : "everyone gets it directly (limit " + maxDirect + ")") : myChildren().length ? "passing the picture on to " + myChildren().map(whoIs).join(", ") : "–"],
+      ["Video to each", calls.size ? [...calls.entries()].map(([id, c]) => { const q = c.q; if (!q) return whoIs(id) + ": measuring"; return whoIs(id) + ": " + rate(q.kbps) + " of " + (q.avail ? rate(q.avail) : "?") + " available, " + q.w + "×" + q.h + " " + Math.round(q.fps) + "fps" + (q.codec ? " " + q.codec : "") + (q.why && q.why !== "none" ? ", limited by " + q.why : "") + (q.route ? ", " + q.route : "") + " (size step " + QUALITY_LADDER[c.step || 0].h + ")"; }).join("; ") : "–"],
       ["Capture support", (video.captureStream || video.mozCaptureStream) ? "yes" : "no"],
       ["Audio graph", mediaSrc ? "on (" + (actx ? actx.state : "?") + ")" : "off"]
     ]],
     ["Receiving", [
       ["Calls in", inCalls.size ? [...inCalls.entries()].map(([id, ic]) => whoIs(id) + "=" + ((ic.call.peerConnection && ic.call.peerConnection.iceConnectionState) || "?") + (ic.stream ? "" : " (no stream yet)")).join(", ") : "none"],
       ["Showing call from", currentCall ? whoIs(currentCall.peer) : "nobody"],
+      ["Picture comes from", !proj.owner || amProj() ? "–" : myFeeder() === proj.owner ? "the projectionist directly" : whoIs(myFeeder()) + " (passed along)"],
       ["Picture", remoteOn ? "on, " + rVideo.videoWidth + "×" + rVideo.videoHeight + ", ready " + rVideo.readyState : "off"],
-      ["Video arriving", rxQ ? rate(rxQ.kbps) + ", " + rxQ.w + "×" + rxQ.h + " " + Math.round(rxQ.fps) + "fps, " + rxQ.lost + " packets lost" : "–"],
+      ["Video arriving", rxQ ? rate(rxQ.kbps) + ", " + rxQ.w + "×" + rxQ.h + " " + Math.round(rxQ.fps) + "fps, " + rxQ.lost + " packets lost" + (rxQ.route ? ", " + rxQ.route : "") : "–"],
+      ["Relay servers", iceInfo],
       ["Frames received", rVideo.getVideoPlaybackQuality ? String(rVideo.getVideoPlaybackQuality().totalVideoFrames) : "?"],
       ["Self-repair", (repair.gaveUp ? "gave up after 3 reconnects" : repair.tries ? "trying: " + repair.tries + " reconnect(s) in a row" : "picture OK") + " · " + repairsTotal + " reconnect(s) in total"],
       ["Fresh starts", String(mediaResets) + " (one each time the projector is freed)"],
@@ -3431,6 +3889,7 @@ function dbgRows() {
       ["Food in the air", flying.length + " (" + flying.filter((f) => f.rest).length + " landed)"],
       ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
       ["Mortimer", npc.talks + " talks, " + npc.backTold + " about his past (" + NPC_LINES.length + " everyday lines, " + NPC_BACKSTORY.length + " backstory lines)"],
+      ["Mortimer remembers", "visit " + mortMem.visits + ", " + Object.values(mortMem.bought).reduce((a, b) => a + b, 0) + " snacks bought (" + Object.values(tonight.bought).reduce((a, b) => a + b, 0) + " tonight), hit him " + mortMem.hits + " times" + (favoriteSnack() ? ", favorite: " + MENU_BY_ID[favoriteSnack()].name : "")],
       ["Throw charge", chargeStart ? ((performance.now() - chargeStart) / 1000).toFixed(1) + "s → speed " + throwPower((performance.now() - chargeStart) / 1000).toFixed(1) : "–"]
     ]],
     ["Performance", [
@@ -3512,7 +3971,8 @@ const ADMIN_HELP = [
   ["/admin list people", "Who's in the room"],
   ["/admin kick Ben", "Remove someone from the room (they can rejoin with the code)"],
   ["/admin summon", "Bring everyone to where you are"],
-  ["/admin give everyone 20", "Give everyone Ghost Bucks (1 to 100)"]
+  ["/admin give everyone 20", "Give everyone Ghost Bucks (1 to 100)"],
+  ["/admin direct viewers 3", "How many viewers get the movie straight from whoever shows it (1 to 10); the rest get it passed along by other viewers"]
 ];
 
 // (posterOverrides, the frames set by hand, lives in the LOBBY POSTERS section because posters are painted at startup.)
@@ -3556,6 +4016,7 @@ function parseAdmin(text) {
   if ((m = text.match(/^kick\s+(.+)$/i))) return { a: "kick", name: m[1].trim() };
   if (/^summon( everyone| everybody| all)?$/.test(low)) return { a: "summon" };
   if ((m = low.match(/^give (?:everyone|everybody|all) \$?(\d+)(?: ghost bucks| bucks| dollars)?$/))) return { a: "give", n: +m[1] };
+  if ((m = low.match(/^(?:set )?direct(?: viewers)?(?: to)? (\d+)$/))) return { a: "direct", n: +m[1] };
   return { error: "Unknown admin command. Type /admin show commands to see them all." };
 }
 
@@ -3631,6 +4092,9 @@ function execAdmin(from, text) {
     case "give":
       if (c.n < 1 || c.n > 100) return fail("You can give 1 to 100 Ghost Bucks at a time.");
       return broadcastAdmin({ a: "give", n: c.n, by: who });
+    case "direct":
+      if (c.n < 1 || c.n > 10) return fail("Direct viewers can be 1 to 10.");
+      return broadcastAdmin({ a: "direct", n: c.n, msg: who + " set the projector to send directly to " + c.n + " viewer" + (c.n === 1 ? "" : "s") + "; anyone else gets the picture passed along by another viewer." });
   }
 }
 
@@ -3669,6 +4133,8 @@ function applyAdmin(m) {
     case "announce": showAnnouncement(clean(m.text, 140), clean(m.by, 40)); break;
     case "mortimer": { const line = clean(m.text, 140); npcSay(line); toast("Mortimer: " + line); break; }
     case "kicked": kickedOut = true; break;
+    // How many viewers the projectionist feeds directly (see "Passing the picture along").
+    case "direct": maxDirect = clamp(num(m.n, 3) | 0, 1, 10); if (m.msg) toast(clean(m.msg, 200)); syncCalls(); break;
     case "summon": {
       const x = num(m.x, NaN), y = num(m.y, NaN), z = num(m.z, NaN);
       if (![x, y, z].every(isFinite)) break;
@@ -3709,6 +4175,8 @@ function applyAdmin(m) {
     if (prevWelcome) prevWelcome(send);
     // A newcomer gets this room's posters, including any frames an admin changed.
     send({ t: "admin", a: "posters", seed: posterSeed >>> 0, over: Object.assign({}, posterOverrides), from: myPeerId() });
+    // …and the room's direct-viewers setting (quietly: no message).
+    send({ t: "admin", a: "direct", n: maxDirect, from: myPeerId() });
   };
 }
 

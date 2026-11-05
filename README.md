@@ -48,6 +48,13 @@ Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/t
 - **Sharper picture for bigger groups:** whoever shows the movie uploads a separate copy to each viewer, so with several people the bandwidth runs thin. Each viewer's copy now drops to a smaller picture size (1080, 720, 540 or 360 lines) when its bandwidth can't keep the full size sharp, and steps back up when it can. The debug screen shows each viewer's bandwidth, picture size and what's limiting it.
 - **Invisible ghosts:** Hide HUD (or H) also hides names and chat bubbles, fades every ghost (you and Mortimer included) out completely, and hides snacks held in hands, so nobody blocks the movie. Thrown snacks stay fully visible.
 - **Lobby TVs:** two TVs high on the back wall, either side of the concession counter, show whatever is on the big screen (with subtitles), so you can keep watching while you get snacks.
+- **Relay servers for tough networks:** if two players' internet connections can't link up directly (the black screen with the connection stuck on "checking"), the video now goes through a free relay server (Open Relay by Metered, plus PeerJS's own). It's only used when needed. For a private relay, put your own Metered credentials address in `TURN_API_URL` in `index.html`.
+- **The room survives the host leaving:** the next person in line (in the order people joined) becomes the host automatically and everyone reconnects to them. A movie shown by anyone other than the old host keeps playing.
+- **Reconnecting after a dropout:** if your connection to the room blips, the game shows "Reconnecting…" and gets you back in for up to 90 seconds, keeping your ghost, money and snacks. If the person showing the movie drops out, the projector waits 10 seconds for them before freeing up.
+- **Passing the picture along:** whoever shows the movie sends it straight to at most 3 viewers; each of them passes it on to up to 2 more. This lets bigger groups watch without overloading one person's upload. Change the number with `/admin direct viewers 3`.
+- **Personal subtitle size:** the Subs: M button (or - and =) changes subtitle size just for you, and it's remembered. Hide subs was already just for you.
+- **Emotes:** press 1 to 5 to scream, laugh, cry, clap or shush. Everyone sees the bubble and your ghost acting it out.
+- **Mortimer remembers you:** he greets returning players by name, notices how long it's been, knows your usual snack, counts repeat orders and remembers who throws food at him. The memory lives in your browser.
 - **Update check:** if your browser is showing an old saved copy of the game, a bar offers a Refresh.
 
 ## Admin commands
@@ -71,6 +78,7 @@ Anyone in the room can type these in the chat box. Commands that change things a
 | `/admin kick Ben` | Removes someone (they can rejoin with the code). The host can't be kicked |
 | `/admin summon` | Brings everyone to where you are |
 | `/admin give everyone 20` | Gives everyone 1 to 100 Ghost Bucks |
+| `/admin direct viewers 3` | How many viewers get the movie straight from whoever shows it (1 to 10); everyone else gets it passed along by another viewer |
 
 ## Lobby posters
 
@@ -104,7 +112,7 @@ The order of the list sets the image numbers used by `/admin set poster 2 to ima
 - Load movies and share screens from Chrome or Edge. Everyone else can watch in any browser.
 - The upload speed of whoever loads the movie limits how many friends get smooth video. Three or four is comfortable on typical home internet.
 - To share sound during a screen share, tick "Share system audio" (Windows) or share a single Chrome tab (Mac).
-- The room host's browser keeps the room together. If the host leaves, the room closes.
+- The room host's browser keeps the room together. If the host leaves, the next person in line takes over as host automatically.
 
 ## For developers
 
