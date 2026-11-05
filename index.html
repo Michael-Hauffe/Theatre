@@ -1918,7 +1918,13 @@ async function toggleShare() {
   if (amProj() && proj.kind === "movie") { toast("Stop the movie first, then share your screen."); return; }
   claim("pick");
   let st;
-  try { st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2, sampleRate: 48000 } }); }
+  // Sound comes only from a shared browser tab. "systemAudio: exclude" removes the "Share system audio"
+  // option for whole-screen shares, because system audio is everything the computer plays, Discord
+  // included: friends would hear their own voices again, a moment late, through the movie (an echo).
+  // A tab's sound is just that tab, so it's echo-free. "selfBrowserSurface: exclude" keeps this game's
+  // own tab out of the picker (sharing the theater into itself would loop). The audio settings ask for
+  // full stereo movie sound with no voice-call filters.
+  try { st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2, sampleRate: 48000 }, systemAudio: "exclude", selfBrowserSurface: "exclude", preferCurrentTab: false, surfaceSwitching: "include" }); }
   catch { projPending = null; requestProj("release"); toast("Screen sharing was cancelled."); return; }
   claim("screen", "", () => startShare(st), () => { st.getTracks().forEach((tr) => tr.stop()); toast(busyText()); });
 }
@@ -1928,7 +1934,8 @@ function startShare(st) {
   if (!shareTex) { shareTex = new THREE.VideoTexture(shareVideo); shareTex.encoding = THREE.sRGBEncoding; shareTex.minFilter = THREE.LinearFilter; }
   const vt0 = st.getVideoTracks()[0]; if (vt0) vt0.addEventListener("ended", () => stopShare());
   useScreenSource(); syncCalls(); sharePresence(true); updateProjUI();
-  toast(st.getAudioTracks().length ? "You're sharing your screen with sound." : "You're sharing your screen. No sound was shared; tick \u201cShare audio\u201d in the picker to include it.");
+  // Tell the sharer whether sound is going out, and how to get it if not (only tab shares carry sound; see above).
+  toast(st.getAudioTracks().length ? "You're sharing with sound." : "You're sharing without sound. To include sound, share a browser tab (the \u201cChrome tab\u201d choice) and leave \u201cAlso share tab audio\u201d ticked.");
 }
 // Stop sharing. release=false is used when we already lost the projector and must not give it back twice.
 function stopShare(release) {
@@ -2001,6 +2008,97 @@ function syncCalls() {
   }
 }
 setInterval(syncCalls, 2000);
+
+/* ---------------- Picture quality for each viewer ----------------
+   Whoever shows the movie sends a separate copy of the video to every viewer, so their upload
+   connection is shared: with 4 people in the room it carries 3 copies at once. When a copy gets
+   too little bandwidth for a full-size picture, the browser keeps the size and squeezes the
+   detail out of it, which looks grainy and blocky.
+   So every 2 seconds we check how much bandwidth each viewer's copy can use and pick a picture
+   size that looks clean at that amount (the ladder below). A smaller picture with full detail
+   looks much better than a big picture with smeared detail, especially on the in-game screen.
+   We step down quickly when bandwidth is short and step back up slowly once it recovers,
+   so the picture doesn't keep switching back and forth.
+   The numbers measured here are also shown on the debug screen (hold `). */
+// Picture heights we can send, and roughly how much bandwidth (in kbps) each needs to look clean.
+const QUALITY_LADDER = [
+  { h: 1080, need: 4500 },   // full HD: about 4.5 Mbps or more
+  { h: 720, need: 2200 },    // HD: about 2.2 Mbps
+  { h: 540, need: 1200 },    // about 1.2 Mbps
+  { h: 360, need: 0 }        // the floor: used whatever the bandwidth
+];
+const QUALITY_SETTLE_S = 8;  // after a viewer connects, the browser needs a few seconds to find out how fast the connection is
+// Read the browser's live statistics for one connection and boil them down to a few numbers:
+// how much bandwidth the connection could use (avail), how much video is actually going out (kbps),
+// the picture size and frame rate being sent, and what (if anything) is holding the quality back.
+async function senderStats(pc, prev) {
+  const rep = await pc.getStats();
+  const q = { avail: 0, kbps: 0, w: 0, h: 0, fps: 0, why: "", bytes: 0, at: performance.now(), codec: "" };
+  const codecs = {};
+  rep.forEach((r) => {
+    if (r.type === "codec") codecs[r.id] = (r.mimeType || "").replace("video/", "");
+    // The connection actually in use: its "availableOutgoingBitrate" is the browser's estimate of the bandwidth to this viewer.
+    if (r.type === "candidate-pair" && r.nominated && r.state === "succeeded" && r.availableOutgoingBitrate) q.avail = r.availableOutgoingBitrate / 1000;
+    if (r.type === "outbound-rtp" && r.kind === "video") {
+      q.bytes = r.bytesSent || 0; q.w = r.frameWidth || 0; q.h = r.frameHeight || 0; q.fps = r.framesPerSecond || 0;
+      q.why = r.qualityLimitationReason || ""; q.codecId = r.codecId;   // "bandwidth", "cpu" or "none"
+    }
+  });
+  q.codec = codecs[q.codecId] || "";
+  // Video actually sent per second, worked out from how many bytes went out since the last check.
+  if (prev && prev.bytes && q.bytes >= prev.bytes) q.kbps = ((q.bytes - prev.bytes) * 8) / (q.at - prev.at);
+  return q;
+}
+// Every 2 seconds, while you're showing something: measure each viewer's copy and adjust its picture size.
+async function tuneSenders() {
+  if (!amProj()) return;
+  for (const [id, e] of calls) {
+    const pc = e.call.peerConnection; if (!pc || !pc.getStats) continue;
+    const sn = pc.getSenders().find((x) => x.track && x.track.kind === "video"); if (!sn) continue;
+    try {
+      e.q = await senderStats(pc, e.q);
+      if (!/connected|completed/.test(pc.iceConnectionState)) { e.since = 0; continue; }   // not connected yet: nothing to judge
+      if (!e.since) e.since = performance.now();                                          // when this viewer's connection came up
+      if (performance.now() - e.since < QUALITY_SETTLE_S * 1000) continue;                // let the bandwidth estimate settle first
+      const budget = e.q.avail || e.q.kbps; if (!budget) continue;
+      let i = e.step || 0;
+      // The best step this budget can afford (the floor if none). 15% leeway so small wobbles don't count.
+      let fit = QUALITY_LADDER.findIndex((st) => budget >= st.need * 0.85); if (fit < 0) fit = QUALITY_LADDER.length - 1;
+      // Too little bandwidth for the current size two checks in a row (4 s): drop straight to the size that fits.
+      e.down = fit > i ? (e.down || 0) + 1 : 0;
+      // Clearly enough for the next size up three checks in a row (6 s): go up one step.
+      e.up = i > 0 && budget > QUALITY_LADDER[i - 1].need * 1.25 ? (e.up || 0) + 1 : 0;
+      if (e.down >= 2) { i = fit; e.down = 0; } else if (e.up >= 3) { i--; e.up = 0; }
+      // The size of the picture we're sending from (the movie file or the shared screen).
+      const set = sn.track.getSettings ? sn.track.getSettings() : {};
+      const srcH = set.height || (sharing ? 0 : video.videoHeight) || 1080;
+      // How much to shrink it: e.g. a 1080-line movie on the 720 step is shrunk by 1.5. Never enlarged.
+      const scale = Math.max(1, srcH / QUALITY_LADDER[i].h);
+      if (i !== e.step || Math.abs((e.scale || 1) - scale) > 0.01) {
+        const prm = sn.getParameters(); if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
+        prm.encodings[0].scaleResolutionDownBy = scale;
+        await sn.setParameters(prm);
+        e.step = i; e.scale = scale;
+      }
+    } catch {}
+  }
+}
+setInterval(tuneSenders, 2000);
+// Viewers: measure the video arriving from the projectionist, for the debug screen.
+let rxQ = null;   // latest numbers: kbps, picture size, frame rate, lost packets
+async function tuneReceiver() {
+  const pc = currentCall && currentCall.peerConnection;
+  if (!pc || !pc.getStats) { rxQ = null; return; }
+  try {
+    const rep = await pc.getStats(); const q = { at: performance.now(), bytes: 0, kbps: 0, w: 0, h: 0, fps: 0, lost: 0 };
+    rep.forEach((r) => { if (r.type === "inbound-rtp" && r.kind === "video") { q.bytes = r.bytesReceived || 0; q.w = r.frameWidth || 0; q.h = r.frameHeight || 0; q.fps = r.framesPerSecond || 0; q.lost = r.packetsLost || 0; } });
+    if (rxQ && rxQ.bytes && q.bytes >= rxQ.bytes) q.kbps = ((q.bytes - rxQ.bytes) * 8) / (q.at - rxQ.at);
+    rxQ = q;
+  } catch {}
+}
+setInterval(tuneReceiver, 2000);
+// Turn kbps into readable text for the debug screen: "2.8 Mbps" or "640 kbps".
+const rate = (k) => k >= 1000 ? (k / 1000).toFixed(1) + " Mbps" : Math.round(k) + " kbps";
 // Guests: picture plays muted in rVideo; sound plays in its own <audio> element so neither can stall the other.
 // Receivers: the incoming sound plays in its own <audio> element, separate from the picture,
 // so a stall in one can't silence the other.
@@ -3141,7 +3239,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.5 · 2026-11-04";
+const BUILD = "v2.6 · 2026-11-04";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -3209,6 +3307,9 @@ function dbgRows() {
     ["Sending to friends", [
       ["Calls out", outCalls.length ? outCalls.join(", ") : "none"],
       ["Tracks out", sharing ? vTracks(shareStream) : outStream ? vTracks(outStream) + (streamDest ? " + mixed audio" : "") : "–"],
+      // One entry per viewer: video actually sent / bandwidth available, picture size and frame rate,
+      // and what's limiting quality ("bandwidth" = upload is stretched; "cpu" = this computer is too busy encoding).
+      ["Video to each", calls.size ? [...calls.entries()].map(([id, c]) => { const q = c.q; if (!q) return whoIs(id) + ": measuring"; return whoIs(id) + ": " + rate(q.kbps) + " of " + (q.avail ? rate(q.avail) : "?") + " available, " + q.w + "×" + q.h + " " + Math.round(q.fps) + "fps" + (q.codec ? " " + q.codec : "") + (q.why && q.why !== "none" ? ", limited by " + q.why : "") + " (size step " + QUALITY_LADDER[c.step || 0].h + ")"; }).join("; ") : "–"],
       ["Capture support", (video.captureStream || video.mozCaptureStream) ? "yes" : "no"],
       ["Audio graph", mediaSrc ? "on (" + (actx ? actx.state : "?") + ")" : "off"]
     ]],
@@ -3216,6 +3317,7 @@ function dbgRows() {
       ["Calls in", inCalls.size ? [...inCalls.entries()].map(([id, ic]) => whoIs(id) + "=" + ((ic.call.peerConnection && ic.call.peerConnection.iceConnectionState) || "?") + (ic.stream ? "" : " (no stream yet)")).join(", ") : "none"],
       ["Showing call from", currentCall ? whoIs(currentCall.peer) : "nobody"],
       ["Picture", remoteOn ? "on, " + rVideo.videoWidth + "×" + rVideo.videoHeight + ", ready " + rVideo.readyState : "off"],
+      ["Video arriving", rxQ ? rate(rxQ.kbps) + ", " + rxQ.w + "×" + rxQ.h + " " + Math.round(rxQ.fps) + "fps, " + rxQ.lost + " packets lost" : "–"],
       ["Frames received", rVideo.getVideoPlaybackQuality ? String(rVideo.getVideoPlaybackQuality().totalVideoFrames) : "?"],
       ["Self-repair", (repair.gaveUp ? "gave up after 3 reconnects" : repair.tries ? "trying: " + repair.tries + " reconnect(s) in a row" : "picture OK") + " · " + repairsTotal + " reconnect(s) in total"],
       ["Fresh starts", String(mediaResets) + " (one each time the projector is freed)"],

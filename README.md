@@ -45,6 +45,8 @@ Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/t
 - **Full view:** press **M** to watch just the movie, filling the whole screen like a normal video player (with subtitles). Press **M** or **Esc** to go back to the theater. The controls fade after 3 seconds without moving the mouse.
 - **Pick up thrown food:** float next to it and press **X**, the Pick up button, or click it. It goes back in your hands with the bites it had left, and disappears for everyone.
 - **More from Mortimer:** about 20 new everyday lines and reactions to being hit with food. Now and then (about 1 talk in 10) he lets slip something about his past; those lines are in their own list, `NPC_BACKSTORY`, in `index.html`.
+- **Sharper picture for bigger groups:** whoever shows the movie uploads a separate copy to each viewer, so with several people the bandwidth runs thin. Each viewer's copy now drops to a smaller picture size (1080, 720, 540 or 360 lines) when its bandwidth can't keep the full size sharp, and steps back up when it can. The debug screen shows each viewer's bandwidth, picture size and what's limiting it.
+- **No more Discord echo when sharing a screen:** screen shares take sound only from a shared browser tab, never "system audio" (which picked up Discord voices).
 - **Update check:** if your browser is showing an old saved copy of the game, a bar offers a Refresh.
 
 ## Admin commands
@@ -100,7 +102,7 @@ The order of the list sets the image numbers used by `/admin set poster 2 to ima
 
 - Load movies and share screens from Chrome or Edge. Everyone else can watch in any browser.
 - The upload speed of whoever loads the movie limits how many friends get smooth video. Three or four is comfortable on typical home internet.
-- To share sound during a screen share, tick "Share system audio" (Windows) or share a single Chrome tab (Mac).
+- To share sound during a screen share, share a **Chrome tab** (play the movie in that tab) and leave "Also share tab audio" ticked. Whole-screen and window shares carry no sound: "system audio" would include Discord and everything else on your computer, which makes friends hear an echo of their own voices.
 - The room host's browser keeps the room together. If the host leaves, the room closes.
 
 ## For developers
