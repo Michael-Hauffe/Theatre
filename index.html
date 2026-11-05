@@ -1298,26 +1298,36 @@ function poseGhost(gh, x, y, z, ry, t) {
 }
 
 /* ---------------- emotes (number keys 1 to 5) ----------------
-   Quick reactions you can do without typing: each one puts a speech bubble over your ghost and
-   makes it act the emotion out for a moment. They travel to everyone as an ordinary speech bubble
-   (the same way chat does), and every computer recognizes the exact text and plays the animation.
+   Quick reactions you can do without typing: your ghost acts the emotion out for a moment (no speech
+   bubble). Everyone sees it: the emote's number and the time it started go out in your presence
+   ("emo"), and each computer plays the same animation on your ghost.
    To add one: add a line here, a case in actEmote() and a row in the shortcut sheet (#keySheet). */
 const EMOTES = [
-  { key: "1", kind: "scream", text: "😱 AAAAAH!" },
-  { key: "2", kind: "laugh",  text: "😂 Hahaha!" },
-  { key: "3", kind: "cry",    text: "😢 *sniff*" },
-  { key: "4", kind: "clap",   text: "👏 *clap clap*" },
-  { key: "5", kind: "shush",  text: "🤫 Shhh!" }
+  { key: "1", kind: "scream" },
+  { key: "2", kind: "laugh" },
+  { key: "3", kind: "cry" },
+  { key: "4", kind: "clap" },
+  { key: "5", kind: "shush" }
 ];
-const EMOTE_BY_TEXT = new Map(EMOTES.map((e) => [e.text, e]));   // bubble text -> emote, to recognize friends' emotes
 const EMOTE_TIME = 1.8;                                           // seconds each animation lasts
 let lastEmoteAt = 0;                                              // so holding a number key doesn't spam bubbles
-// Do emote number i (0 to 4): say its line (which everyone sees) and start the animation.
+let lastEmoteSeen = null;                                         // the last emote played here, for the debug screen: { who, kind, at }
+let myEmote = null;                                               // my latest emote, sent in my presence: { e: number, k: when }
+// Do emote number i (0 to 4): play it on my ghost and tell everyone.
 function emote(i) {
   const e = EMOTES[i]; if (!e) return;
   const now = performance.now() / 1000; if (now - lastEmoteAt < 0.8) return; lastEmoteAt = now;
-  say(e.text);
-  startEmote(me.ghost, e.kind, now);
+  startEmote(me.ghost, e.kind, now); lastEmoteSeen = { who: "You", kind: e.kind, at: now };
+  myEmote = { e: i, k: Date.now() }; sharePresence(true);
+}
+// A friend's presence arrived: if it carries an emote we haven't played yet, play it on their ghost.
+// (Emotes older than 3 seconds are skipped, so joining a room doesn't replay everyone's last one.)
+function friendEmote(o, em, peer) {
+  const key = em && typeof em === "object" ? String(num(em.k, 0)) + ":" + String(num(em.e, -1)) : "";
+  if (key && key !== o.emoKey && (o.emoKey !== undefined || Date.now() - num(em.k, 0) < 3000)) {
+    const e = EMOTES[num(em.e, -1) | 0]; if (e) { startEmote(o.gh, e.kind, performance.now() / 1000); lastEmoteSeen = { who: whoIs(peer), kind: e.kind, at: performance.now() / 1000 }; }
+  }
+  o.emoKey = key;
 }
 // Start a ghost's emote animation. A scream also uses the Boo "puff up".
 function startEmote(gh, kind, t) { gh.emote = kind; gh.emoteAt = t; if (kind === "scream") gh.booAt = t; }
@@ -1916,7 +1926,7 @@ function sharePresence(force) {
   if (!room) return;
   const g = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), r: +me.yaw.toFixed(3), c: myColor };
   const patch = { g };
-  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; if (amRoomHost()) patch.heirs = heirList(); patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
+  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; patch.emo = myEmote; /* my latest emote (see "emotes") */ if (amRoomHost()) patch.heirs = heirList(); patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
   room.presence(patch).catch(() => {});
 }
 // Send the shared playback state on its own channel.
@@ -1975,11 +1985,12 @@ function onPeers(ch) {
     const x = clamp(num(g.x, 0), -ROOM.x, ROOM.x), y = clamp(num(g.y, 0.3), 0, 6), z = clamp(num(g.z, 0), ROOM.zFront, LOBBY.z1), r = num(g.r, 0), c = clamp(num(g.c, 0) | 0, 0, SHEETS.length - 1);
     if (!o) { o = { gh: makeGhost(c), tag: makeTag(), x, y, z, yaw: r, sayKey: null, sayAt: -99, sayText: "" }; others.set(pe.peer, o); }
     setGhostColor(o.gh, c); o.tx = x; o.ty = y; o.tz = z; o.tyaw = r;
+    friendEmote(o, pe.presence.emo, pe.peer);   // an emote (1 to 5): act it out on their ghost
     const hid = typeof pe.presence.hold === "string" && MENU_BY_ID[pe.presence.hold] ? pe.presence.hold : null; setHeld(o.gh, hid);
     const s = pe.presence.say;
     const sk = s && typeof s === "object" ? String(s.k) + "|" + String(s.t) : null;
     if (sk && sk !== o.sayKey) {
-      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); if (o.sayText.toLowerCase().startsWith("boo")) o.gh.booAt = performance.now() / 1000; { const em = EMOTE_BY_TEXT.get(o.sayText); if (em) startEmote(o.gh, em.kind, performance.now() / 1000); } /* an emote: act it out */ if (o.sayText.startsWith("*")) o.gh.munchAt = performance.now() / 1000; }
+      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); if (o.sayText.toLowerCase().startsWith("boo")) o.gh.booAt = performance.now() / 1000; if (o.sayText.startsWith("*")) o.gh.munchAt = performance.now() / 1000; }
       o.sayKey = sk;
     } else if (!sk) o.sayKey = "";
   }
@@ -3779,7 +3790,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.12 · 2026-11-05";
+const BUILD = "v2.13 · 2026-11-05";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -3888,6 +3899,7 @@ function dbgRows() {
       ["Holding", inventory.length ? inventory.map((it, i) => (i ? "" : "▶ ") + MENU_BY_ID[it.id].name + " (" + it.left + ")").join(", ") : "nothing"],
       ["Food in the air", flying.length + " (" + flying.filter((f) => f.rest).length + " landed)"],
       ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
+      ["Last emote", lastEmoteSeen ? lastEmoteSeen.who + ": " + lastEmoteSeen.kind + ", " + Math.round(performance.now() / 1000 - lastEmoteSeen.at) + "s ago" : "none yet"],
       ["Mortimer", npc.talks + " talks, " + npc.backTold + " about his past (" + NPC_LINES.length + " everyday lines, " + NPC_BACKSTORY.length + " backstory lines)"],
       ["Mortimer remembers", "visit " + mortMem.visits + ", " + Object.values(mortMem.bought).reduce((a, b) => a + b, 0) + " snacks bought (" + Object.values(tonight.bought).reduce((a, b) => a + b, 0) + " tonight), hit him " + mortMem.hits + " times" + (favoriteSnack() ? ", favorite: " + MENU_BY_ID[favoriteSnack()].name : "")],
       ["Throw charge", chargeStart ? ((performance.now() - chargeStart) / 1000).toFixed(1) + "s → speed " + throwPower((performance.now() - chargeStart) / 1000).toFixed(1) : "–"]

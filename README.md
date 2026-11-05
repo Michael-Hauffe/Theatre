@@ -53,7 +53,7 @@ Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/t
 - **Reconnecting after a dropout:** if your connection to the room blips, the game shows "Reconnecting…" and gets you back in for up to 90 seconds, keeping your ghost, money and snacks. If the person showing the movie drops out, the projector waits 10 seconds for them before freeing up.
 - **Passing the picture along:** whoever shows the movie sends it straight to at most 3 viewers; each of them passes it on to up to 2 more. This lets bigger groups watch without overloading one person's upload. Change the number with `/admin direct viewers 3`.
 - **Personal subtitle size:** the Subs: M button (or - and =) changes subtitle size just for you, and it's remembered. Hide subs was already just for you.
-- **Emotes:** press 1 to 5 to scream, laugh, cry, clap or shush. Everyone sees the bubble and your ghost acting it out.
+- **Emotes:** press 1 to 5 and your ghost screams, laughs, cries, claps or shushes, for everyone to see (no speech bubble).
 - **Mortimer remembers you:** he greets returning players by name, notices how long it's been, knows your usual snack, counts repeat orders and remembers who throws food at him. The memory lives in your browser.
 - **Update check:** if your browser is showing an old saved copy of the game, a bar offers a Refresh.
 
