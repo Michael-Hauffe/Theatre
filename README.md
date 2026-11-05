@@ -56,6 +56,7 @@ Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/t
 - **Emotes:** press 1 to 5 and your ghost screams, laughs, cries, claps or shushes, for everyone to see (no speech bubble).
 - **Mortimer remembers you:** he greets returning players by name, notices how long it's been, knows your usual snack, counts repeat orders and remembers who throws food at him. The memory lives in your browser.
 - **Rotten tomatoes:** a new item at the concession stand ($2.25). It works like any other snack, but if you throw it at the movie screen it splats there (in full view too), slides down a bit, and fades away after about 20 seconds. `/admin clear food` wipes splats off too.
+- **Margaritas:** $6 at the concession stand, 3 sips each. One drink does nothing; two and your movement drifts; three and your vision blurs; four and you black out and wake up at the counter to Mortimer scolding you. Mortimer has lines for each stage, comments on every margarita you order, scolds you harder each time you black out, and remembers blackouts from earlier visits. Your body processes it (starting 30 seconds after your last sip, about one drink every 2 minutes), so every effect wears off. Water helps a little.
 - **Update check:** if your browser is showing an old saved copy of the game, a bar offers a Refresh.
 
 ## Admin commands
