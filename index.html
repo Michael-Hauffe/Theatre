@@ -700,12 +700,27 @@ const subCv = document.createElement("canvas"); subCv.width = 1600; subCv.height
 const subTex = new THREE.CanvasTexture(subCv); subTex.encoding = THREE.sRGBEncoding;
 const subPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.25), new THREE.MeshBasicMaterial({ map: subTex, transparent: true, depthWrite: false, toneMapped: false }));
 subPlane.position.set(0, SCREEN.cy, SCREEN.z + 0.03); subPlane.renderOrder = 2; scene.add(subPlane);
+// The lobby TVs (built later, with the lobby). They're listed here because fitScreen() resizes them too.
+const lobbyTVs = [];
+let screenAspect = 16 / 9;   // the current picture's width/height, remembered for TVs built after the first fit
 // Resize the screen (and its border, beam and subtitle strip) to match a video's width/height ratio.
+// The lobby TVs get the same shape, so a wide movie shows with black bars instead of being stretched.
 function fitScreen(aspect) {
+  screenAspect = aspect;
   let w = SCREEN.maxW, h = w / aspect; if (h > SCREEN.maxH) { h = SCREEN.maxH; w = h * aspect; }
   screen.scale.set(w, h, 1); mask.scale.set(w + 0.5, h + 0.5, 1); fitBeam(w, h);
   subPlane.scale.set(w, w, 1); subPlane.position.y = SCREEN.cy - h / 2 + (w * 0.25) / 2 + h * 0.03;
+  for (const tv of lobbyTVs) fitTV(tv);
 }
+// Fit the picture inside one lobby TV's 16:9 glass, keeping the movie's shape, and put the subtitle
+// strip along the bottom of the picture just like on the big screen.
+function fitTV(tv) {
+  let w = TV_GLASS.w, h = w / screenAspect; if (h > TV_GLASS.h) { h = TV_GLASS.h; w = h * screenAspect; }
+  tv.pic.scale.set(w, h, 1);
+  tv.subs.scale.set(w, w, 1); tv.subs.position.y = -h / 2 + (w * 0.25) / 2 + h * 0.03;
+}
+// The size of a lobby TV's glass (the picture area), in meters: 16:9.
+const TV_GLASS = { w: 3.2, h: 1.8 };
 
 // ---- Projector booth and light beam ----
 // A glowing window high on the back wall, and a faint four-sided cone of light from it to the screen.
@@ -1097,6 +1112,32 @@ fetch("posters/posters.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json(
 
 // ---- Where ghosts can go ----
 // Rectangles on the floor plan (x0..x1, z0..z1) and how high you can float there (top).
+/* ---------------- lobby TVs ----------------
+   Two TVs mounted high on the back wall, one on each side of the concession counter (beyond the
+   menu board), tilted down a little toward people at the counter. Each shows exactly what's on the
+   big screen: the picture is the very same material as the main screen (screenMat), so when the
+   movie, a screen share or the waiting message changes, the TVs change with it, with no extra
+   video to download or decode. Subtitles appear on them too (same subtitle picture). */
+{
+  const bezelMat = new THREE.MeshStandardMaterial({ color: 0x0b0b0d, roughness: 0.4, metalness: 0.3 });   // glossy black TV case
+  const glassMat = new THREE.MeshBasicMaterial({ color: 0x020203 });                                      // black glass around the picture (shows as bars)
+  for (const side of [-1, 1]) {
+    const tv = new THREE.Group();
+    // Back wall, high up: center 4.05 m off the floor (the wall is 5.5 m tall), 8.8 m left or right of center.
+    tv.position.set(side * 8.8, 4.05, LOBBY.z1 - 0.32);
+    tv.rotation.y = Math.PI;                          // face into the lobby (toward the counter)
+    const tilt = new THREE.Group(); tilt.rotation.x = 0.16; tv.add(tilt);   // lean the screen down toward the viewers below
+    const bezel = new THREE.Mesh(new THREE.BoxGeometry(TV_GLASS.w + 0.2, TV_GLASS.h + 0.2, 0.12), bezelMat); tilt.add(bezel);
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(TV_GLASS.w, TV_GLASS.h), glassMat); glass.position.z = 0.061; tilt.add(glass);
+    const pic = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), screenMat); pic.position.z = 0.064; tilt.add(pic);   // the shared picture
+    const subs = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.25), subPlane.material); subs.position.z = 0.067; subs.renderOrder = 2; tilt.add(subs);
+    // The wall mount: a short arm from the wall to the back of the TV.
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.3), bezelMat); arm.position.set(0, 0, -0.2); tv.add(arm);
+    scene.add(tv);
+    const entry = { group: tv, pic, subs }; lobbyTVs.push(entry); fitTV(entry);
+  }
+}
+
 // walkable areas: theater, two hallways, lobby (in front of the counter)
 const WALK = [
   { x0: -11.4, x1: 11.4, z0: ROOM.zFront + 0.9, z1: 15.55, top: 5.6 },
@@ -3286,7 +3327,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.9 · 2026-11-04";
+const BUILD = "v2.10 · 2026-11-04";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -3343,6 +3384,8 @@ function dbgRows() {
       ["Held by", ownerName + (proj.kind ? " (" + proj.kind + ")" : "")],
       ["Film", proj.film ? prettyFilm(proj.film) : "–"],
       ["Waiting on", projPending ? "claim " + projPending.kind : "–"],
+      // The TVs share the big screen's picture, so they always show whatever it shows; this lists their count and picture shape.
+      ["Lobby TVs", lobbyTVs.length + " on the lobby back wall, mirroring the big screen (picture shape " + screenAspect.toFixed(2) + ":1)"],
       ["Screen share", sharing ? "sharing: " + vTracks(shareStream) : hostSharing ? "watching someone's share" : "off"]
     ]],
     ["Playback", [

@@ -47,6 +47,7 @@ Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/t
 - **More from Mortimer:** about 20 new everyday lines and reactions to being hit with food. Now and then (about 1 talk in 10) he lets slip something about his past; those lines are in their own list, `NPC_BACKSTORY`, in `index.html`.
 - **Sharper picture for bigger groups:** whoever shows the movie uploads a separate copy to each viewer, so with several people the bandwidth runs thin. Each viewer's copy now drops to a smaller picture size (1080, 720, 540 or 360 lines) when its bandwidth can't keep the full size sharp, and steps back up when it can. The debug screen shows each viewer's bandwidth, picture size and what's limiting it.
 - **See-through ghosts:** Hide HUD (or H) also hides names and chat bubbles, makes every ghost (you and Mortimer included) see-through, and hides snacks held in hands, so nobody blocks the movie. Thrown snacks stay fully visible.
+- **Lobby TVs:** two TVs high on the back wall, either side of the concession counter, show whatever is on the big screen (with subtitles), so you can keep watching while you get snacks.
 - **Update check:** if your browser is showing an old saved copy of the game, a bar offers a Refresh.
 
 ## Admin commands
