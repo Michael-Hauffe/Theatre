@@ -809,7 +809,9 @@ const MENU = [
   { id: "pretzel", name: "Soft pretzel", price: 5, uses: 4, verb: "Eat", color: "#9a5b26", sounds: ["*munch*", "*salty*"], done: "*dusts off the salt*" },
   { id: "candy", name: "Gummy worms", price: 4.25, uses: 6, verb: "Eat", color: "#7bd389", sounds: ["*chew*", "*stretchy*", "*chew chew*"], done: "*crumples the box*" },
   { id: "slushie", name: "Blue raspberry slushie", price: 4.75, uses: 5, verb: "Drink", color: "#3d8bfd", sounds: ["*slurp*", "*sip*"], done: "*BRAIN FREEZE*" },
-  { id: "water", name: "Bottled water", price: 3.5, uses: 4, verb: "Drink", color: "#9fd8f0", sounds: ["*gulp*", "*sip*"], done: "*crinkles the bottle*" }
+  { id: "water", name: "Bottled water", price: 3.5, uses: 4, verb: "Drink", color: "#9fd8f0", sounds: ["*gulp*", "*sip*"], done: "*crinkles the bottle*" },
+  // Edible (if you insist), but really for throwing: it splats on the movie screen (see "Tomato splats").
+  { id: "tomato", name: "Rotten tomato", price: 2.25, uses: 2, verb: "Eat", color: "#b8352a", sounds: ["*squelch*", "*gags*"], done: "*regrets everything*" }
 ];
 // Look up a menu item by id, e.g. MENU_BY_ID.popcorn.
 const MENU_BY_ID = Object.fromEntries(MENU.map((m) => [m.id, m]));
@@ -968,7 +970,9 @@ const MENU_BY_ID = Object.fromEntries(MENU.map((m) => [m.id, m]));
     x.strokeStyle = "#d8a54e"; x.lineWidth = 4; x.strokeRect(10, 10, w - 20, h - 20);
     x.fillStyle = "#d8a54e"; x.textAlign = "center"; x.textBaseline = "alphabetic"; x.font = "50px Limelight, Georgia, serif"; x.fillText("Concessions", w / 2, 66);
     x.font = "700 22px Karla, sans-serif";
-    MENU.forEach((m, i) => { const col = i % 2, row = Math.floor(i / 2), cx = col ? w * 0.53 : w * 0.06, y = 112 + row * 36;
+    // Two columns; the rows squeeze closer together when there are more items, so they all fit on the board.
+    const rows = Math.ceil(MENU.length / 2), gap = Math.min(36, (h - 34 - 112) / Math.max(1, rows - 1));
+    MENU.forEach((m, i) => { const col = i % 2, row = Math.floor(i / 2), cx = col ? w * 0.53 : w * 0.06, y = 112 + row * gap;
       x.fillStyle = m.color; x.fillRect(cx, y - 15, 14, 14); x.fillStyle = "#efe6d8"; x.textAlign = "left"; x.fillText(m.name, cx + 24, y);
       x.textAlign = "right"; x.fillStyle = "#d8a54e"; x.fillText("$" + m.price.toFixed(2), cx + w * 0.41, y); });
     menuTex.needsUpdate = true;
@@ -1181,6 +1185,12 @@ function makeItemMesh(id) {
   else if (id === "hotdog") { const bun = add(new THREE.SphereGeometry(0.08, 12, 8), im(0xd9a066)); bun.scale.set(0.9, 0.55, 2.4); const sau = add(new THREE.SphereGeometry(0.05, 10, 8), im(0xa0401f), 0, 0.04, 0); sau.scale.set(0.9, 0.9, 5);
     add(new THREE.BoxGeometry(0.015, 0.01, 0.3), im(0xffd400, { emissive: 0x332a00 }), 0, 0.09, 0); }
   else if (id === "pretzel") { const t = add(new THREE.TorusGeometry(0.1, 0.035, 8, 20), im(0x9a5b26, { roughness: 0.5 }), 0, 0, 0, 0, 0, 0); t.scale.set(1.2, 1, 1); add(new THREE.TorusGeometry(0.05, 0.03, 8, 14), im(0x9a5b26), 0, 0.02, 0, 0, 0, 0); }
+  else if (id === "tomato") {
+    // A squashed, blotchy red tomato with a wilted green top.
+    const body = add(new THREE.SphereGeometry(0.11, 16, 12), im(0xa8321f, { roughness: 0.55 })); body.scale.set(1.1, 0.85, 1.05);
+    for (const [x, y, z] of [[0.07, 0.03, 0.07], [-0.08, -0.02, 0.05], [0.02, 0.05, -0.09]]) add(new THREE.SphereGeometry(0.035, 8, 6), im(0x5a2a12, { roughness: 0.9 }), x, y, z).scale.set(1, 0.5, 1);   // rotten spots
+    for (let i = 0; i < 5; i++) add(new THREE.ConeGeometry(0.018, 0.07, 4), im(0x4f6b2a), Math.cos(i * 1.26) * 0.03, 0.095, Math.sin(i * 1.26) * 0.03, Math.sin(i * 1.26) * 1.3, 0, -Math.cos(i * 1.26) * 1.3);   // drooping leaves
+  }
   else if (id === "candy") { add(new THREE.BoxGeometry(0.16, 0.22, 0.05), im(0x7bd389)); add(new THREE.BoxGeometry(0.12, 0.08, 0.052), im(0xff8fab), 0, 0.03, 0); }
   else { add(new THREE.CylinderGeometry(0.05, 0.05, 0.26, 14), im(0xbfe6ff, { transparent: true, opacity: 0.55, roughness: 0.1 })); add(new THREE.CylinderGeometry(0.03, 0.03, 0.04, 10), im(0x2b6fd6), 0, 0.15, 0); add(new THREE.CylinderGeometry(0.051, 0.051, 0.07, 14), im(0x3d8bfd), 0, 0.02, 0); }
   return g;
@@ -3692,7 +3702,54 @@ function onGhostHit(g, f, t) {
 // Move all flying food for this frame. Small sub-steps (90 per second) so fast throws can't
 // skip through thin walls. Each sub-step: gravity, a ray along the motion to find surfaces,
 // the floor, then ghosts (simple spheres). Slow pieces on flat ground come to rest.
+/* ---------------- Tomato splats ----------------
+   A thrown rotten tomato that hits the movie screen bursts into a red splat stuck to the screen
+   (instead of bouncing like other food). The splat slides down a little and fades away after
+   about 20 seconds. Every computer runs the same flight, so everyone sees the splat in about the
+   same spot. /admin clear food wipes them off too. */
+const SPLAT_LIFE = 20, SPLAT_FADE = 4, MAX_SPLATS = 25;   // seconds on screen, seconds of fading at the end, most at once
+const splats = [];                                        // { mesh, born }
+let splatTexs = null;                                     // three splat pictures, drawn the first time one is needed
+let splatsTotal = 0;                                      // splats so far on this page (debug screen)
+// Draw a splat picture: a lumpy red blob with spatters, seeds and a couple of drips running down.
+function makeSplatTex(seed) {
+  let r = seed * 9301 + 49297; const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);   // same splat shapes on every computer
+  return canvasTex(256, 256, (x, w, h) => {
+    const cx = w / 2, cy = h * 0.42;
+    x.fillStyle = "rgba(150, 22, 14, 0.95)";
+    x.beginPath(); for (let i = 0; i <= 24; i++) { const a = (i / 24) * Math.PI * 2, rr = 52 + rnd() * 30; x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.85); } x.fill();
+    for (let i = 0; i < 14; i++) { const a = rnd() * Math.PI * 2, d = 80 + rnd() * 40; x.beginPath(); x.arc(cx + Math.cos(a) * d, cy + Math.sin(a) * d * 0.85, 4 + rnd() * 10, 0, Math.PI * 2); x.fill(); }   // spatters
+    for (let i = 0; i < 3; i++) { const dx = cx - 40 + rnd() * 80, len = 50 + rnd() * 70; x.fillRect(dx - 4, cy + 30, 8, len); x.beginPath(); x.arc(dx, cy + 30 + len, 7, 0, Math.PI * 2); x.fill(); }   // drips
+    x.fillStyle = "rgba(200, 50, 30, 0.9)"; x.beginPath(); x.arc(cx - 10, cy - 8, 30, 0, Math.PI * 2); x.fill();   // juicier middle
+    x.fillStyle = "rgba(235, 200, 90, 0.95)"; for (let i = 0; i < 12; i++) { x.beginPath(); x.ellipse(cx - 40 + rnd() * 80, cy - 30 + rnd() * 60, 4, 2.5, rnd() * 3, 0, Math.PI * 2); x.fill(); }   // seeds
+  });
+}
+// Stick a splat on the screen where the tomato hit.
+function splatOnScreen(point) {
+  if (!splatTexs) splatTexs = [1, 2, 3].map(makeSplatTex);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.3), new THREE.MeshBasicMaterial({ map: splatTexs[splatsTotal % 3], transparent: true, depthWrite: false, toneMapped: false }));
+  // Just in front of the picture (a tiny bit further for each splat so overlapping ones don't flicker);
+  // drawn before the subtitles so subtitles stay readable on top.
+  mesh.position.set(point.x, point.y, SCREEN.z + 0.02 + (splatsTotal % 20) * 0.0005);
+  mesh.rotation.z = (Math.random() - 0.5) * 0.6; mesh.renderOrder = 1;
+  scene.add(mesh); splats.push({ mesh, born: nowS() }); splatsTotal++;
+  while (splats.length > MAX_SPLATS) removeSplat(0);
+}
+function removeSplat(i) { const sp = splats[i]; scene.remove(sp.mesh); sp.mesh.geometry.dispose(); sp.mesh.material.dispose(); splats.splice(i, 1); }
+// Remove all splats (/admin clear food).
+function clearSplats() { while (splats.length) removeSplat(0); }
+// Every frame: splats slide slowly down the screen and fade out at the end of their life.
+function stepSplats(dt, t) {
+  for (let i = splats.length - 1; i >= 0; i--) {
+    const sp = splats[i], age = t - sp.born;
+    if (age > SPLAT_LIFE) { removeSplat(i); continue; }
+    sp.mesh.position.y -= dt * 0.025;
+    sp.mesh.material.opacity = clamp((SPLAT_LIFE - age) / SPLAT_FADE, 0, 1);
+  }
+}
+
 function stepThrows(dt, t) {
+  stepSplats(dt, t);
   if (!flying.length) return;
   const targets = getThrowTargets();
   const gts = [{ key: myPeerId(), x: me.x, y: me.y, z: me.z, gh: me.ghost, me: true }, { key: "npc", x: npc.x, y: npc.y, z: npc.z, gh: npc.ghost, npc: true }];
@@ -3710,6 +3767,7 @@ function stepThrows(dt, t) {
         tD.copy(f.v).normalize(); throwRay.set(f.p, tD); throwRay.far = dist + PR;
         const hit = throwRay.intersectObjects(targets, false)[0];
         if (hit && hit.face) {
+          if (f.id === "tomato" && hit.object === screen) { splatOnScreen(hit.point); f.splat = true; break; }   // tomato on the screen: splat! (see above)
           surfaceNormal(hit, tN); if (tN.dot(f.v) > 0) tN.negate();
           f.p.copy(hit.point).addScaledVector(tN, PR);
           bounce(f, tN, 0.4, 0.75);
@@ -3731,6 +3789,7 @@ function stepThrows(dt, t) {
         }
       }
     }
+    if (f.splat) { killThrow(i); continue; }   // it burst on the screen
     f.mesh.position.copy(f.p);
     if (!f.rest) { f.mesh.rotation.x += f.w.x * dt; f.mesh.rotation.y += f.w.y * dt; f.mesh.rotation.z += f.w.z * dt; }
   }
@@ -3790,7 +3849,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.13 · 2026-11-05";
+const BUILD = "v2.14 · 2026-11-05";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -3898,6 +3957,7 @@ function dbgRows() {
       ["Ghost Bucks", money(wallet)],
       ["Holding", inventory.length ? inventory.map((it, i) => (i ? "" : "▶ ") + MENU_BY_ID[it.id].name + " (" + it.left + ")").join(", ") : "nothing"],
       ["Food in the air", flying.length + " (" + flying.filter((f) => f.rest).length + " landed)"],
+      ["Tomato splats", splats.length + " on the screen now, " + splatsTotal + " so far"],
       ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
       ["Last emote", lastEmoteSeen ? lastEmoteSeen.who + ": " + lastEmoteSeen.kind + ", " + Math.round(performance.now() / 1000 - lastEmoteSeen.at) + "s ago" : "none yet"],
       ["Mortimer", npc.talks + " talks, " + npc.backTold + " about his past (" + NPC_LINES.length + " everyday lines, " + NPC_BACKSTORY.length + " backstory lines)"],
@@ -3977,7 +4037,7 @@ const ADMIN_HELP = [
   ["/admin reset posters", "Back to this room's original posters"],
   ["/admin reset movie", "Stop the movie or screen share, so anyone can press Load movie"],
   ["/admin pause", "Pause the movie for everyone"],
-  ["/admin clear food", "Remove all thrown food"],
+  ["/admin clear food", "Remove all thrown food and tomato splats"],
   ["/admin announce Showtime!", "Show a big message on everyone's screen"],
   ["/admin mortimer Welcome, folks!", "Make Mortimer say something"],
   ["/admin list people", "Who's in the room"],
@@ -4141,7 +4201,7 @@ function applyAdmin(m) {
       if (m.msg) toast(clean(m.msg, 200));
       break;
     }
-    case "clearfood": while (flying.length) killThrow(0); toast(clean(m.msg, 200)); break;
+    case "clearfood": while (flying.length) killThrow(0); clearSplats(); toast(clean(m.msg, 200)); break;   // food and tomato splats
     case "announce": showAnnouncement(clean(m.text, 140), clean(m.by, 40)); break;
     case "mortimer": { const line = clean(m.text, 140); npcSay(line); toast("Mortimer: " + line); break; }
     case "kicked": kickedOut = true; break;

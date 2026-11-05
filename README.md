@@ -55,6 +55,7 @@ Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/t
 - **Personal subtitle size:** the Subs: M button (or - and =) changes subtitle size just for you, and it's remembered. Hide subs was already just for you.
 - **Emotes:** press 1 to 5 and your ghost screams, laughs, cries, claps or shushes, for everyone to see (no speech bubble).
 - **Mortimer remembers you:** he greets returning players by name, notices how long it's been, knows your usual snack, counts repeat orders and remembers who throws food at him. The memory lives in your browser.
+- **Rotten tomatoes:** a new item at the concession stand ($2.25). It works like any other snack, but if you throw it at the movie screen it splats there, slides down a bit, and fades away after about 20 seconds. `/admin clear food` wipes splats off too.
 - **Update check:** if your browser is showing an old saved copy of the game, a bar offers a Refresh.
 
 ## Admin commands
@@ -71,7 +72,7 @@ Anyone in the room can type these in the chat box. Commands that change things a
 | `/admin reset posters` | Back to the room's original posters |
 | `/admin reset movie` | Stops the movie or screen share; Load movie works again for everyone |
 | `/admin pause` | Pauses the movie for everyone |
-| `/admin clear food` | Removes all thrown food |
+| `/admin clear food` | Removes all thrown food and tomato splats |
 | `/admin announce Showtime!` | A big message across everyone's screen |
 | `/admin mortimer Welcome, folks!` | Mortimer says it |
 | `/admin list people` | Who's in the room |
