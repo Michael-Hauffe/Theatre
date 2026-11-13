@@ -293,6 +293,9 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
 /* Text inputs on the welcome screen (ghost name, room code). */
 .field { width: 100%; max-width: 280px; background: rgba(0,0,0,0.45); border: 1px solid var(--line); color: var(--bone); border-radius: 3px; padding: 10px 12px; font-size: 15px; text-align: center; margin-bottom: 14px; }
 .choices { display: grid; gap: 10px; justify-items: center; }
+/* The "Thanksgiving showing" checkbox on the welcome screen. */
+.themePick { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--smoke); cursor: pointer; }
+.themePick input { width: 16px; height: 16px; accent-color: #d9661f; }
 .or { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--smoke); }
 #joinForm { display: flex; gap: 6px; }
 #code { width: 130px; margin: 0; text-transform: uppercase; letter-spacing: 0.2em; font-family: var(--display); }
@@ -430,7 +433,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
         <dl>
           <dt><kbd>Enter</kbd></dt><dd>Type a message</dd>
           <dt><kbd>Esc</kbd></dt><dd>Leave the message box</dd>
-          <dt><kbd>B</kbd></dt><dd>Boo!</dd>
+          <dt><kbd>B</kbd></dt><dd>Boo! (Gobble! at a Thanksgiving showing)</dd>
           <dt><kbd>1</kbd> to <kbd>5</kbd></dt><dd>Emotes: scream, laugh, cry, clap, shush</dd>
           <dt><span class="act">/admin…</span></dt><dd>Admin commands. Type /admin show commands</dd>
         </dl>
@@ -477,6 +480,8 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
     <div class="label">Pick your bedsheet</div>
     <div id="sheets"></div>
     <div class="choices">
+      <!-- The host's choice sets the theme for the whole room (see "Thanksgiving theme" in the script). -->
+      <label class="themePick"><input type="checkbox" id="thanksgiving"> Thanksgiving showing (everyone's a turkey)</label>
       <button class="btn primary" id="enter">Host a showing</button>
       <div class="or">or join a friend</div>
       <form id="joinForm" autocomplete="off"><input id="code" class="field" maxlength="5" placeholder="CODE" aria-label="Room code"><button type="submit">Join</button></form>
@@ -677,6 +682,9 @@ const valance = new THREE.Mesh(curtain(ROOM.x * 2, 1.3, 3), curtainMat); valance
 // SCREEN.maxW/maxH = the largest picture we'll show; the actual size follows the video's shape.
 // the screen
 const SCREEN = { maxW: 14, maxH: 7.4, cy: 4.75, z: ROOM.zFront + 0.18 };
+// thanksgiving = the Thanksgiving theme is on (see "Thanksgiving theme"). Declared here because the
+// title card below is drawn right away and needs to know which title to show.
+let thanksgiving = false;
 // What the screen shows when nothing is playing: an old film-leader look with a line of status text.
 const placeholderTex = canvasTex(1024, 576, () => {}, null);
 function drawPlaceholder(line2) {
@@ -687,7 +695,7 @@ function drawPlaceholder(line2) {
   x.strokeStyle = "rgba(40,30,25,0.6)"; x.lineWidth = 4; x.beginPath(); x.arc(w / 2, h / 2 - 20, 150, 0, 7); x.stroke();
   x.beginPath(); x.moveTo(w / 2, h / 2 - 190); x.lineTo(w / 2, h / 2 + 150); x.moveTo(w / 2 - 190, h / 2 - 20); x.lineTo(w / 2 + 190, h / 2 - 20); x.stroke();
   x.fillStyle = "#24170f"; x.textAlign = "center"; x.textBaseline = "middle";
-  x.font = "84px Limelight, Georgia, serif"; x.fillText("Ghost Matinee", w / 2, h / 2 - 30);
+  x.font = "84px Limelight, Georgia, serif"; x.fillText(thanksgiving ? "Gobble Matinee" : "Ghost Matinee", w / 2, h / 2 - 30);
   x.font = "500 30px Karla, sans-serif"; x.fillText(line2, w / 2, h / 2 + 50);
   placeholderTex.needsUpdate = true;
 }
@@ -1279,24 +1287,29 @@ const shadowTex = canvasTex(64, 64, (x, w, h) => { const g = x.createRadialGradi
 
 // Make a ghost in one of the SHEETS colors. Returns its parts plus animation timers:
 // booAt (puff up), munchAt (eating), throwAt (throwing), windup (0..1 while charging a throw).
+// The bedsheet body (sheet, eyes, arms, mouth) sits in its own group, `sheetG`, so the Thanksgiving
+// theme can swap it for a turkey body (see "Thanksgiving theme" and setGhostKind()).
+// gh.arms and gh.mouth always point at whichever body is showing, so the animations work on both.
 function makeGhost(colorIdx) {
   const col = new THREE.Color(SHEETS[colorIdx].hex);
   const mat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.22, roughness: 0.85, transparent: true, opacity: 0.94, side: THREE.DoubleSide });
-  const group = new THREE.Group(), bodyG = new THREE.Group(); group.add(bodyG);
+  const group = new THREE.Group(), bodyG = new THREE.Group(), sheetG = new THREE.Group(); group.add(bodyG); bodyG.add(sheetG);
   const arms = [];   // left arm, then right arm
-  bodyG.add(new THREE.Mesh(ghostGeo, mat));
+  sheetG.add(new THREE.Mesh(ghostGeo, mat));
   for (const s of [-1, 1]) {
-    const eye = new THREE.Mesh(eyeGeo, eyeMat); eye.scale.set(1, 1.45, 0.55); eye.position.set(s * 0.14, 0.8, -0.445); bodyG.add(eye);
-    const a = new THREE.Mesh(armGeo, mat); a.scale.set(0.9, 0.7, 1.5); a.position.set(s * 0.5, 0.48, -0.08); a.rotation.z = s * 0.5; bodyG.add(a);
+    const eye = new THREE.Mesh(eyeGeo, eyeMat); eye.scale.set(1, 1.45, 0.55); eye.position.set(s * 0.14, 0.8, -0.445); sheetG.add(eye);
+    const a = new THREE.Mesh(armGeo, mat); a.scale.set(0.9, 0.7, 1.5); a.position.set(s * 0.5, 0.48, -0.08); a.rotation.z = s * 0.5; sheetG.add(a);
     arms.push(a);   // kept so emotes can move the arms (clapping, shushing)
   }
-  const mouth = new THREE.Mesh(eyeGeo, eyeMat); mouth.scale.set(0.8, 1.1, 0.5); mouth.position.set(0, 0.6, -0.48); bodyG.add(mouth);
+  const mouth = new THREE.Mesh(eyeGeo, eyeMat); mouth.scale.set(0.8, 1.1, 0.5); mouth.position.set(0, 0.6, -0.48); sheetG.add(mouth);
   const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.3), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
   shadow.rotation.x = -Math.PI / 2; scene.add(shadow); scene.add(group);
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(...col.toArray().map((c) => Math.round(c * 255))), transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false }));
   glow.scale.set(2.4, 2.4, 1); glow.position.y = 0.6; group.add(glow);
   // emote / emoteAt: the emote being acted out (see EMOTES) and when it started.
-  return { group, bodyG, mat, shadow, colorIdx, mouth, arms, booAt: -10, munchAt: -10, throwAt: -10, windup: 0, phase: Math.random() * 6, held: null, heldId: null, emote: null, emoteAt: -10 };
+  // sheet = the bedsheet body's parts; turkey = the turkey body's parts (built the first time it's needed).
+  return { group, bodyG, mat, shadow, colorIdx, mouth, arms, glow, sheet: { group: sheetG, arms, mouth }, turkey: null, isTurkey: false,
+    booAt: -10, munchAt: -10, throwAt: -10, windup: 0, phase: Math.random() * 6, held: null, heldId: null, emote: null, emoteAt: -10 };
 }
 // Change a ghost's sheet color (when a friend picks a different one).
 function setGhostColor(gh, idx) {
@@ -1438,6 +1451,191 @@ function fadeGhost(gh) {
     for (const c of o.children || []) visit(c);   // then its parts (the "|| []" is just a safety net)
   };
   visit(gh.group);
+}
+
+/* ---------------- Thanksgiving theme ----------------
+   An option on the welcome screen ("Thanksgiving showing"). The host's choice applies to the whole
+   room: the host shares it in their presence ("tg"), and every guest switches to match (noteTheme()).
+   With it on:
+     - every player is a turkey instead of a bedsheet ghost (Mortimer stays a ghost: he's the usher),
+     - pumpkins, corn bundles and garlands of autumn leaves decorate the theater and lobby,
+     - leaves drift down from the ceiling (they vanish in Hide HUD mode, like the ghosts, so they never
+       get in the way of the movie), and a warm orange light fills the rooms,
+     - the screen's title card says "Gobble Matinee", and Boo! becomes "Gobble gobble!".
+   (`thanksgiving` itself is declared up by the screen's title card, which needs it first.) */
+
+// Shared turkey looks and shapes, made once and used by every turkey.
+const TURKEY = {
+  ball: new THREE.SphereGeometry(1, 20, 14),                    // stretched into body, head, feathers
+  neck: new THREE.CylinderGeometry(0.07, 0.1, 0.36, 10),
+  beakGeo: new THREE.ConeGeometry(0.035, 0.11, 8),
+  leg: new THREE.CylinderGeometry(0.022, 0.022, 0.26, 6),
+  foot: new THREE.BoxGeometry(0.1, 0.02, 0.14),
+  body: new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.9 }),     // brown feathers
+  wing: new THREE.MeshStandardMaterial({ color: 0x4f2e16, roughness: 0.9 }),     // darker brown wings
+  head: new THREE.MeshStandardMaterial({ color: 0xc98a78, roughness: 0.8 }),     // bare pinkish head and neck
+  beak: new THREE.MeshStandardMaterial({ color: 0xe8a33c, roughness: 0.6 }),     // orange beak, legs and feet
+  wattle: new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.7 }),   // the red dangly bit
+  feather: new THREE.MeshStandardMaterial({ color: 0xa65a24, roughness: 0.85 }), // tail feathers (every other one)
+  tip: new THREE.MeshStandardMaterial({ color: 0xf2e6d0, roughness: 0.85 })      // pale tips on the tail feathers
+};
+// Build a turkey body for a ghost, in the same spots the bedsheet's parts use, so all the animations
+// (bobbing, Boo puff, eating, throwing, emotes) work unchanged. The wings stand in for the arms, and a
+// small dark mouth under the beak opens for Gobble and eating. Every other tail feather is in the
+// player's bedsheet color, so you can still tell friends apart. Faces -z, like the ghost.
+function makeTurkeyBody(gh) {
+  const g = new THREE.Group(), T = TURKEY;
+  const add = (geo, mat, [sx, sy, sz], [x, y, z], parent) => { const m = new THREE.Mesh(geo, mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); (parent || g).add(m); return m; };
+  add(T.ball, T.body, [0.42, 0.4, 0.46], [0, 0.45, 0.02]);                         // round body
+  const neck = add(T.neck, T.head, [1, 1, 1], [0, 0.78, -0.3]); neck.rotation.x = -0.35; // neck, leaning forward
+  add(T.ball, T.head, [0.13, 0.13, 0.13], [0, 1.0, -0.36]);                        // head
+  const beak = add(T.beakGeo, T.beak, [1, 1, 1], [0, 0.99, -0.52]); beak.rotation.x = -Math.PI / 2; // beak, pointing forward
+  add(T.ball, T.wattle, [0.035, 0.09, 0.035], [0.02, 0.9, -0.47]);                 // wattle hanging under the beak
+  for (const sd of [-1, 1]) {
+    add(eyeGeo, eyeMat, [0.55, 0.7, 0.4], [sd * 0.075, 1.04, -0.46]);               // eyes
+    add(T.leg, T.beak, [1, 1, 1], [sd * 0.13, 0.07, 0]);                            // legs
+    add(T.foot, T.beak, [1, 1, 1], [sd * 0.13, -0.06, -0.04]);                      // feet
+  }
+  // Wings: same resting place and tilt as the ghost's arms (actEmote() puts them back there every frame).
+  const arms = [-1, 1].map((sd) => { const w = add(armGeo, T.wing, [0.6, 1.5, 2.6], [sd * 0.5, 0.48, -0.08]); w.rotation.z = sd * 0.5; return w; });
+  // The mouth sits inside a small holder so the usual mouth sizes (made for the ghost's big face) come out turkey-sized.
+  const holder = new THREE.Group(); holder.position.set(0, 0.94, -0.49); holder.scale.setScalar(0.45); g.add(holder);
+  const mouth = add(eyeGeo, eyeMat, [0.8, 1.1, 0.5], [0, 0, 0], holder);
+  // Tail: a fan of 9 feathers behind the body, tipped well back. Kept fairly small, because the camera
+  // usually sits behind you and a big fan would hide the movie screen.
+  const fan = new THREE.Group(); fan.position.set(0, 0.5, 0.4); fan.rotation.x = 0.55; g.add(fan);
+  for (let i = 0; i < 9; i++) {
+    const a = -1.25 + i * (2.5 / 8);   // spread from left to right, in radians
+    const f = add(T.ball, i % 2 ? T.feather : gh.mat, [0.075, 0.3, 0.03], [Math.sin(a) * 0.3, Math.cos(a) * 0.3, 0], fan); f.rotation.z = -a;
+    const tp = add(T.ball, T.tip, [0.055, 0.05, 0.035], [Math.sin(a) * 0.58, Math.cos(a) * 0.58, 0], fan); tp.rotation.z = -a;
+  }
+  gh.bodyG.add(g);
+  return { group: g, arms, mouth };
+}
+// Switch one ghost between bedsheet and turkey (building the turkey body the first time).
+function setGhostKind(gh, turkey) {
+  if (gh.isTurkey === turkey) return;
+  if (turkey && !gh.turkey) gh.turkey = makeTurkeyBody(gh);
+  gh.isTurkey = turkey;
+  gh.sheet.group.visible = !turkey; if (gh.turkey) gh.turkey.group.visible = turkey;
+  const part = turkey ? gh.turkey : gh.sheet; gh.arms = part.arms; gh.mouth = part.mouth;   // animations use the showing body
+  gh.glow.visible = !turkey;   // turkeys don't glow like ghosts do
+  gh.fadeNow = undefined;      // so fadeGhost() applies the current Hide HUD fade to the new parts too
+}
+
+// ---- Decorations (built the first time the theme is switched on, then just shown or hidden) ----
+let tgDecor = null;          // the group holding every decoration
+let tgLeaves = null;         // falling leaves: { mesh (one "instanced" mesh for all of them), list of each leaf's state }
+// A maple-ish leaf outline, about 1 m across (scaled down where used). Flat, facing +z.
+const leafGeo = new THREE.ShapeGeometry(new THREE.Shape([[0, -0.5], [0.08, -0.15], [0.45, -0.2], [0.35, 0.05], [0.5, 0.25], [0.25, 0.25], [0.3, 0.5], [0.1, 0.35], [0, 0.6], [-0.1, 0.35], [-0.3, 0.5], [-0.25, 0.25], [-0.5, 0.25], [-0.35, 0.05], [-0.45, -0.2], [-0.08, -0.15]].map(([x, y]) => new THREE.Vector2(x, y))));
+const LEAF_COLORS = [0xc0392b, 0xe67e22, 0xf1c40f, 0x8e4a1c, 0xd35400];   // red, orange, gold, brown, rust
+function buildDecor() {
+  const grp = new THREE.Group(); scene.add(grp);
+  // Pumpkin shape: a sphere with 8 gentle ribs pressed in, squashed a bit when placed.
+  const pg = new THREE.SphereGeometry(1, 24, 16), pp = pg.attributes.position;
+  for (let i = 0; i < pp.count; i++) { const x = pp.getX(i), z = pp.getZ(i), k = 1 + 0.07 * Math.cos(8 * Math.atan2(z, x)); pp.setX(i, x * k); pp.setZ(i, z * k); }
+  pg.computeVertexNormals();
+  const pumpkinMat = new THREE.MeshStandardMaterial({ color: 0xd9661f, roughness: 0.7, emissive: 0x3a1200 });
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0x4a5a23, roughness: 0.9 });
+  // A pumpkin of radius r sitting on the surface at height y.
+  const pumpkin = (x, y, z, r) => {
+    const m = new THREE.Mesh(pg, pumpkinMat); m.scale.set(r, r * 0.75, r); m.position.set(x, y + r * 0.75, z); m.rotation.y = Math.random() * 6; grp.add(m);
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.07, r * 0.1, r * 0.35, 6), stemMat); st.position.set(x, y + r * 1.6, z); st.rotation.z = 0.2; grp.add(st);
+  };
+  // Along the front edge of the stage (left and right of center, below the screen).
+  for (const x of [-10.2, -9.1, -7.8, 7.8, 9.1, 10.2]) pumpkin(x, 0.7, -11.6, 0.22 + Math.random() * 0.12);
+  // Little piles by the theater doors, in the lobby corners and at the ends of the counter.
+  for (const [x, z] of [[-7.7, 15.3], [7.7, 15.3], [-11.3, 15.3], [11.3, 15.3], [-11.2, 23.4], [11.2, 23.4], [-11.2, 35.5], [11.2, 35.5]]) {
+    pumpkin(x, 0, z, 0.38); pumpkin(x + (x < 0 ? 0.5 : -0.5), 0, z - 0.35, 0.24);
+  }
+  for (const x of [-6, 6]) pumpkin(x, 1.1, 33.4, 0.17);
+  // Corn bundles (bundles of dried stalks tied in the middle) beside both sides of each hallway, at each end.
+  const stalkGeo = new THREE.CylinderGeometry(0.025, 0.04, 2.3, 5), stalkMat = new THREE.MeshStandardMaterial({ color: 0xc9a85c, roughness: 0.95 });
+  const bandMat = new THREE.MeshStandardMaterial({ color: 0x8b2a1a, roughness: 0.8 });
+  const cornBundle = (x, z) => {
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2, m = new THREE.Mesh(stalkGeo, stalkMat);
+      m.position.set(x + Math.cos(a) * 0.16, 1.15, z + Math.sin(a) * 0.16);
+      m.rotation.z = 0.15 * Math.cos(a); m.rotation.x = -0.15 * Math.sin(a);   // bottoms splay out, so it's pinched in the middle
+      grp.add(m);
+    }
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.035, 6, 16), bandMat); band.rotation.x = Math.PI / 2; band.position.set(x, 1.2, z); grp.add(band);
+  };
+  for (const sx of [-1, 1]) for (const z of [15.4, 23.3]) { cornBundle(sx * (DOOR.x0 - 0.45), z); cornBundle(sx * (DOOR.x1 + 0.45), z); }
+  // Garlands of leaves on a string: from p0 to p1 (x, y, z), sagging in the middle. Leaves are turned by rotY
+  // to face into the room. All garland leaves share one "instanced" mesh (drawn in one go, which is fast).
+  const spots = [];
+  const garland = (p0, p1, sag, n, rotY) => {
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, x = p0[0] + (p1[0] - p0[0]) * t, y = p0[1] + (p1[1] - p0[1]) * t - sag * 4 * t * (1 - t), z = p0[2] + (p1[2] - p0[2]) * t;
+      pts.push(new THREE.Vector3(x, y, z)); spots.push([x, y - 0.13, z, rotY]);
+    }
+    grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x6b4e2e })));
+  };
+  for (const sx of [-1, 1]) garland([sx * (ROOM.x - 0.25), 6.3, -9], [sx * (ROOM.x - 0.25), 6.3, 13], 0.7, 30, -sx * Math.PI / 2);   // theater side walls
+  garland([-11.5, 5.4, ROOM.zBack - 0.05], [11.5, 5.4, ROOM.zBack - 0.05], 0.5, 30, Math.PI);   // theater back wall, above the doors
+  garland([-11.5, 4.8, LOBBY.z1 - 0.05], [11.5, 4.8, LOBBY.z1 - 0.05], 0.4, 30, Math.PI);       // lobby back wall, behind the counter
+  garland([-11.5, 4.8, LOBBY.z0 + 0.36], [11.5, 4.8, LOBBY.z0 + 0.36], 0.4, 30, 0);              // lobby wall by the hallways
+  const gl = new THREE.InstancedMesh(leafGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, side: THREE.DoubleSide }), spots.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3(0.36, 0.36, 0.36), col = new THREE.Color();
+  spots.forEach(([x, y, z, ry], i) => {
+    gl.setMatrixAt(i, m4.compose(v.set(x, y, z), q.setFromEuler(e.set(0, ry, Math.PI + (Math.random() - 0.5) * 0.8)), sc));   // hanging stem-up, a little crooked
+    gl.setColorAt(i, col.setHex(LEAF_COLORS[i % LEAF_COLORS.length]));
+  });
+  grp.add(gl);
+  // Falling leaves: 45 in the theater and 15 in the lobby, each with its own speed, sway and spin.
+  const fall = [];
+  for (let i = 0; i < 60; i++) fall.push(newLeaf(i < 45, true));
+  const fm = new THREE.InstancedMesh(leafGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, side: THREE.DoubleSide }), fall.length);
+  fm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);   // they move every frame
+  fall.forEach((lf, i) => fm.setColorAt(i, col.setHex(LEAF_COLORS[i % LEAF_COLORS.length])));
+  fm.frustumCulled = false;   // they're spread all over, so never skip drawing them
+  grp.add(fm); tgLeaves = { mesh: fm, list: fall };
+  // Warm autumn light over everything.
+  grp.add(new THREE.AmbientLight(0xff8a3c, 0.22));
+  return grp;
+}
+// A falling leaf's starting state. inTheater picks the room; anywhere=true starts it at a random height
+// (when the theme first appears) instead of at the ceiling.
+function newLeaf(inTheater, anywhere) {
+  const top = inTheater ? ROOM.h - 0.5 : LOBBY.h - 0.3;
+  return { inTheater, x: (Math.random() * 2 - 1) * (ROOM.x - 0.6), z: inTheater ? -9 + Math.random() * 24 : LOBBY.z0 + 0.6 + Math.random() * (LOBBY.z1 - LOBBY.z0 - 1.2),
+    y: anywhere ? Math.random() * top : top, speed: 0.35 + Math.random() * 0.4, ph: Math.random() * 6, spin: (Math.random() - 0.5) * 3, size: 0.18 + Math.random() * 0.1 };
+}
+// Every frame: let the leaves drift down (swaying and spinning) and start again at the top when they land.
+// Hidden while the HUD is hidden (watching mode), like the ghosts.
+const leafM4 = new THREE.Matrix4(), leafQ = new THREE.Quaternion(), leafE = new THREE.Euler(), leafV = new THREE.Vector3(), leafS = new THREE.Vector3();
+function updateLeaves(dt, t) {
+  if (!tgLeaves || !tgDecor.visible) return;
+  tgLeaves.mesh.visible = ghostFade > 0.5;
+  if (!tgLeaves.mesh.visible) return;
+  tgLeaves.list.forEach((lf, i) => {
+    lf.y -= lf.speed * dt; lf.x += Math.sin(t * 1.3 + lf.ph) * 0.35 * dt;   // fall, swaying side to side
+    if (lf.y < 0.05) Object.assign(lf, newLeaf(lf.inTheater, false));       // landed: back to the ceiling somewhere new
+    leafE.set(Math.sin(t * 1.7 + lf.ph) * 0.9, t * lf.spin + lf.ph, Math.cos(t * 1.1 + lf.ph) * 0.6);
+    tgLeaves.mesh.setMatrixAt(i, leafM4.compose(leafV.set(lf.x, lf.y, lf.z), leafQ.setFromEuler(leafE), leafS.setScalar(lf.size)));
+  });
+  tgLeaves.mesh.instanceMatrix.needsUpdate = true;
+}
+// Turn the whole theme on or off on this computer: turkeys, decorations, the title card and the Boo button.
+// announce=true shows a toast (used when a host's choice reaches a guest).
+function setThanksgiving(on, announce) {
+  on = !!on;
+  if (on && !tgDecor) tgDecor = buildDecor();
+  const changed = on !== thanksgiving; thanksgiving = on;
+  if (tgDecor) tgDecor.visible = on;
+  setGhostKind(me.ghost, on);
+  for (const o of others.values()) setGhostKind(o.gh, on);
+  $("boo").textContent = on ? "Gobble!" : "Boo!";
+  if (changed) drawPlaceholder(placeholderLine);   // the title card says "Gobble Matinee" during the theme
+  if (changed && announce) toast(on ? "Happy Thanksgiving! Everyone's a turkey tonight." : "Back to ghosts.");
+}
+// GUESTS: follow the host's choice, from the host's presence. (Hosts decide for themselves.)
+function noteTheme() {
+  if (!p2p || p2p.isHost) return;
+  const hostPe = peersSnap.find((pe) => pe.peer === p2p.hostId);
+  if (hostPe && hostPe.presence) setThanksgiving(hostPe.presence.tg === true, true);
 }
 
 /* ---------------- me ---------------- */
@@ -1968,7 +2166,7 @@ function sharePresence(force) {
   if (!room) return;
   const g = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), r: +me.yaw.toFixed(3), c: myColor };
   const patch = { g };
-  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; patch.emo = myEmote; /* my latest emote (see "emotes") */ if (amRoomHost()) patch.heirs = heirList(); patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
+  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; patch.emo = myEmote; /* my latest emote (see "emotes") */ if (amRoomHost()) patch.heirs = heirList(); if (amRoomHost()) patch.tg = thanksgiving || null; /* host: the room's Thanksgiving theme */ patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
   room.presence(patch).catch(() => {});
 }
 // Send the shared playback state on its own channel.
@@ -2018,6 +2216,7 @@ function onPeers(ch) {
   if (hostVer && hostVer !== BUILD) showUpdateBar("The host is running a different version of the game (" + hostVer + "). Refresh to get the latest.");
   peersSnap = ch.peers;
   noteHeirs();   // keep the "who takes over" list up to date (see "Keeping the room alive")
+  noteTheme();   // guests: match the host's Thanksgiving choice (see "Thanksgiving theme")
   const seen = new Set();
   for (const pe of ch.peers) {
     if (pe.sameTab || pe.kind !== "viewer") continue;
@@ -2025,14 +2224,14 @@ function onPeers(ch) {
     seen.add(pe.peer);
     let o = others.get(pe.peer);
     const x = clamp(num(g.x, 0), -ROOM.x, ROOM.x), y = clamp(num(g.y, 0.3), 0, 6), z = clamp(num(g.z, 0), ROOM.zFront, LOBBY.z1), r = num(g.r, 0), c = clamp(num(g.c, 0) | 0, 0, SHEETS.length - 1);
-    if (!o) { o = { gh: makeGhost(c), tag: makeTag(), x, y, z, yaw: r, sayKey: null, sayAt: -99, sayText: "" }; others.set(pe.peer, o); }
+    if (!o) { o = { gh: makeGhost(c), tag: makeTag(), x, y, z, yaw: r, sayKey: null, sayAt: -99, sayText: "" }; others.set(pe.peer, o); setGhostKind(o.gh, thanksgiving); /* a turkey during the Thanksgiving theme */ }
     setGhostColor(o.gh, c); o.tx = x; o.ty = y; o.tz = z; o.tyaw = r;
     friendEmote(o, pe.presence.emo, pe.peer);   // an emote (1 to 5): act it out on their ghost
     const hid = typeof pe.presence.hold === "string" && MENU_BY_ID[pe.presence.hold] ? pe.presence.hold : null; setHeld(o.gh, hid);
     const s = pe.presence.say;
     const sk = s && typeof s === "object" ? String(s.k) + "|" + String(s.t) : null;
     if (sk && sk !== o.sayKey) {
-      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); if (o.sayText.toLowerCase().startsWith("boo")) o.gh.booAt = performance.now() / 1000; if (o.sayText.startsWith("*")) o.gh.munchAt = performance.now() / 1000; }
+      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); if (/^(boo|gobble)/i.test(o.sayText)) o.gh.booAt = performance.now() / 1000; if (o.sayText.startsWith("*")) o.gh.munchAt = performance.now() / 1000; }
       o.sayKey = sk;
     } else if (!sk) o.sayKey = "";
   }
@@ -3183,6 +3382,7 @@ async function peerOptions() { return { config: { iceServers: await iceServers()
 async function host(tries) {
   if (typeof Peer === "undefined") { lobbyMsg("Couldn't load the connection library. Check your internet connection."); return; }
   readNick(); setBusy(true); lobbyMsg("Opening the theater…");
+  setThanksgiving($("thanksgiving").checked);   // the host picks the room's theme (guests follow it)
   const code = makeCode(), p = new Peer(PREFIX + code, await peerOptions());   // with the relay servers (see above)
   p.on("call", onCall);
   p.on("open", () => goLive(makeNet(p, true, null, roomDown), code, p, true, p.id));
@@ -3217,7 +3417,8 @@ async function join(code) {
 // Welcome-screen wiring. Opening an invite link (…#K7QPM) fills in the code for you.
 $("nick").value = myNick;
 $("joinForm").addEventListener("submit", (e) => { e.preventDefault(); join($("code").value); });
-$("solo").addEventListener("click", () => { readNick(); enterTheater(); });
+// Just look around alone: the Thanksgiving checkbox works here too.
+$("solo").addEventListener("click", () => { readNick(); setThanksgiving($("thanksgiving").checked); enterTheater(); });
 { const h = location.hash.replace("#", "").toUpperCase(); if (/^[A-Z0-9]{5}$/.test(h)) { $("code").value = h; lobbyMsg("You've been invited to room " + h + ". Pick a name and press Join."); } }
 // Copy invite link: the page address with the room code after a #.
 $("copyLink").addEventListener("click", () => {
@@ -3231,14 +3432,15 @@ renderCrowd();
 /* ---------------- chat and Boo ---------------- */
 /* ---------------- chat + boo ---------------- */
 // Show text in a speech bubble over your ghost (and everyone else's view of it).
-// Lines starting with "Boo" make your ghost puff up.
+// Lines starting with "Boo" (or "Gobble", for turkeys) make your ghost puff up.
 function say(text) {
   text = clean(text, 80).trim(); if (!text) return;
   me.say = text; me.sayAt = Date.now(); me.sayLocal = performance.now() / 1000;
-  if (/^boo/i.test(text)) me.ghost.booAt = performance.now() / 1000;
+  if (/^(boo|gobble)/i.test(text)) me.ghost.booAt = performance.now() / 1000;
   sharePresence(true);
 }
-function boo() { say("Boo!"); }
+// B / the Boo button. Turkeys gobble instead (Thanksgiving theme).
+function boo() { say(thanksgiving ? "Gobble gobble!" : "Boo!"); }
 // Send button / Enter in the chat box. A line starting with "/admin" is an admin command, not speech.
 $("chat").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -4028,7 +4230,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.17 · 2026-11-13";
+const BUILD = "v2.18 · 2026-11-13";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -4077,6 +4279,7 @@ function dbgRows() {
       ["Mode", !room ? "solo" : amRoomHost() ? "host" : "guest"],
       ["Room link", reconn ? "reconnecting for " + Math.round((Date.now() - reconn.since) / 1000) + "s" + (reconn.heirIdx >= 0 ? " (number " + (reconn.heirIdx + 1) + " in line to host" + (reconn.claiming ? ", trying to take over" : "") + ")" : "") : room ? "connected" : "–"],
       ["Next in line to host", (amRoomHost() ? heirList() : lastHeirs).map((id) => id === myPeerId() ? "you" : whoIs(id)).join(", ") || "–"],
+      ["Theme", thanksgiving ? "Thanksgiving (everyone's a turkey" + (amRoomHost() || !room ? ", my choice)" : ", the host's choice)") : "ghosts"],
       ["Reconnects", String(reconnectsDone)],
       ["Room code", roomCode || "–"],
       ["My id", myPeerId().slice(-8)],
@@ -4502,6 +4705,7 @@ function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), 0.05), t = performance.now() / 1000;
   updateGhostFade(dt); // ghosts fade out while the HUD is hidden
+  updateLeaves(dt, t); // Thanksgiving theme: falling leaves (does nothing when the theme is off)
   fpsFrames++; if (performance.now() - fpsT >= 1000) { fps = fpsFrames * 1000 / (performance.now() - fpsT); fpsFrames = 0; fpsT = performance.now(); }
 
   // On the welcome screen, slowly pan the view back and forth as a backdrop.
