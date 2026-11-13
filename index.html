@@ -1569,10 +1569,11 @@ function makeTurkeyBody(gh) {
   add(T.ball, T.head, [0.13, 0.13, 0.13], [0, 1.0, -0.36]);                        // head
   const beak = add(T.beakGeo, T.beak, [1, 1, 1], [0, 0.99, -0.52]); beak.rotation.x = -Math.PI / 2; // beak, pointing forward
   add(T.ball, T.wattle, [0.035, 0.09, 0.035], [0.02, 0.9, -0.47]);                 // wattle hanging under the beak
+  const legs = [];   // [left leg and foot, right leg and foot]: Mortimer can steal them (see "turkey-leg heist")
   for (const sd of [-1, 1]) {
     add(eyeGeo, eyeMat, [0.55, 0.7, 0.4], [sd * 0.075, 1.04, -0.46]);               // eyes
-    add(T.leg, T.beak, [1, 1, 1], [sd * 0.13, 0.07, 0]);                            // legs
-    add(T.foot, T.beak, [1, 1, 1], [sd * 0.13, -0.06, -0.04]);                      // feet
+    legs.push([add(T.leg, T.beak, [1, 1, 1], [sd * 0.13, 0.07, 0]),                 // leg
+               add(T.foot, T.beak, [1, 1, 1], [sd * 0.13, -0.06, -0.04])]);         // foot
   }
   // Wings: same resting place and tilt as the ghost's arms (actEmote() puts them back there every frame).
   const arms = [-1, 1].map((sd) => { const w = add(armGeo, T.wing, [0.6, 1.5, 2.6], [sd * 0.5, 0.48, -0.08]); w.rotation.z = sd * 0.5; return w; });
@@ -1588,7 +1589,7 @@ function makeTurkeyBody(gh) {
     const tp = add(T.ball, T.tip, [0.055, 0.05, 0.035], [Math.sin(a) * 0.58, Math.cos(a) * 0.58, 0], fan); tp.rotation.z = -a;
   }
   gh.bodyG.add(g);
-  return { group: g, arms, mouth };
+  return { group: g, arms, mouth, legs };
 }
 // ---- Flapping ----
 // Every frame for a turkey: work out how fast it's moving (from how far it went since last frame), and
@@ -1615,6 +1616,12 @@ function flapWings(gh, t) {
     w.position.set(sd * 0.46 + 0.12 * Math.sin(ang), 0.6 - 0.12 * Math.cos(ang), -0.08);   // shoulder + the wing's half-length, tilted
   });
 }
+// Show a turkey with n legs missing (0, 1 or 2): the right leg goes first, then the left.
+// Remembered on the ghost, so it still applies if the turkey body is built later.
+function setLegsLost(gh, n) {
+  gh.legsLost = n;
+  if (gh.turkey) gh.turkey.legs.forEach((parts, i) => { const gone = i === 1 ? n >= 1 : n >= 2; parts.forEach((m) => (m.visible = !gone)); });
+}
 // Switch one ghost between bedsheet and turkey (building the turkey body the first time).
 function setGhostKind(gh, turkey) {
   if (gh.isTurkey === turkey) return;
@@ -1623,6 +1630,7 @@ function setGhostKind(gh, turkey) {
   gh.sheet.group.visible = !turkey; if (gh.turkey) gh.turkey.group.visible = turkey;
   const part = turkey ? gh.turkey : gh.sheet; gh.arms = part.arms; gh.mouth = part.mouth;   // animations use the showing body
   gh.glow.visible = !turkey;   // turkeys don't glow like ghosts do
+  if (turkey) setLegsLost(gh, gh.legsLost || 0);   // a leg Mortimer already stole stays gone
   gh.fadeNow = undefined;      // so fadeGhost() applies the current Hide HUD fade to the new parts too
 }
 
@@ -2106,6 +2114,7 @@ netHooks.data = (m) => {
   if (m.t === "proj") { applyProj(m.s); return; }
   if (m.t === "throw") { onThrowMsg(m); return; }
   if (m.t === "pickup") { onPickupMsg(m); return; }
+  if (m.t === "heist") { onHeistMsg(m); return; }   // someone ordered a turkey leg (see "turkey-leg heist")
   // Someone's picture from me stalled: hang up their call; syncCalls() calls them again right away.
   if (m.t === "recall") { if (m.to === myPeerId() && typeof m.from === "string" && myChildren().includes(m.from)) { dropCall(m.from); syncCalls(); } return; }   // we feed them (as projectionist or passing it along)
   if (m.t !== "subs" && m.t !== "suboff") return;
@@ -2272,7 +2281,7 @@ function sharePresence(force) {
   if (!room) return;
   const g = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), r: +me.yaw.toFixed(3), c: myColor };
   const patch = { g };
-  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; patch.emo = myEmote; /* my latest emote (see "emotes") */ if (amRoomHost()) patch.heirs = heirList(); if (amRoomHost()) { patch.hol = holiday || null; /* host: the room's holiday (see "Holidays") */ patch.tg = thanksgiving || null; /* the same, for guests still on v2.20 */ } patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
+  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; patch.emo = myEmote; /* my latest emote (see "emotes") */ patch.legs = myLegsLost || null; /* legs Mortimer stole from me */ if (amRoomHost()) patch.heirs = heirList(); if (amRoomHost()) { patch.hol = holiday || null; /* host: the room's holiday (see "Holidays") */ patch.tg = thanksgiving || null; /* the same, for guests still on v2.20 */ } patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
   room.presence(patch).catch(() => {});
 }
 // Send the shared playback state on its own channel.
@@ -2331,6 +2340,7 @@ function onPeers(ch) {
     let o = others.get(pe.peer);
     const x = clamp(num(g.x, 0), -ROOM.x, ROOM.x), y = clamp(num(g.y, 0.3), 0, 6), z = clamp(num(g.z, 0), ROOM.zFront, LOBBY.z1), r = num(g.r, 0), c = clamp(num(g.c, 0) | 0, 0, SHEETS.length - 1);
     if (!o) { o = { gh: makeGhost(c), tag: makeTag(), x, y, z, yaw: r, sayKey: null, sayAt: -99, sayText: "" }; others.set(pe.peer, o); setGhostKind(o.gh, thanksgiving); /* a turkey during the Thanksgiving theme */ }
+    o.legs = clamp(num(pe.presence.legs, 0) | 0, 0, 2); if (o.gh.legsLost !== o.legs) setLegsLost(o.gh, o.legs);   // legs Mortimer stole from them
     setGhostColor(o.gh, c); o.tx = x; o.ty = y; o.tz = z; o.tyaw = r;
     friendEmote(o, pe.presence.emo, pe.peer);   // an emote (1 to 5): act it out on their ghost
     const hid = typeof pe.presence.hold === "string" && MENU_BY_ID[pe.presence.hold] ? pe.presence.hold : null; setHeld(o.gh, hid);
@@ -2911,6 +2921,8 @@ netHooks.allowFwd = (m) => {
   if (m.t === "subs" || m.t === "suboff") return m.from === proj.owner;
   // Pick-ups: allowed (each just removes one piece of food by its id).
   if (m.t === "pickup") return true;
+  // Turkey-leg orders: at most one every 2 seconds per person.
+  if (m.t === "heist") { const key = "heist:" + m.from, last = throwClock.get(key) || 0, now = performance.now(); if (now - last < 2000) return false; throwClock.set(key, now); return true; }
   if (m.t === "throw") { const last = throwClock.get(m.from) || 0, now = performance.now(); if (now - last < 150) return false; throwClock.set(m.from, now); return true; }
   // Reconnect requests: at most one per second per person.
   if (m.t === "recall") { const key = "recall:" + m.from, last = throwClock.get(key) || 0, now = performance.now(); if (now - last < 1000) return false; throwClock.set(key, now); return true; }
@@ -3189,7 +3201,7 @@ updateProjUI();
 const PREFIX = "ghostmatinee-v1-";
 let myNick = clean(store.get("gm.nick", ""), 24);
 // Message types a guest may ask the host to pass on to everyone.
-const RELAYED = ["subs", "suboff", "throw", "recall", "pickup"];
+const RELAYED = ["subs", "suboff", "throw", "recall", "pickup", "heist"];
 // Build the room connection. Returns an object with the same functions everywhere in the game:
 // presence(), onPeers(), peers(), join() (a second named channel), toAll() (send to everyone), toHost().
 function makeNet(peerObj, isHost, hostConn, onDown) {
@@ -3239,7 +3251,7 @@ function makeNet(peerObj, isHost, hostConn, onDown) {
       if (!m) return;
       if (m.t === "snap" && Array.isArray(m.d)) m.d.slice(0, 600).forEach((x) => Array.isArray(x) && apply(x[0], x[1], x[2]));
       if (m.t === "p") apply(m.ch, m.peer, m.presence);
-      if (["proj", "subs", "suboff", "throw", "admin", "recall", "pickup"].includes(m.t) && netHooks.data) netHooks.data(m);
+      if (["proj", "subs", "suboff", "throw", "admin", "recall", "pickup", "heist"].includes(m.t) && netHooks.data) netHooks.data(m);
     });
     hostConn.on("close", onDown); hostConn.on("error", onDown);
   }
@@ -3604,9 +3616,11 @@ function closeShop() { $("shop").hidden = true; }
 // Pay and put the snack in your hands (or pockets).
 function buyItem(id) {
   const m = MENU_BY_ID[id]; if (!m) return;
-  if (inventory.length >= 6) { toast("Your hands are full. Eat something first."); return; }
+  if (inventory.length + legsOwed() >= 6) { toast("Your hands are full. Eat something first."); return; }   // legs Mortimer is still fetching count too
   if (wallet + 1e-9 < m.price) { toast("Not enough Ghost Bucks. Try the Ghost ATM."); return; }
   wallet = Math.round((wallet - m.price) * 100) / 100; saveWallet();
+  // A turkey leg isn't handed over: Mortimer goes and steals one (see "turkey-leg heist").
+  if (id === "turkeyleg") { orderTurkeyLeg(); renderShop(); closeShop(); mortNoteOrder(id); return; }
   inventory.push({ id, left: m.uses });
   if (inventory.length === 1) refreshHeld(); else renderTray();
   renderShop(); toast("Got " + m.name.toLowerCase() + ". Press F to " + m.verb.toLowerCase() + ".");
@@ -4016,12 +4030,108 @@ function talkNpc() {
 // Every frame: turn smoothly toward you while chatting, animate, and place his name tag
 // (hidden while you're in the theater so it doesn't show through the walls).
 function updateNpc(t, dt) {
+  updateHeist(t, dt);   // off stealing a turkey leg? (see "turkey-leg heist")
   const dx = me.x - npc.x, dz = me.z - npc.z;
-  npc.tyaw = t < npc.faceUntil ? Math.atan2(-dx, -dz) : 0;
+  npc.tyaw = heist && heist.phase !== "leave" ? heist.yaw : t < npc.faceUntil ? Math.atan2(-dx, -dz) : 0;   // on a heist he faces where he's flying
   npc.yaw = angLerp(npc.yaw, npc.tyaw, 1 - Math.exp(-dt * 5));
   poseGhost(npc.ghost, npc.x, npc.y, npc.z, npc.yaw, t);
   npc.tag.bub.textContent = t - npc.sayAt < 7 ? npc.say : "";
-  placeTag(npc.tag, npc.x, npc.y + 1.6, npc.z, !entered || me.z < LOBBY.z0 - 1);
+  placeTag(npc.tag, npc.x, npc.y + 1.6, npc.z, !entered || (me.z < LOBBY.z0 - 1 && !heist));   // on a heist his tag shows everywhere
+}
+
+/* ---------------- Mortimer's turkey-leg heist ----------------
+   At a Thanksgiving showing, ordering a turkey leg doesn't get you one from the counter. Mortimer says
+   he'll be right back, flies off (straight through the walls: he's a ghost) to a random player, steals
+   one of their legs (it disappears from their turkey), brings it back to you as your snack, then
+   returns to the counter. If nobody else is around, or everyone else has lost both legs already, the
+   leg comes from you. If every turkey is legless, he fetches one "from the back" instead.
+   Everyone sees it: the buyer sends a "heist" message (who bought, who gets robbed), and every computer
+   plays the same chase with its own Mortimer. Each player keeps count of their own missing legs and
+   shares it in their presence ("legs"), so everyone's turkey shows the right number of legs.
+   Orders queue up: Mortimer does one heist at a time. */
+const HEIST_SPEED = 7;                        // how fast Mortimer flies on a heist, meters per second
+const NPC_HOME = { x: npc.x, y: npc.y, z: npc.z };   // his spot behind the counter
+const HEIST_BACK = { x: -9.5, y: 1.2, z: 35.6 };     // "the back": a corner of the lobby he fetches spare legs from
+const heistQueue = [];                        // heists waiting their turn: { buyer, victim }
+let heist = null;                             // the heist under way: { buyer, victim, phase, until, yaw }
+let heistsTotal = 0;                          // heists started on this page (debug screen)
+let myLegsLost = 0;                           // how many of MY legs Mortimer has stolen (0 to 2)
+// Where a player is right now (you or a friend), or null if they've left.
+function heistPos(id) { if (id === myPeerId()) return me; const o = others.get(id); return o || null; }
+// How many legs a player has lost so far.
+function legsOf(id) { if (id === myPeerId()) return myLegsLost; const o = others.get(id); return o ? o.legs || 0 : 2; }
+// Turkey legs I've paid for that Mortimer hasn't delivered yet (they count toward full hands).
+function legsOwed() { const me0 = myPeerId(); return heistQueue.filter((h) => h.buyer === me0).length + (heist && heist.buyer === me0 && heist.phase !== "home" ? 1 : 0); }
+// I ordered a turkey leg: pick who gets robbed, then tell everyone and start it here too.
+function orderTurkeyLeg() {
+  const others2 = [...others.keys()].filter((id) => legsOf(id) < 2);
+  const victim = others2.length ? pickOne(others2) : myLegsLost < 2 ? myPeerId() : null;   // a friend, else me, else nobody ("from the back")
+  const h = { buyer: myPeerId(), victim };
+  heistQueue.push(h);
+  if (room && room.toAll) room.toAll({ t: "heist", victim });   // the host adds who sent it ("from"): that's the buyer
+}
+// Someone else ordered a turkey leg. The buyer is whoever sent it; the victim must be someone in the room (or nobody).
+function onHeistMsg(m) {
+  if (typeof m.from !== "string") return;
+  const victim = typeof m.victim === "string" ? clean(m.victim, 120) : null;
+  if (victim && victim !== myPeerId() && !others.has(victim)) return;   // nobody we know: ignore
+  if (heistQueue.length < 10) heistQueue.push({ buyer: m.from, victim });
+}
+// Move Mortimer toward a point at heist speed. Returns how far he still has to go.
+function npcFlyTo(x, y, z, dt) {
+  const dx = x - npc.x, dy = y - npc.y, dz = z - npc.z, d = Math.hypot(dx, dy, dz), step = HEIST_SPEED * dt;
+  if (Math.hypot(dx, dz) > 0.05) heist.yaw = Math.atan2(-dx, -dz);   // face where he's going
+  if (d <= step) { npc.x = x; npc.y = y; npc.z = z; return 0; }
+  npc.x += dx / d * step; npc.y += dy / d * step; npc.z += dz / d * step; return d - step;
+}
+// Every frame: run the current heist, one step (phase) at a time:
+//   leave -> chase the victim (or fetch from the back) -> grab their leg -> deliver to the buyer -> give -> home.
+function updateHeist(t, dt) {
+  if (!heist) {
+    if (!heistQueue.length) return;
+    heist = Object.assign(heistQueue.shift(), { phase: "leave", until: t + 1.4, yaw: npc.yaw }); heistsTotal++;
+    const forMe = heist.buyer === myPeerId();
+    npcSay(heist.victim === null ? "Turkey leg? Hmm. Everyone's out of legs. Let me check the back."
+      : pickOne(forMe ? ["Turkey leg? Coming right up. Be right back.", "One turkey leg. Very fresh. Back in a moment.", "Hold that thought. I know where to get one."]
+                      : ["Another turkey leg order. Excuse me, I'll be right back.", "Turkey leg for " + whoIs(heist.buyer) + "! Be right back."]));
+  }
+  const h = heist;
+  if (h.phase === "leave") {   // a short pause at the counter while he says it
+    if (t > h.until) h.phase = h.victim === null ? "fetch" : "chase";
+  } else if (h.phase === "chase") {
+    const v = heistPos(h.victim);
+    if (!v) { h.victim = null; h.phase = "fetch"; npcSay("They got away! Fine. I keep a spare in the back."); return; }   // the victim left the room
+    if (npcFlyTo(v.x, v.y + 0.3, v.z + 0.6, dt) < 0.15) {
+      h.phase = "grab"; h.until = t + 1.3; setHeld(npc.ghost, "turkeyleg");
+      const name = whoIs(h.victim), self = h.victim === h.buyer;
+      npcSay(self ? "Funny story: the freshest leg in the house is yours." : h.victim === myPeerId() ? pickOne(["Sorry, " + yourName() + ". I need this. Business is business.", "Hold still! It's for a customer!"])
+        : pickOne(["Pardon me, " + name + ". Just borrowing this. Forever.", name + ", I'm going to need this leg. Sorry. Business is business."]));
+      if (h.victim === myPeerId()) {   // it's MY leg: lose it, and tell everyone
+        myLegsLost = Math.min(2, myLegsLost + 1); setLegsLost(me.ghost, myLegsLost); sharePresence(true);
+        toast(myLegsLost >= 2 ? "Mortimer stole your other leg! You're floating on pure spite now." : "Mortimer stole one of your legs!");
+      }
+    }
+  } else if (h.phase === "fetch") {   // nobody to rob: get a spare from the back of the lobby
+    if (npcFlyTo(HEIST_BACK.x, HEIST_BACK.y, HEIST_BACK.z, dt) < 0.15) { h.phase = "grab"; h.until = t + 1; setHeld(npc.ghost, "turkeyleg"); }
+  } else if (h.phase === "grab") {    // hold it up for a moment
+    if (t > h.until) h.phase = "deliver";
+  } else if (h.phase === "deliver") {
+    const b = heistPos(h.buyer);
+    if (!b) { setHeld(npc.ghost, null); h.phase = "home"; return; }   // the buyer left: the leg vanishes
+    if (npcFlyTo(b.x, b.y + 0.3, b.z - 0.7, dt) < 0.15) {
+      h.phase = "give"; h.until = t + 1.5; setHeld(npc.ghost, null);
+      npcSay(pickOne(["Here you go. Fresh off the bird.", "One turkey leg, as ordered. Don't ask where it's from.", "Still warm. Enjoy."]));
+      if (h.buyer === myPeerId()) {   // it's for me: into my hands
+        inventory.push({ id: "turkeyleg", left: MENU_BY_ID.turkeyleg.uses });
+        if (inventory.length === 1) refreshHeld(); else renderTray();
+        toast("Mortimer brought your turkey leg. Press F to eat.");
+      }
+    }
+  } else if (h.phase === "give") {
+    if (t > h.until) h.phase = "home";
+  } else if (h.phase === "home") {
+    if (npcFlyTo(NPC_HOME.x, NPC_HOME.y, NPC_HOME.z, dt) === 0) heist = null;   // back behind the counter: done
+  }
 }
 $("talkNpc").addEventListener("click", talkNpc);
 // Click Mortimer to talk
@@ -4371,7 +4481,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.21 · 2026-11-13";
+const BUILD = "v2.22 · 2026-11-13";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -4485,6 +4595,7 @@ function dbgRows() {
       ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
       ["Last emote", lastEmoteSeen ? lastEmoteSeen.who + ": " + lastEmoteSeen.kind + ", " + Math.round(performance.now() / 1000 - lastEmoteSeen.at) + "s ago" : "none yet"],
       ["Mortimer", npc.talks + " talks, " + npc.backTold + " about his past (" + NPC_LINES.length + " everyday lines, " + NPC_BACKSTORY.length + " backstory lines)"],
+      ["Turkey-leg heists", heistsTotal + " so far" + (heist ? " · now: " + heist.phase + (heist.victim ? " (robbing " + whoIs(heist.victim) + " for " + whoIs(heist.buyer) + ")" : " (from the back)") : "") + (heistQueue.length ? " · " + heistQueue.length + " waiting" : "") + " · my legs stolen: " + myLegsLost],
       ["Mortimer remembers", "visit " + mortMem.visits + ", " + Object.values(mortMem.bought).reduce((a, b) => a + b, 0) + " snacks bought (" + Object.values(tonight.bought).reduce((a, b) => a + b, 0) + " tonight), hit him " + mortMem.hits + " times" + (favoriteSnack() ? ", favorite: " + MENU_BY_ID[favoriteSnack()].name : "")],
       ["Throw charge", chargeStart ? ((performance.now() - chargeStart) / 1000).toFixed(1) + "s → speed " + throwPower((performance.now() - chargeStart) / 1000).toFixed(1) : "–"]
     ]],
