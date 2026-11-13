@@ -2215,6 +2215,22 @@ async function boostSenders(call) {
     } catch {}
   }
 }
+// Has this picture call's connection died? Chrome can mark a connection "failed" while PeerJS (which only
+// watches a different status) never notices, so the call just sits there sending nothing, forever.
+// That happens when someone's internet chokes for a while (a game or a big download hogging it).
+// "failed" counts at once; "disconnected" (often a short hiccup that heals itself) only after 10 seconds.
+// `holder` is any object we can note the start of a "disconnected" spell on.
+function callBroken(call, holder) {
+  const pc = call && call.peerConnection; if (!pc) return false;
+  const ice = pc.iceConnectionState, conn = pc.connectionState;
+  if (ice === "failed" || ice === "closed" || conn === "failed" || conn === "closed") return true;
+  if (ice === "disconnected" || conn === "disconnected") {
+    if (!holder.badSince) holder.badSince = performance.now();   // start timing the hiccup
+    return performance.now() - holder.badSince > 10000;
+  }
+  holder.badSince = 0; return false;   // healthy again
+}
+let redialsTotal = 0; // calls this page hung up and dialed again because their connection died (debug screen)
 // Hang up the call to one friend.
 function dropCall(id) { const c = calls.get(id); if (c) { try { c.call.close(); } catch {} calls.delete(id); } }
 // Runs every 2 s and whenever something changes: make sure everyone we should be sending the picture to
@@ -2227,6 +2243,8 @@ function syncCalls() {
   if (amProj()) publishFeed(planFeed());
   const want = new Set(myChildren());
   for (const id of [...calls.keys()]) if (!want.has(id)) dropCall(id);
+  // Calls whose connection died get hung up here, so the loop below dials those friends again fresh.
+  for (const [id, c] of [...calls]) if (callBroken(c.call, c)) { dropCall(id); redialsTotal++; }
   if (!want.size) return;
   const tracks = amProj() ? outTracks() : relayTracks(); if (!tracks) return;
   const sig = tracks.map((tr) => tr.id).sort().join(",");
@@ -2803,12 +2821,14 @@ function freshStart() {
 
 // ---- Self-repair for a black or frozen screen ----
 // Every 2 seconds, a watcher checks the picture it's showing from the projectionist:
+//   - a connection that died (see callBroken(): "failed", or "disconnected" for 10 seconds), or
 //   - a screen share, or a playing movie, that hasn't delivered a single frame for 8 seconds, or
 //   - a playing movie whose frames stopped arriving for 8 seconds.
 // Then it hangs up that call and asks the projectionist (via a "recall" message) to call again.
 // After 3 tries in a row without success it stops and shows a notice instead of looping forever.
-const repair = { peer: null, since: 0, frames: -1, changedAt: 0, expectSince: 0, tries: 0, gaveUp: false };
-function resetRepair() { Object.assign(repair, { peer: null, since: 0, frames: -1, changedAt: 0, expectSince: 0, tries: 0, gaveUp: false }); }
+// badSince = when the connection went "disconnected" (0 = it's fine), used by callBroken().
+const repair = { peer: null, since: 0, frames: -1, changedAt: 0, expectSince: 0, tries: 0, gaveUp: false, badSince: 0 };
+function resetRepair() { Object.assign(repair, { peer: null, since: 0, frames: -1, changedAt: 0, expectSince: 0, tries: 0, gaveUp: false, badSince: 0 }); }
 setInterval(() => {
   const now = performance.now();
   if (!currentCall || !remoteOn || amProj() || currentCall.peer !== myFeeder()) { repair.since = 0; repair.expectSince = 0; return; }
@@ -2817,6 +2837,9 @@ setInterval(() => {
   const q = rVideo.getVideoPlaybackQuality ? rVideo.getVideoPlaybackQuality().totalVideoFrames : 0; // frames shown so far
   if (!repair.since) { repair.since = now; repair.frames = q; repair.changedAt = now; }
   if (q !== repair.frames) { repair.frames = q; repair.changedAt = now; if (q > 0 && repair.tries) { repair.tries = 0; repair.gaveUp = false; updateNotice(); } }
+  // The connection itself died: reconnect whatever is showing (movie playing or paused, or a screen share).
+  // Doesn't count toward giving up, because a dead connection never fixes itself.
+  if (callBroken(currentCall, repair)) { repair.badSince = 0; askForRecall(); return; }
   // Only expect frames during a screen share or while the movie is playing (a paused movie sends none).
   const expect = proj.kind === "screen" || (proj.kind === "movie" && pb.p);
   if (!expect) { repair.expectSince = 0; return; }
@@ -4005,7 +4028,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.16 · 2026-11-05";
+const BUILD = "v2.17 · 2026-11-13";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -4076,7 +4099,7 @@ function dbgRows() {
       ["Subtitles", cues.length ? cues.length + " lines, " + (ownSubs ? "mine only" : "shared") + ", offset " + subOffset.toFixed(1) + "s, " + (subsOn ? "on" : "off") : "none"]
     ]],
     ["Sending to friends", [
-      ["Calls out", outCalls.length ? outCalls.join(", ") : "none"],
+      ["Calls out", (outCalls.length ? outCalls.join(", ") : "none") + " · " + redialsTotal + " redialed after a dead connection"],
       ["Tracks out", sharing ? vTracks(shareStream) : outStream ? vTracks(outStream) + (streamDest ? " + mixed audio" : "") : "–"],
       // One entry per viewer: video actually sent / bandwidth available, picture size and frame rate,
       // and what's limiting quality ("bandwidth" = upload is stretched; "cpu" = this computer is too busy encoding).
