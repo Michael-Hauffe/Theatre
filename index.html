@@ -828,8 +828,17 @@ const MENU = [
   // Edible (if you insist), but really for throwing: it splats on the movie screen (see "Tomato splats").
   { id: "tomato", name: "Rotten tomato", price: 2.25, uses: 2, verb: "Eat", color: "#b8352a", sounds: ["*squelch*", "*gags*"], done: "*regrets everything*" },
   // Each sip is a third of a drink; drink enough and things get wobbly (see "Margaritas").
-  { id: "margarita", name: "Margarita", price: 6, uses: 3, verb: "Drink", color: "#b5e36a", sounds: ["*sip*", "*slurp*", "*hic*"], done: "*licks the salt off the rim*" }
+  { id: "margarita", name: "Margarita", price: 6, uses: 3, verb: "Drink", color: "#b5e36a", sounds: ["*sip*", "*slurp*", "*hic*"], done: "*licks the salt off the rim*" },
+  // Thanksgiving foods (tg: true): only on the menu during a Thanksgiving showing (see "Thanksgiving theme").
+  // They stay in this list all the time so a friend holding one still shows up right if the theme ends.
+  { id: "turkeyleg", tg: true, name: "Turkey leg", price: 8.5, uses: 4, verb: "Eat", color: "#9c5a2c", sounds: ["*gnaws*", "*rips off a chunk*", "*chomp*"], done: "*waves the bone around*" },
+  { id: "pie", tg: true, name: "Pumpkin pie", price: 5.75, uses: 4, verb: "Eat", color: "#d9822b", sounds: ["*nom*", "*mmm, whipped cream*", "*crumbs*"], done: "*licks the fork*" },
+  { id: "mashed", tg: true, name: "Potatoes & gravy", price: 4.75, uses: 5, verb: "Eat", color: "#e8dcc0", sounds: ["*scoop*", "*gravy everywhere*", "*mmm*"], done: "*scrapes the bowl*" },
+  { id: "cranberry", tg: true, name: "Cranberry sauce", price: 3.25, uses: 3, verb: "Eat", color: "#9b1b30", sounds: ["*jiggle*", "*wobble wobble*", "*slurp*"], done: "*it kept the shape of the can*" },
+  { id: "cider", tg: true, name: "Hot apple cider", price: 4.5, uses: 5, verb: "Drink", color: "#c68a3a", sounds: ["*blows on it*", "*sip*", "*ahh*"], done: "*warm and cozy*" }
 ];
+// The items on sale right now: everything, except the Thanksgiving foods when it isn't a Thanksgiving showing.
+const shownMenu = () => MENU.filter((m) => !m.tg || thanksgiving);
 // Look up a menu item by id, e.g. MENU_BY_ID.popcorn.
 const MENU_BY_ID = Object.fromEntries(MENU.map((m) => [m.id, m]));
 {
@@ -986,12 +995,14 @@ const MENU_BY_ID = Object.fromEntries(MENU.map((m) => [m.id, m]));
     x.fillStyle = "#0e0708"; x.fillRect(0, 0, w, h);
     x.strokeStyle = "#d8a54e"; x.lineWidth = 4; x.strokeRect(10, 10, w - 20, h - 20);
     x.fillStyle = "#d8a54e"; x.textAlign = "center"; x.textBaseline = "alphabetic"; x.font = "50px Limelight, Georgia, serif"; x.fillText("Concessions", w / 2, 66);
-    x.font = "700 22px Karla, sans-serif";
-    // Two columns; the rows squeeze closer together when there are more items, so they all fit on the board.
-    const rows = Math.ceil(MENU.length / 2), gap = Math.min(36, (h - 34 - 112) / Math.max(1, rows - 1));
-    MENU.forEach((m, i) => { const col = i % 2, row = Math.floor(i / 2), cx = col ? w * 0.53 : w * 0.06, y = 112 + row * gap;
-      x.fillStyle = m.color; x.fillRect(cx, y - 15, 14, 14); x.fillStyle = "#efe6d8"; x.textAlign = "left"; x.fillText(m.name, cx + 24, y);
-      x.textAlign = "right"; x.fillStyle = "#d8a54e"; x.fillText("$" + m.price.toFixed(2), cx + w * 0.41, y); });
+    // Two columns, or three when there are a lot of items (the Thanksgiving foods). The rows squeeze closer
+    // together when there are more items, so they all fit on the board. colW = one column's width.
+    const items = shownMenu(), cols = items.length > 12 ? 3 : 2, colW = (w - 60) / cols;
+    x.font = cols === 3 ? "700 19px Karla, sans-serif" : "700 22px Karla, sans-serif";
+    const rows = Math.ceil(items.length / cols), gap = Math.min(36, (h - 34 - 112) / Math.max(1, rows - 1));
+    items.forEach((m, i) => { const col = i % cols, row = Math.floor(i / cols), cx = 50 + col * colW, y = 112 + row * gap;
+      x.fillStyle = m.color; x.fillRect(cx, y - 15, 14, 14); x.fillStyle = "#efe6d8"; x.textAlign = "left"; x.fillText(m.name, cx + 22, y);
+      x.textAlign = "right"; x.fillStyle = "#d8a54e"; x.fillText("$" + m.price.toFixed(2), cx + colW - 22, y); });
     menuTex.needsUpdate = true;
   };
   window.__drawMenuBoard();
@@ -1217,6 +1228,40 @@ function makeItemMesh(id) {
     const body = add(new THREE.SphereGeometry(0.11, 16, 12), im(0xa8321f, { roughness: 0.55 })); body.scale.set(1.1, 0.85, 1.05);
     for (const [x, y, z] of [[0.07, 0.03, 0.07], [-0.08, -0.02, 0.05], [0.02, 0.05, -0.09]]) add(new THREE.SphereGeometry(0.035, 8, 6), im(0x5a2a12, { roughness: 0.9 }), x, y, z).scale.set(1, 0.5, 1);   // rotten spots
     for (let i = 0; i < 5; i++) add(new THREE.ConeGeometry(0.018, 0.07, 4), im(0x4f6b2a), Math.cos(i * 1.26) * 0.03, 0.095, Math.sin(i * 1.26) * 0.03, Math.sin(i * 1.26) * 1.3, 0, -Math.cos(i * 1.26) * 1.3);   // drooping leaves
+  }
+  // ---- Thanksgiving foods ----
+  else if (id === "turkeyleg") {
+    // A roasted drumstick: a plump brown leg with a white bone sticking out, knobbly at the end.
+    const meat = add(new THREE.SphereGeometry(0.09, 14, 10), im(0x9c5a2c, { roughness: 0.5 }), 0, 0, 0.05); meat.scale.set(1, 1, 1.6);
+    add(new THREE.CylinderGeometry(0.02, 0.022, 0.16, 8), im(0xf4ead8), 0, 0, -0.13, Math.PI / 2, 0, 0);   // bone
+    for (const sd of [-1, 1]) add(new THREE.SphereGeometry(0.026, 8, 6), im(0xf4ead8), sd * 0.02, 0, -0.21);  // knobs on the end
+  }
+  else if (id === "pie") {
+    // A slice of pumpkin pie on a paper plate: an orange wedge, a golden crust edge and whipped cream.
+    add(new THREE.CylinderGeometry(0.18, 0.16, 0.01, 20), im(0xf7f3ea), 0, -0.03, 0);                                   // plate
+    add(new THREE.CylinderGeometry(0.16, 0.16, 0.05, 12, 1, false, 0, Math.PI / 3), im(0xd9822b), 0, 0, -0.08);         // filling
+    add(new THREE.CylinderGeometry(0.168, 0.168, 0.06, 12, 1, true, 0, Math.PI / 3), im(0xc9934f, { side: THREE.DoubleSide }), 0, 0, -0.08);   // crust
+    add(new THREE.SphereGeometry(0.035, 10, 8), im(0xfffdf6), Math.sin(Math.PI / 6) * 0.08, 0.035, Math.cos(Math.PI / 6) * 0.08 - 0.08);    // whipped cream
+  }
+  else if (id === "mashed") {
+    // A bowl heaped with mashed potatoes and a puddle of gravy on top.
+    add(new THREE.CylinderGeometry(0.13, 0.09, 0.09, 16), im(0xf4efe6));                                                    // bowl
+    const heap = add(new THREE.SphereGeometry(0.12, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), im(0xefe3c4, { roughness: 0.9 }), 0, 0.04, 0); heap.scale.y = 0.7;
+    add(new THREE.CylinderGeometry(0.05, 0.055, 0.015, 12), im(0x7a4a1e, { roughness: 0.3 }), 0, 0.122, 0);                 // gravy
+  }
+  else if (id === "cranberry") {
+    // Canned cranberry sauce, still shaped like the can (ridges and all), on a little plate.
+    const jelly = im(0x9b1b30, { transparent: true, opacity: 0.9, roughness: 0.25, emissive: 0x2a0008 });
+    add(new THREE.CylinderGeometry(0.14, 0.12, 0.01, 18), im(0xf7f3ea), 0, -0.075, 0);                                      // plate
+    add(new THREE.CylinderGeometry(0.07, 0.07, 0.14, 16), jelly);
+    for (const y of [-0.04, 0, 0.04]) add(new THREE.TorusGeometry(0.07, 0.006, 6, 18), jelly, 0, y, 0, Math.PI / 2, 0, 0);  // can ridges
+  }
+  else if (id === "cider") {
+    // A mug of hot apple cider with a cinnamon stick.
+    add(new THREE.CylinderGeometry(0.08, 0.07, 0.16, 16), im(0xb5653a));                                                    // mug
+    add(new THREE.CylinderGeometry(0.072, 0.072, 0.01, 16), im(0x8a4b14, { roughness: 0.2 }), 0, 0.075, 0);                 // cider
+    add(new THREE.TorusGeometry(0.045, 0.013, 6, 12, Math.PI), im(0xb5653a), 0.075, 0, 0, 0, 0, -Math.PI / 2);              // handle
+    add(new THREE.CylinderGeometry(0.008, 0.008, 0.16, 6), im(0x6b3a1a), 0.02, 0.1, 0, 0, 0, 0.3);                          // cinnamon stick
   }
   else if (id === "candy") { add(new THREE.BoxGeometry(0.16, 0.22, 0.05), im(0x7bd389)); add(new THREE.BoxGeometry(0.12, 0.08, 0.052), im(0xff8fab), 0, 0.03, 0); }
   else { add(new THREE.CylinderGeometry(0.05, 0.05, 0.26, 14), im(0xbfe6ff, { transparent: true, opacity: 0.55, roughness: 0.1 })); add(new THREE.CylinderGeometry(0.03, 0.03, 0.04, 10), im(0x2b6fd6), 0, 0.15, 0); add(new THREE.CylinderGeometry(0.051, 0.051, 0.07, 14), im(0x3d8bfd), 0, 0.02, 0); }
@@ -1457,11 +1502,14 @@ function fadeGhost(gh) {
    An option on the welcome screen ("Thanksgiving showing"). The host's choice applies to the whole
    room: the host shares it in their presence ("tg"), and every guest switches to match (noteTheme()).
    With it on:
-     - every player is a turkey instead of a bedsheet ghost (Mortimer stays a ghost: he's the usher),
+     - every player is a turkey instead of a bedsheet ghost (Mortimer stays a ghost, he's the usher,
+       but swaps his red pillbox hat for a pilgrim hat),
      - pumpkins, corn bundles and garlands of autumn leaves decorate the theater and lobby,
      - leaves drift down from the ceiling (they vanish in Hide HUD mode, like the ghosts, so they never
        get in the way of the movie), and a warm orange light fills the rooms,
-     - the screen's title card says "Gobble Matinee", and Boo! becomes "Gobble gobble!".
+     - the screen's title card says "Gobble Matinee", and Boo! becomes "Gobble gobble!",
+     - the concession stand sells Thanksgiving foods (the MENU items marked tg: true) and Mortimer
+       has holiday remarks (NPC_THANKSGIVING).
    (`thanksgiving` itself is declared up by the screen's title card, which needs it first.) */
 
 // Shared turkey looks and shapes, made once and used by every turkey.
@@ -1575,7 +1623,7 @@ function buildDecor() {
   };
   for (const sx of [-1, 1]) garland([sx * (ROOM.x - 0.25), 6.3, -9], [sx * (ROOM.x - 0.25), 6.3, 13], 0.7, 30, -sx * Math.PI / 2);   // theater side walls
   garland([-11.5, 5.4, ROOM.zBack - 0.05], [11.5, 5.4, ROOM.zBack - 0.05], 0.5, 30, Math.PI);   // theater back wall, above the doors
-  garland([-11.5, 4.8, LOBBY.z1 - 0.05], [11.5, 4.8, LOBBY.z1 - 0.05], 0.4, 30, Math.PI);       // lobby back wall, behind the counter
+  garland([-11.5, 5.38, LOBBY.z1 - 0.05], [11.5, 5.38, LOBBY.z1 - 0.05], 0.12, 30, Math.PI);    // lobby back wall, up high so it clears the menu board
   garland([-11.5, 4.8, LOBBY.z0 + 0.36], [11.5, 4.8, LOBBY.z0 + 0.36], 0.4, 30, 0);              // lobby wall by the hallways
   const gl = new THREE.InstancedMesh(leafGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, side: THREE.DoubleSide }), spots.length);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3(0.36, 0.36, 0.36), col = new THREE.Color();
@@ -1627,7 +1675,9 @@ function setThanksgiving(on, announce) {
   if (tgDecor) tgDecor.visible = on;
   setGhostKind(me.ghost, on);
   for (const o of others.values()) setGhostKind(o.gh, on);
+  if (npc.ghost.hats) { npc.ghost.hats.usher.visible = !on; npc.ghost.hats.pilgrim.visible = on; }   // Mortimer's pilgrim hat
   $("boo").textContent = on ? "Gobble!" : "Boo!";
+  if (changed) { window.__drawMenuBoard(); if (!$("shop").hidden) renderShop(); }   // Thanksgiving foods appear on (or leave) the menus
   if (changed) drawPlaceholder(placeholderLine);   // the title card says "Gobble Matinee" during the theme
   if (changed && announce) toast(on ? "Happy Thanksgiving! Everyone's a turkey tonight." : "Back to ghosts.");
 }
@@ -3480,7 +3530,7 @@ function saveWallet() { store.set("gm.wallet", Math.round(wallet * 100) / 100); 
 function renderShop() {
   $("walletTop").textContent = money(wallet) + " Ghost Bucks";
   const ul = $("menuList"); ul.textContent = "";
-  for (const m of MENU) {
+  for (const m of shownMenu()) {   // Thanksgiving foods only during a Thanksgiving showing
     const li = document.createElement("li");
     const chip = document.createElement("span"); chip.className = "chip"; chip.style.background = m.color;
     const nm = document.createElement("div"); nm.className = "nm"; const b = document.createElement("b"); b.textContent = m.name; const sp = document.createElement("span"); sp.textContent = m.uses + " " + (m.verb === "Drink" ? "sips" : "bites"); nm.append(b, sp);
@@ -3672,11 +3722,33 @@ npc.tag.nm.textContent = "Mortimer · Concessions";
   }
   for (const side of [-1, 1]) { const wing = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.09, 12), black); wing.rotation.z = side * Math.PI / 2; wing.position.set(side * 0.045, 0.48, -0.505); gh.bodyG.add(wing); }
   const knot = new THREE.Mesh(new THREE.SphereGeometry(0.024, 10, 8), black); knot.position.set(0, 0.48, -0.515); gh.bodyG.add(knot);
-  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.18, 0.15, 24), red); hat.position.set(0.02, 1.14, 0); hat.rotation.z = -0.12; gh.bodyG.add(hat);
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.183, 0.183, 0.035, 24), brass); band.position.set(0.02, 1.085, 0); band.rotation.z = -0.12; gh.bodyG.add(band);
+  // His everyday hat: a red pillbox with a brass band, in its own group so it can be swapped (see below).
+  const usherHat = new THREE.Group(); gh.bodyG.add(usherHat);
+  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.18, 0.15, 24), red); hat.position.set(0.02, 1.14, 0); hat.rotation.z = -0.12; usherHat.add(hat);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.183, 0.183, 0.035, 24), brass); band.position.set(0.02, 1.085, 0); band.rotation.z = -0.12; usherHat.add(band);
+  // At a Thanksgiving showing he wears a pilgrim hat instead: a tall black crown, a wide brim, and a
+  // dark band with a square brass buckle at the front. Hidden until setThanksgiving() swaps it in.
+  // Built at the hat's resting spot, then the whole hat is tipped a little to the side like the pillbox.
+  const pilgrimHat = new THREE.Group(); pilgrimHat.position.set(0.02, 1.08, 0); pilgrimHat.rotation.z = -0.12; pilgrimHat.visible = false; gh.bodyG.add(pilgrimHat);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.025, 32), black); pilgrimHat.add(brim);
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 0.3, 28), black); crown.position.y = 0.16; pilgrimHat.add(crown);
+  const hatBand = new THREE.Mesh(new THREE.CylinderGeometry(0.177, 0.181, 0.06, 28), new THREE.MeshStandardMaterial({ color: 0x3b2414, roughness: 0.7 })); hatBand.position.y = 0.05; pilgrimHat.add(hatBand);
+  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.075, 0.012), brass); buckle.position.set(0, 0.05, -0.181); pilgrimHat.add(buckle);   // on the front (he faces -z)
+  const hole = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.038, 0.014), black); hole.position.set(0, 0.05, -0.182); pilgrimHat.add(hole);           // the buckle's dark middle
+  gh.hats = { usher: usherHat, pilgrim: pilgrimHat };   // setThanksgiving() shows one or the other
   const badge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.012), brass); const ba = Math.PI - 0.78;
   badge.position.set(Math.sin(ba) * 0.545, 0.6, Math.cos(ba) * 0.545); badge.rotation.y = ba; gh.bodyG.add(badge);
 })(npc.ghost);
+// Mortimer's Thanksgiving remarks, used only during a Thanksgiving showing. Add more any time.
+const NPC_THANKSGIVING = [
+  "Happy Thanksgiving! I'm thankful for the hat. It hides the fact that I have no head.",
+  "Turkey legs are on special. Please don't ask whose. Look around. Everyone's a turkey tonight.",
+  "The cranberry sauce keeps the shape of the can. As it should. Tradition.",
+  "Pumpkin pie, whipped cream, the works. I can't eat it, but I like to watch.",
+  "Ninety Thanksgivings behind this counter. The cider has never once been the right temperature.",
+  "Gobble gobble to you too. I don't know why we're all doing that, but I'm committed now.",
+  "Mashed potatoes with gravy. The gravy is a lake. Bring a boat."
+];
 // Things Mortimer says. Add more lines here any time.
 // There are two lists. NPC_LINES is his everyday chatter and is what you hear most of the time.
 // NPC_BACKSTORY is about his past (see the note above that list) and only comes up now and then.
@@ -3878,6 +3950,8 @@ function talkNpc() {
     else if (Math.random() < BACKSTORY_CHANCE) { npc.lastBack = pickFresh(NPC_BACKSTORY, npc.lastBack); line = NPC_BACKSTORY[npc.lastBack]; npc.backTold++; }
     // Otherwise, a bit under half the time, a remark about what's going on right now (if anything is).
     else if (ctx.length && Math.random() < 0.45) line = pickOne(ctx);
+    // At a Thanksgiving showing, often a holiday remark (see "Thanksgiving theme").
+    else if (thanksgiving && Math.random() < 0.4) line = pickOne(NPC_THANKSGIVING);
     // Otherwise his everyday chatter.
     else { npc.last = pickFresh(NPC_LINES, npc.last); line = NPC_LINES[npc.last]; }
   }
@@ -4230,7 +4304,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.18 · 2026-11-13";
+const BUILD = "v2.20 · 2026-11-13";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
