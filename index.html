@@ -293,9 +293,9 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
 /* Text inputs on the welcome screen (ghost name, room code). */
 .field { width: 100%; max-width: 280px; background: rgba(0,0,0,0.45); border: 1px solid var(--line); color: var(--bone); border-radius: 3px; padding: 10px 12px; font-size: 15px; text-align: center; margin-bottom: 14px; }
 .choices { display: grid; gap: 10px; justify-items: center; }
-/* The "Thanksgiving showing" checkbox on the welcome screen. */
-.themePick { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--smoke); cursor: pointer; }
-.themePick input { width: 16px; height: 16px; accent-color: #d9661f; }
+/* The "Holiday" dropdown on the welcome screen. */
+.themePick { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--smoke); }
+.themePick select { font: inherit; color: var(--paper, #efe6d8); background: #1a0d0f; border: 1px solid rgba(216,165,78,0.45); border-radius: 6px; padding: 5px 8px; cursor: pointer; }
 .or { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--smoke); }
 #joinForm { display: flex; gap: 6px; }
 #code { width: 130px; margin: 0; text-transform: uppercase; letter-spacing: 0.2em; font-family: var(--display); }
@@ -480,8 +480,9 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
     <div class="label">Pick your bedsheet</div>
     <div id="sheets"></div>
     <div class="choices">
-      <!-- The host's choice sets the theme for the whole room (see "Thanksgiving theme" in the script). -->
-      <label class="themePick"><input type="checkbox" id="thanksgiving"> Thanksgiving showing (everyone's a turkey)</label>
+      <!-- The host's choice sets the holiday for the whole room. The options are filled in from the
+           HOLIDAYS list in the script (see "Holidays"), so a new holiday only needs adding there. -->
+      <label class="themePick">Holiday <select id="holiday"></select></label>
       <button class="btn primary" id="enter">Host a showing</button>
       <div class="or">or join a friend</div>
       <form id="joinForm" autocomplete="off"><input id="code" class="field" maxlength="5" placeholder="CODE" aria-label="Room code"><button type="submit">Join</button></form>
@@ -1367,6 +1368,7 @@ function removeGhost(gh) { scene.remove(gh.group); scene.remove(gh.shadow); }
 // a gentle sway, and its shadow (fainter and bigger the higher it floats). Also applies the Hide HUD
 // fade-out. t = time in seconds.
 function poseGhost(gh, x, y, z, ry, t) {
+  if (gh.isTurkey) trackFlight(gh, x, y, z, t);   // turkeys flap their wings while flying (see actEmote)
   const bob = Math.sin(t * 2 + gh.phase) * 0.06;
   gh.group.position.set(x, y + bob, z); gh.group.rotation.y = ry;
   const boo = clamp(1 - (t - gh.booAt) / 0.7, 0, 1);
@@ -1424,6 +1426,7 @@ function actEmote(gh, t) {
   // Start from the normal pose each frame: arms back in place, body at its usual height.
   if (gh.arms) gh.arms.forEach((a, i) => { const sd = i ? 1 : -1; a.position.set(sd * 0.5, 0.48, -0.08); a.rotation.set(0, 0, sd * 0.5); });
   gh.bodyG.position.y = 0;
+  if (gh.isTurkey && !gh.emote && gh.flap > 0.01) flapWings(gh, t);   // a flying turkey flaps (an emote takes over the wings)
   if (!gh.emote) return;
   const pr = (t - gh.emoteAt) / EMOTE_TIME; if (pr >= 1 || pr < 0) { gh.emote = null; return; }
   const env = Math.sin(pr * Math.PI);   // 0 at the start and end, 1 in the middle
@@ -1498,9 +1501,36 @@ function fadeGhost(gh) {
   visit(gh.group);
 }
 
+/* ---------------- Holidays ----------------
+   The "Holiday" dropdown on the welcome screen. The host's choice applies to the whole room: the host
+   shares it in their presence ("hol"), and every guest switches to match (noteTheme()). Your last pick
+   is remembered in this browser. It also works with "Just look around alone".
+   To add a holiday: add a line to HOLIDAYS, then make setHoliday() switch your theme on and off
+   (the way it does setThanksgiving()). */
+const HOLIDAYS = [
+  { id: "", name: "None (ghosts)" },
+  { id: "thanksgiving", name: "Thanksgiving (everyone's a turkey)" }
+];
+let holiday = "";   // the holiday running right now ("" = none)
+// Fill in the dropdown and preselect the last holiday you picked.
+{
+  const sel = $("holiday"), saved = store.get("gm.holiday", "");
+  for (const h of HOLIDAYS) { const o = document.createElement("option"); o.value = h.id; o.textContent = h.name; sel.appendChild(o); }
+  sel.value = HOLIDAYS.some((h) => h.id === saved) ? saved : "";
+  sel.addEventListener("change", () => store.set("gm.holiday", sel.value));
+}
+// Switch to a holiday ("" = none). Unknown names (e.g. from a newer version of the game) count as none.
+// announce=true shows a toast when it changes (used when a host's choice reaches a guest).
+function setHoliday(id, announce) {
+  if (!HOLIDAYS.some((h) => h.id === id)) id = "";
+  holiday = id;
+  setThanksgiving(id === "thanksgiving", announce);
+}
+// The holiday picked in the dropdown (used when hosting or looking around alone).
+const pickedHoliday = () => $("holiday").value;
+
 /* ---------------- Thanksgiving theme ----------------
-   An option on the welcome screen ("Thanksgiving showing"). The host's choice applies to the whole
-   room: the host shares it in their presence ("tg"), and every guest switches to match (noteTheme()).
+   Chosen from the "Holiday" dropdown (see "Holidays" above).
    With it on:
      - every player is a turkey instead of a bedsheet ghost (Mortimer stays a ghost, he's the usher,
        but swaps his red pillbox hat for a pilgrim hat),
@@ -1559,6 +1589,31 @@ function makeTurkeyBody(gh) {
   }
   gh.bodyG.add(g);
   return { group: g, arms, mouth };
+}
+// ---- Flapping ----
+// Every frame for a turkey: work out how fast it's moving (from how far it went since last frame), and
+// ease gh.flap toward 1 while it's flying along or up and down, back to 0 when it stops. Easing makes
+// the wings start and stop smoothly instead of snapping. Works for you and your friends alike.
+function trackFlight(gh, x, y, z, t) {
+  const dt = gh.flyT === undefined ? 0 : t - gh.flyT;
+  if (dt > 0) {
+    // Meters per second. The time is capped at 0.05 s like the game's own movement step, so on a slow
+    // computer (few frames a second, each moving at most 0.05 s worth) a flying turkey still counts as flying.
+    const speed = Math.hypot(x - gh.flyX, y - gh.flyY, z - gh.flyZ) / Math.min(dt, 0.05);
+    gh.flap = (gh.flap || 0) + ((speed > 0.5 ? 1 : 0) - (gh.flap || 0)) * Math.min(1, dt * 6);
+  }
+  gh.flyX = x; gh.flyY = y; gh.flyZ = z; gh.flyT = t;
+}
+// Flap a turkey's wings: each wing swings up and out from its shoulder and back down, about 2.5 times
+// a second. The wing turns around its top edge (the shoulder), not its middle, so the position is
+// worked out from the shoulder point. At angle 0 this matches the wing's normal resting place.
+function flapWings(gh, t) {
+  const lift = gh.flap * (0.6 + 0.6 * Math.sin(t * 16));   // how far up the wings are right now (0 = folded)
+  gh.arms.forEach((w, i) => {
+    const sd = i ? 1 : -1, ang = sd * (0.5 + lift);           // the wing's tilt; sd = -1 left wing, +1 right wing
+    w.rotation.set(0, 0, ang);
+    w.position.set(sd * 0.46 + 0.12 * Math.sin(ang), 0.6 - 0.12 * Math.cos(ang), -0.08);   // shoulder + the wing's half-length, tilted
+  });
 }
 // Switch one ghost between bedsheet and turkey (building the turkey body the first time).
 function setGhostKind(gh, turkey) {
@@ -1681,11 +1736,12 @@ function setThanksgiving(on, announce) {
   if (changed) drawPlaceholder(placeholderLine);   // the title card says "Gobble Matinee" during the theme
   if (changed && announce) toast(on ? "Happy Thanksgiving! Everyone's a turkey tonight." : "Back to ghosts.");
 }
-// GUESTS: follow the host's choice, from the host's presence. (Hosts decide for themselves.)
+// GUESTS: follow the host's holiday, from the host's presence. (Hosts decide for themselves.)
+// "hol" is the holiday's id. Hosts running v2.20 only sent "tg: true" for Thanksgiving, so that still counts.
 function noteTheme() {
   if (!p2p || p2p.isHost) return;
-  const hostPe = peersSnap.find((pe) => pe.peer === p2p.hostId);
-  if (hostPe && hostPe.presence) setThanksgiving(hostPe.presence.tg === true, true);
+  const hostPe = peersSnap.find((pe) => pe.peer === p2p.hostId), pr = hostPe && hostPe.presence;
+  if (pr) setHoliday(typeof pr.hol === "string" ? clean(pr.hol, 24) : pr.tg === true ? "thanksgiving" : "", true);
 }
 
 /* ---------------- me ---------------- */
@@ -2216,7 +2272,7 @@ function sharePresence(force) {
   if (!room) return;
   const g = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), r: +me.yaw.toFixed(3), c: myColor };
   const patch = { g };
-  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; patch.emo = myEmote; /* my latest emote (see "emotes") */ if (amRoomHost()) patch.heirs = heirList(); if (amRoomHost()) patch.tg = thanksgiving || null; /* host: the room's Thanksgiving theme */ patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
+  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; patch.emo = myEmote; /* my latest emote (see "emotes") */ if (amRoomHost()) patch.heirs = heirList(); if (amRoomHost()) { patch.hol = holiday || null; /* host: the room's holiday (see "Holidays") */ patch.tg = thanksgiving || null; /* the same, for guests still on v2.20 */ } patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
   room.presence(patch).catch(() => {});
 }
 // Send the shared playback state on its own channel.
@@ -3432,7 +3488,7 @@ async function peerOptions() { return { config: { iceServers: await iceServers()
 async function host(tries) {
   if (typeof Peer === "undefined") { lobbyMsg("Couldn't load the connection library. Check your internet connection."); return; }
   readNick(); setBusy(true); lobbyMsg("Opening the theater…");
-  setThanksgiving($("thanksgiving").checked);   // the host picks the room's theme (guests follow it)
+  setHoliday(pickedHoliday());   // the host picks the room's holiday (guests follow it)
   const code = makeCode(), p = new Peer(PREFIX + code, await peerOptions());   // with the relay servers (see above)
   p.on("call", onCall);
   p.on("open", () => goLive(makeNet(p, true, null, roomDown), code, p, true, p.id));
@@ -3467,8 +3523,8 @@ async function join(code) {
 // Welcome-screen wiring. Opening an invite link (…#K7QPM) fills in the code for you.
 $("nick").value = myNick;
 $("joinForm").addEventListener("submit", (e) => { e.preventDefault(); join($("code").value); });
-// Just look around alone: the Thanksgiving checkbox works here too.
-$("solo").addEventListener("click", () => { readNick(); setThanksgiving($("thanksgiving").checked); enterTheater(); });
+// Just look around alone: the Holiday dropdown works here too.
+$("solo").addEventListener("click", () => { readNick(); setHoliday(pickedHoliday()); enterTheater(); });
 { const h = location.hash.replace("#", "").toUpperCase(); if (/^[A-Z0-9]{5}$/.test(h)) { $("code").value = h; lobbyMsg("You've been invited to room " + h + ". Pick a name and press Join."); } }
 // Copy invite link: the page address with the room code after a #.
 $("copyLink").addEventListener("click", () => {
@@ -4152,42 +4208,53 @@ function onGhostHit(g, f, t) {
 // skip through thin walls. Each sub-step: gravity, a ray along the motion to find surfaces,
 // the floor, then ghosts (simple spheres). Slow pieces on flat ground come to rest.
 /* ---------------- Tomato splats ----------------
-   A thrown rotten tomato that hits the movie screen bursts into a red splat stuck to the screen
-   (instead of bouncing like other food). The splat slides down a little and fades away after
+   A thrown rotten tomato (or cranberry sauce, at a Thanksgiving showing) that hits the movie screen
+   bursts into a splat stuck to the screen (instead of bouncing like other food). Each kind has its
+   own look: tomato is red with seeds; cranberry is dark, glossy jelly with whole berries in it. The splat slides down a little and fades away after
    about 20 seconds. Every computer runs the same flight, so everyone sees the splat in about the
    same spot. /admin clear food wipes them off too. */
 const SPLAT_LIFE = 20, SPLAT_FADE = 4, MAX_SPLATS = 25;   // seconds on screen, seconds of fading at the end, most at once
 const splats = [];                                        // { mesh, born }
-let splatTexs = null;                                     // three splat pictures, drawn the first time one is needed
-let splatImgs = null;                                     // the same three pictures as plain drawings (full view uses these)
+const SPLAT_FOODS = ["tomato", "cranberry"];             // the foods that splat on the screen
+let splatTexs = {};                                       // for each splatting food: three splat pictures, drawn the first time one is needed
+let splatImgs = {};                                       // the same pictures as plain drawings (full view uses these)
 let splatsTotal = 0;                                      // splats so far on this page (debug screen)
-// Draw a splat picture: a lumpy red blob with spatters, seeds and a couple of drips running down.
-function makeSplatImg(seed) {
+// Draw a splat picture: a lumpy blob with spatters and a couple of drips running down. Tomato is red
+// with yellow seeds; cranberry (kind "cranberry") is a deep red jelly with shiny highlights and whole berries.
+function makeSplatImg(seed, kind) {
+  const cran = kind === "cranberry";
   let r = seed * 9301 + 49297; const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);   // same splat shapes on every computer
   const c = document.createElement("canvas"); c.width = c.height = 256;
   ((x, w, h) => {
     const cx = w / 2, cy = h * 0.42;
-    x.fillStyle = "rgba(150, 22, 14, 0.95)";
+    x.fillStyle = cran ? "rgba(110, 6, 30, 0.96)" : "rgba(150, 22, 14, 0.95)";
     x.beginPath(); for (let i = 0; i <= 24; i++) { const a = (i / 24) * Math.PI * 2, rr = 52 + rnd() * 30; x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.85); } x.fill();
     for (let i = 0; i < 14; i++) { const a = rnd() * Math.PI * 2, d = 80 + rnd() * 40; x.beginPath(); x.arc(cx + Math.cos(a) * d, cy + Math.sin(a) * d * 0.85, 4 + rnd() * 10, 0, Math.PI * 2); x.fill(); }   // spatters
     for (let i = 0; i < 3; i++) { const dx = cx - 40 + rnd() * 80, len = 50 + rnd() * 70; x.fillRect(dx - 4, cy + 30, 8, len); x.beginPath(); x.arc(dx, cy + 30 + len, 7, 0, Math.PI * 2); x.fill(); }   // drips
-    x.fillStyle = "rgba(200, 50, 30, 0.9)"; x.beginPath(); x.arc(cx - 10, cy - 8, 30, 0, Math.PI * 2); x.fill();   // juicier middle
-    x.fillStyle = "rgba(235, 200, 90, 0.95)"; for (let i = 0; i < 12; i++) { x.beginPath(); x.ellipse(cx - 40 + rnd() * 80, cy - 30 + rnd() * 60, 4, 2.5, rnd() * 3, 0, Math.PI * 2); x.fill(); }   // seeds
+    x.fillStyle = cran ? "rgba(165, 18, 52, 0.9)" : "rgba(200, 50, 30, 0.9)"; x.beginPath(); x.arc(cx - 10, cy - 8, 30, 0, Math.PI * 2); x.fill();   // juicier middle
+    if (cran) {
+      // Whole berries (dark circles with a light spot), then glossy jelly highlights.
+      for (let i = 0; i < 7; i++) { const bx = cx - 45 + rnd() * 90, by = cy - 35 + rnd() * 70;
+        x.fillStyle = "rgba(70, 0, 18, 0.95)"; x.beginPath(); x.arc(bx, by, 7, 0, Math.PI * 2); x.fill();
+        x.fillStyle = "rgba(255, 170, 190, 0.7)"; x.beginPath(); x.arc(bx - 2, by - 2, 2, 0, Math.PI * 2); x.fill(); }
+      x.fillStyle = "rgba(255, 200, 215, 0.45)"; for (let i = 0; i < 6; i++) { x.beginPath(); x.ellipse(cx - 40 + rnd() * 80, cy - 30 + rnd() * 50, 9, 3, -0.5, 0, Math.PI * 2); x.fill(); }
+    } else { x.fillStyle = "rgba(235, 200, 90, 0.95)"; for (let i = 0; i < 12; i++) { x.beginPath(); x.ellipse(cx - 40 + rnd() * 80, cy - 30 + rnd() * 60, 4, 2.5, rnd() * 3, 0, Math.PI * 2); x.fill(); } }   // seeds
   })(c.getContext("2d"), 256, 256);
   return c;
 }
 // Turn a splat drawing into a picture the 3D scene can use.
 function splatTexFrom(c) { const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; }
-// Stick a splat on the screen where the tomato hit.
-function splatOnScreen(point) {
-  if (!splatTexs) { splatImgs = [1, 2, 3].map(makeSplatImg); splatTexs = splatImgs.map(splatTexFrom); }
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.3), new THREE.MeshBasicMaterial({ map: splatTexs[splatsTotal % 3], transparent: true, depthWrite: false, toneMapped: false }));
+// Stick a splat on the screen where the food (kind: "tomato" or "cranberry") hit.
+function splatOnScreen(point, kind) {
+  kind = kind === "cranberry" ? "cranberry" : "tomato";
+  if (!splatTexs[kind]) { splatImgs[kind] = [1, 2, 3].map((n) => makeSplatImg(n, kind)); splatTexs[kind] = splatImgs[kind].map(splatTexFrom); }
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.3), new THREE.MeshBasicMaterial({ map: splatTexs[kind][splatsTotal % 3], transparent: true, depthWrite: false, toneMapped: false }));
   // Just in front of the picture (a tiny bit further for each splat so overlapping ones don't flicker);
   // drawn before the subtitles so subtitles stay readable on top.
   mesh.position.set(point.x, point.y, SCREEN.z + 0.02 + (splatsTotal % 20) * 0.0005);
   const rot = (Math.random() - 0.5) * 0.6; mesh.rotation.z = rot; mesh.renderOrder = 1;
   // x, y, rot, img and fade are kept here too, for drawing the same splat in full view.
-  scene.add(mesh); splats.push({ mesh, born: nowS(), x: point.x, y: point.y, rot, img: splatImgs[splatsTotal % 3], fade: 1 }); splatsTotal++;
+  scene.add(mesh); splats.push({ mesh, born: nowS(), x: point.x, y: point.y, rot, img: splatImgs[kind][splatsTotal % 3], fade: 1 }); splatsTotal++;
   while (splats.length > MAX_SPLATS) removeSplat(0);
 }
 function removeSplat(i) { const sp = splats[i]; scene.remove(sp.mesh); sp.mesh.geometry.dispose(); sp.mesh.material.dispose(); splats.splice(i, 1); }
@@ -4222,7 +4289,7 @@ function stepThrows(dt, t) {
         tD.copy(f.v).normalize(); throwRay.set(f.p, tD); throwRay.far = dist + PR;
         const hit = throwRay.intersectObjects(targets, false)[0];
         if (hit && hit.face) {
-          if (f.id === "tomato" && hit.object === screen) { splatOnScreen(hit.point); f.splat = true; break; }   // tomato on the screen: splat! (see above)
+          if (SPLAT_FOODS.includes(f.id) && hit.object === screen) { splatOnScreen(hit.point, f.id); f.splat = true; break; }   // tomato or cranberry on the screen: splat! (see above)
           surfaceNormal(hit, tN); if (tN.dot(f.v) > 0) tN.negate();
           f.p.copy(hit.point).addScaledVector(tN, PR);
           bounce(f, tN, 0.4, 0.75);
@@ -4304,7 +4371,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.20 · 2026-11-13";
+const BUILD = "v2.21 · 2026-11-13";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -4353,7 +4420,7 @@ function dbgRows() {
       ["Mode", !room ? "solo" : amRoomHost() ? "host" : "guest"],
       ["Room link", reconn ? "reconnecting for " + Math.round((Date.now() - reconn.since) / 1000) + "s" + (reconn.heirIdx >= 0 ? " (number " + (reconn.heirIdx + 1) + " in line to host" + (reconn.claiming ? ", trying to take over" : "") + ")" : "") : room ? "connected" : "–"],
       ["Next in line to host", (amRoomHost() ? heirList() : lastHeirs).map((id) => id === myPeerId() ? "you" : whoIs(id)).join(", ") || "–"],
-      ["Theme", thanksgiving ? "Thanksgiving (everyone's a turkey" + (amRoomHost() || !room ? ", my choice)" : ", the host's choice)") : "ghosts"],
+      ["Holiday", (HOLIDAYS.find((h) => h.id === holiday) || HOLIDAYS[0]).name + (holiday ? (amRoomHost() || !room ? " · my choice" : " · the host's choice") : "")],
       ["Reconnects", String(reconnectsDone)],
       ["Room code", roomCode || "–"],
       ["My id", myPeerId().slice(-8)],
@@ -4494,7 +4561,7 @@ const ADMIN_HELP = [
   ["/admin reset posters", "Back to this room's original posters"],
   ["/admin reset movie", "Stop the movie or screen share, so anyone can press Load movie"],
   ["/admin pause", "Pause the movie for everyone"],
-  ["/admin clear food", "Remove all thrown food and tomato splats"],
+  ["/admin clear food", "Remove all thrown food and splats on the screen"],
   ["/admin announce Showtime!", "Show a big message on everyone's screen"],
   ["/admin mortimer Welcome, folks!", "Make Mortimer say something"],
   ["/admin list people", "Who's in the room"],

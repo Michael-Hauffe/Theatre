@@ -58,7 +58,7 @@ Saved as the branch [`v1.0-working`](https://github.com/Michael-Hauffe/Theatre/t
 - **Rotten tomatoes:** a new item at the concession stand ($2.25). It works like any other snack, but if you throw it at the movie screen it splats there (in full view too), slides down a bit, and fades away after about 20 seconds. `/admin clear food` wipes splats off too.
 - **Margaritas:** $6 at the concession stand, 3 sips each. One drink does nothing; two and your movement drifts; three and your vision blurs; four and you black out and wake up at the counter to Mortimer scolding you. Mortimer has lines for each stage, comments on every margarita you order, scolds you harder each time you black out, and remembers blackouts from earlier visits. Your body processes it (starting 30 seconds after your last sip, about one drink every 2 minutes), so every effect wears off. Water helps a little.
 - **Pictures come back after a connection drops:** if someone's internet chokes (a game or big download hogging it) and the connection to the person showing the movie or screen dies, both sides now notice and reconnect on their own within about 10–30 seconds. Before, the picture stayed frozen until the showing restarted.
-- **Thanksgiving showing:** tick "Thanksgiving showing" on the welcome screen before hosting (or before looking around alone). Everyone in the room becomes a turkey (every other tail feather in your bedsheet color), the theater and lobby get pumpkins, corn bundles, leaf garlands, falling leaves and warm autumn light, the screen's title card says "Gobble Matinee", and Boo becomes "Gobble!". Guests get the host's choice automatically. Mortimer stays a ghost, but wears a pilgrim hat and has holiday remarks. The concession stand adds Thanksgiving foods: turkey leg, pumpkin pie, potatoes & gravy, cranberry sauce and hot apple cider.
+- **Thanksgiving showing:** pick Thanksgiving from the **Holiday** dropdown on the welcome screen before hosting (or before looking around alone). More holidays can be added to the `HOLIDAYS` list in `index.html`. Everyone in the room becomes a turkey (every other tail feather in your bedsheet color, and they flap their wings while flying), the theater and lobby get pumpkins, corn bundles, leaf garlands, falling leaves and warm autumn light, the screen's title card says "Gobble Matinee", and Boo becomes "Gobble!". Guests get the host's choice automatically. Mortimer stays a ghost, but wears a pilgrim hat and has holiday remarks. The concession stand adds Thanksgiving foods: turkey leg, pumpkin pie, potatoes & gravy, cranberry sauce (which splats on the screen like a rotten tomato when thrown) and hot apple cider.
 - **Update check:** if your browser is showing an old saved copy of the game, a bar offers a Refresh.
 
 ## Admin commands
@@ -75,7 +75,7 @@ Anyone in the room can type these in the chat box. Commands that change things a
 | `/admin reset posters` | Back to the room's original posters |
 | `/admin reset movie` | Stops the movie or screen share; Load movie works again for everyone |
 | `/admin pause` | Pauses the movie for everyone |
-| `/admin clear food` | Removes all thrown food and tomato splats |
+| `/admin clear food` | Removes all thrown food and splats on the screen (tomato, cranberry) |
 | `/admin announce Showtime!` | A big message across everyone's screen |
 | `/admin mortimer Welcome, folks!` | Mortimer says it |
 | `/admin list people` | Who's in the room |
