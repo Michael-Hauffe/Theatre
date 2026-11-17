@@ -1545,6 +1545,7 @@ function poseGhost(gh, x, y, z, ry, t) {
   const thr = Math.sin(clamp((t - gh.throwAt) / 0.35, 0, 1) * Math.PI); gh.bodyG.rotation.x = -thr * 0.35 + (gh.windup || 0) * 0.12;
   actEmote(gh, t); // scream, laugh, cry, clap or shush (see EMOTES)
   if (gh.walkers) walkLegs(gh, x, z, t); // four-legged bodies move their legs as they walk (see "Holiday bodies")
+  if (gh.hopRig && gh.kind === "bunny") bunnyHop(gh, y, t); // bunnies hop with their hind legs (see "Holiday bodies")
   gh.shadow.position.set(x, 0.02, z); const k = clamp(1 - y / 5, 0.15, 1); gh.shadow.material.opacity = k * ghostFade; gh.shadow.scale.setScalar(0.7 + y * 0.15); // the shadow fades with the ghost in Hide HUD mode
 }
 
@@ -1799,7 +1800,7 @@ function setGhostKind(gh, kind) {
   for (const k in gh.bodies) gh.bodies[k].group.visible = k === kind;
   const part = kind === "ghost" ? gh.sheet : gh.bodies[kind];
   gh.arms = part.arms; gh.mouth = part.mouth; gh.armRest = part.rest || null;   // animations use the showing body
-  gh.holdAt = part.hold || null; gh.walkers = part.walkers || null;   // four-legged bodies: snacks in the mouth, walking legs
+  gh.holdAt = part.hold || null; gh.walkers = part.walkers || null; gh.hopRig = part.hop || null;   // four-legged bodies: snacks in the mouth, walking legs, bunny hops
   gh.glow.visible = kind === "ghost";   // only ghosts glow
   if (kind === "turkey") setLegsLost(gh, gh.legsLost || 0);     // a leg Mortimer already stole stays gone
   if (kind === "person") { setPartsLost(gh, gh.partsLost || 0); setFat(gh, gh.lbs || BASE_LBS); }   // so do limbs lost to fireworks, and weight
@@ -1941,8 +1942,8 @@ const HOLIDAY_DEFS = {
 };
 // Lines that make your character puff up (like Boo): Boo itself and every holiday's version.
 const BOO_WORDS = /^(boo|gobble|jingle|boing|usa|happy new year)/i;
-// Mortimer's remarks for the holiday running now (null when there's none).
-function holidayLines() { const d = HOLIDAY_DEFS[holiday]; return d && d.lines ? d.lines() : null; }
+// Mortimer's remarks for the holiday running now (Halloween's when it's the original ghost showing).
+function holidayLines() { if (!holiday) return NPC_HALLOWEEN; const d = HOLIDAY_DEFS[holiday]; return d && d.lines ? d.lines() : null; }
 // The body a player should have right now. People who've lost all four limbs to fireworks are ghosts.
 function bodyFor(limbsLost) { const d = HOLIDAY_DEFS[holiday], k = d ? d.body : "ghost"; return k === "person" && limbsLost >= LIMBS ? "ghost" : k; }
 const holidayDecor = {};   // each holiday's decorations, built the first time: { group, update(dt, t) }
@@ -2014,6 +2015,32 @@ function walkLegs(gh, x, z, t) {
   gh.walkers.forEach((leg, i) => (leg.rotation.x = Math.sin(gh.walkPh + off[i]) * amp));
 }
 
+// Every frame, for a bunny: pose it for where it is in its hop, the way a real rabbit moves. The hind
+// legs do the work: they kick back to launch it, then swing forward under the body while the front legs
+// reach out to land first; on the ground it sits in a crouch. Where it is in the hop is worked out from
+// how fast it's going up or down and how high it is above the floor it last landed on, so this works
+// the same for friends' bunnies (whose heights arrive over the network) as for yours.
+function bunnyHop(gh, y, t) {
+  const r = gh.hopRig, pv = gh.hopPrev; let vy = 0, dt = 0;
+  if (pv && t > pv.t) { dt = Math.min(0.1, t - pv.t); vy = (y - pv.y) / (t - pv.t); }
+  gh.hopPrev = { y, t };
+  gh.hopVy = (gh.hopVy || 0) * 0.5 + vy * 0.5;                       // smoothed up/down speed
+  // The floor it's on: the lowest it's been lately (creeping up slowly, so it follows it onto the stage).
+  if (gh.hopFloor === undefined || y < gh.hopFloor) gh.hopFloor = y; else gh.hopFloor += (y - gh.hopFloor) * Math.min(1, dt * 0.3);
+  const air = y - gh.hopFloor > 0.03, v = gh.hopVy;
+  // Target angles (radians): hind legs (negative = kicked back), front legs (positive = reaching forward),
+  // body tilt (positive = nose up), and how squashed the haunches are.
+  let hind = 0, front = 0, tilt = 0, squash = 1;
+  if (air && v > 0.4) { hind = -1.0; front = 0.55; tilt = 0.18; }          // launch: hind legs fully extended behind, nose up
+  else if (air && v < -0.4) { hind = 0.55; front = 0.8; tilt = -0.2; }     // coming down: hind legs swing forward, front paws reach to land
+  else if (air) { hind = -0.2; front = 0.7; tilt = 0; }                   // top of the hop: stretched out
+  else { squash = 0.88; }                                                  // on the ground: crouched, ready for the next push
+  const k = Math.min(1, dt * 16);                                          // ease into each pose (quickly: a hop is short)
+  for (const h of r.hind) { h.rotation.x += (hind - h.rotation.x) * k; h.scale.y += (squash - h.scale.y) * k; }
+  for (const f of r.front) f.rotation.x += (front - f.rotation.x) * k;
+  r.inner.rotation.x += (tilt - r.inner.rotation.x) * k;
+}
+
 // ---- Reindeer (Christmas) ----
 // A slim reindeer on four long legs, with antlers, a plain dark nose, a white tail, and a scarf in the
 // player's color with a little bell (it's why Boo says "Jingle!").
@@ -2049,6 +2076,7 @@ function makeReindeerBody(gh) {
 
 // ---- Bunny (Easter) ----
 // A rabbit on all fours: rounded back (higher at the rump), big hind feet, long ears, a cotton tail.
+// It moves like a real rabbit: each hop is driven by the hind legs (see bunnyHop()).
 // The fur is the player's own color. Built small and then scaled up 1.5 times so bunnies aren't lost
 // among the seats (about knee-high to waist-high on a person, ears included).
 const BUNNY = { white: std(0xfbf7f2), pink: std(0xf2a7b8), teeth: std(0xffffff, { roughness: 0.4 }) };
@@ -2067,9 +2095,15 @@ function makeBunnyBody(gh) {
     P(eyeGeo, eyeMat, [0.28, 0.38, 0.24], [sd * 0.058, 0.39, -0.28]);    // eyes
     const ear = P(BALL, fur, [0.034, 0.15, 0.017], [sd * 0.045, 0.55, -0.18]); ear.rotation.set(0.2, 0, -sd * 0.12);   // long ears
     const inn = P(BALL, B.pink, [0.02, 0.12, 0.01], [sd * 0.045, 0.55, -0.195]); inn.rotation.set(0.2, 0, -sd * 0.12);
-    P(BALL, fur, [0.055, 0.085, 0.1], [sd * 0.11, 0.16, 0.14]);          // big hind haunches
-    P(BALL, B.white, [0.038, 0.02, 0.1], [sd * 0.11, 0.02, 0.1]);        // long hind feet
   }
+  // Hind legs: the big haunch and the long foot, in a group that pivots at the hip, so the leg can kick
+  // back to push off and swing forward to land (see bunnyHop()).
+  const hind = [-1, 1].map((sd) => {
+    const hp = new THREE.Group(); hp.position.set(sd * 0.11, 0.2, 0.13); inner.add(hp);
+    P(BALL, fur, [0.055, 0.085, 0.1], [0, -0.04, 0.01], hp);              // big haunch
+    P(BALL, B.white, [0.038, 0.02, 0.1], [0, -0.18, -0.03], hp);          // long foot
+    return hp;
+  });
   P(BALL, B.white, [0.055, 0.055, 0.055], [0, 0.31, 0.29]);             // cotton tail
   // Front legs (they swing as the bunny moves; the hind legs are the big haunches above).
   const legs = [-1, 1].map((sd) => quadLeg(inner, fur, B.white, sd * 0.065, 0.2, -0.13, 0.02, [0.028, 0.018, 0.04]));
@@ -2077,7 +2111,8 @@ function makeBunnyBody(gh) {
   const holder = new THREE.Group(); holder.position.set(0, 0.31, -0.31); holder.scale.setScalar(0.11); inner.add(holder);
   const mouth = P(eyeGeo, eyeMat, [0.8, 1.1, 0.5], [0, 0, 0], holder);
   gh.bodyG.add(g);
-  return { group: g, arms, mouth, walkers: [legs[0], legs[1], legs[1], legs[0]], hold: { x: 0, y: 0.3 * BUNNY_SCALE, z: -0.36 * BUNNY_SCALE, s: 0.6 } };
+  // hop: what bunnyHop() moves (the whole body for tilting, the hind legs, the front legs).
+  return { group: g, arms, mouth, hop: { inner, hind, front: legs }, hold: { x: 0, y: 0.3 * BUNNY_SCALE, z: -0.36 * BUNNY_SCALE, s: 0.6 } };
 }
 
 // ---- Person (Independence Day, New Year's Day) ----
@@ -2675,6 +2710,17 @@ let hopsDone = 0; // hops on this page (debug screen)
 
 /* ---------------- Mortimer's holiday remarks ----------------
    Used only during their holiday (about 4 talks in 10). Add more any time. */
+const NPC_HALLOWEEN = [
+  "Happy Halloween! The one night a year everyone dresses up as me.",
+  "Trick or treat? I'll take the treat. I've had enough tricks for one afterlife.",
+  "Lovely sheet. Is that cotton? We all wore linen in my day.",
+  "Some ghosts haunt castles. I haunt a snack counter. We can't all be glamorous.",
+  "Boo! …No? I've been practicing that since 1931. Tough crowd.",
+  "Everyone's a ghost tonight, so nobody can tell who threw that hot dog. Very convenient.",
+  "Candy's on the menu, popcorn's in the machine, and the spirits are… well, they're you.",
+  "The pumpkins out there carved themselves. Don't ask. They get touchy.",
+  "If you see a ghost in the projection booth, that's not me. I'd love to know who it is."
+];
 const NPC_CHRISTMAS = [
   "Ho ho ho! I'm Santa. The beard is real. The rest of me is mostly ectoplasm.",
   "Santa's been doing this since 1931. The chimney thing never caught on with me. I go through the wall.",
@@ -2683,7 +2729,17 @@ const NPC_CHRISTMAS = [
   "Every reindeer in here owes me a sleigh ride. I'm keeping a list. Checking it twice, even.",
   "The eggnog is fresh. I mean, it's from this year. Probably.",
   "Is that snow, or is the ceiling falling in again? Either way: festive.",
-  "Merry Christmas! Do please sit on Santa's lap to order. It's in my contract. I wrote the contract."
+  "Merry Christmas! Do please sit on Santa's lap to order. It's in my contract. I wrote the contract.",
+  // Added November 17, 2026:
+  "Santa's chair is very comfortable. I've been sitting in it since December 1st. I may need help up.",
+  "Have you been naughty or nice? Don't answer. I can tell. I can always tell.",
+  "The reindeer are getting very good at walking. Last year they just floated into the walls.",
+  "Ho ho ho. That's three hos. Union rules say I have to stop there.",
+  "I asked for a new pair of legs for Christmas. Again. Maybe next year.",
+  "Everything's free this year. Don't get used to it. On the twenty-sixth I'm charging double.",
+  "The tree's real. The snow's real. The beard is… let's say it's sincere.",
+  "Mind the tinsel. It gets everywhere. I found some in 1962 and I'm still finding it.",
+  "Silent night? In a movie theater? Only if nobody brought popcorn."
 ];
 const NPC_EASTER = [
   "Happy Easter! I've hidden eggs all over the building. I've also forgotten where. Good luck.",
@@ -2692,7 +2748,16 @@ const NPC_EASTER = [
   "Carrots are on special. Good for your eyesight. You'll want it for the movie.",
   "Every bunny in the house, and not one of you brought me a chocolate egg.",
   "The chocolate bunny is hollow. Like me. We have a lot in common.",
-  "Please don't hop on the seats. They're older than I am. Well. Nearly."
+  "Please don't hop on the seats. They're older than I am. Well. Nearly.",
+  // Added November 17, 2026:
+  "Somebody hid an egg in the popcorn machine. Very clever. Very sticky.",
+  "I've counted forty-one eggs so far. I hid fifty-four. We may have a problem in about a week.",
+  "Hop carefully. The carpet's older than me, and it bites back.",
+  "Jelly beans: the black ones are for the brave. Or the dead. Either way, I'll have them.",
+  "Spring has sprung. Or it's the seat springs again. Hard to tell in here.",
+  "Your back legs are doing all the work, I see. Good. That's what they're for.",
+  "The marshmallow chicks are watching you. They do that. Don't make eye contact.",
+  "A rabbit in a top hat, a rabbit in a theater… we're running out of places to put rabbits."
 ];
 const NPC_JULY4 = [
   "Happy Independence Day! FREEDOM! Sorry. It slips out. FREEDOM.",
@@ -2703,7 +2768,17 @@ const NPC_JULY4 = [
   "In 1931 we did the Fourth properly: one sparkler, one flag, one very small band. Look at us now. Magnificent.",
   "Every person in here has all their limbs. Let's keep it that way. Unless you buy fireworks. Then, who knows.",
   "U! S! A! That's all of my letters. I've been practicing.",
-  "The eagle on the banner is named Gerald. He represents liberty. And Gerald."
+  "The eagle on the banner is named Gerald. He represents liberty. And Gerald.",
+  // Added November 17, 2026:
+  "I've been told the flag on the ceiling is visible from space. I'm told a lot of things.",
+  "Freedom fries, served free-range. They roam the kitchen. Very happy fries.",
+  "The more you eat, the more American you get. Science. Patriotic science.",
+  "Walk it off! Every three feet, one pound. That's the Constitution. I think.",
+  "Gerald the eagle is looking at you. He's proud of you. He's always proud of you.",
+  "The fireworks have a fuse of about a second and a half. I learned that the hard way. Twice.",
+  "Hot dogs, burgers, apple pie. The holy trinity of the concession stand.",
+  "Red, white and blue. Like my face after the fireworks went off near the soda machine.",
+  "I once marched in a parade. Well, floated. The tuba player fainted."
 ];
 const NPC_NEWYEAR = [
   "Happy New Year! My resolution is to finally take down the Christmas tree. Same as last year.",
@@ -2712,7 +2787,16 @@ const NPC_NEWYEAR = [
   "Champagne's on the menu. Remember what happened with the margaritas. I do. I always will.",
   "Fireworks at midnight! And at 12:01. And all day, apparently. Mind your limbs.",
   "The Christmas lights are staying up. They're New Year lights now. That's how it works.",
-  "Out with the old, in with the new. Except me. I'm staying old. It's my brand."
+  "Out with the old, in with the new. Except me. I'm staying old. It's my brand.",
+  // Added November 17, 2026:
+  "I resolved to finally learn the projector. It resolved to keep ignoring me.",
+  "Midnight came and went. Then it came again. It does that in here.",
+  "Auld Lang Syne. I know all the words. Nobody else does. That's how I win every year.",
+  "The confetti will be swept up by March. Possibly April.",
+  "New year, new me? No. Same me. Same vest. Same counter. Same ninety years.",
+  "Champagne's on the menu. Remember: one glass is a toast. Four glasses is a story I'll tell for decades.",
+  "Black-eyed peas for luck, greens for money, and nothing at all for my back.",
+  "The Christmas tree's in the corner, pretending nobody can see it. I respect that."
 ];
 
 /* ---------------- me ---------------- */
@@ -4788,7 +4872,16 @@ const NPC_THANKSGIVING = [
   "Pumpkin pie, whipped cream, the works. I can't eat it, but I like to watch.",
   "Ninety Thanksgivings behind this counter. The cider has never once been the right temperature.",
   "Gobble gobble to you too. I don't know why we're all doing that, but I'm committed now.",
-  "Mashed potatoes with gravy. The gravy is a lake. Bring a boat."
+  "Mashed potatoes with gravy. The gravy is a lake. Bring a boat.",
+  // Added November 17, 2026:
+  "I'd say grace, but the last time I closed my eyes in here, I woke up dead.",
+  "The pilgrims had it easy. Try crossing this lobby with a full tray of gravy.",
+  "Leftovers will be available until roughly the year 2070. We're very efficient.",
+  "I'm thankful for every one of you. Especially the ones who tip.",
+  "No, I won't be carving anything. I've retired from anything involving sharp edges and an audience.",
+  "The stuffing is homemade. Whose home, I couldn't tell you.",
+  "Football's on in the other theater. There is no other theater. That's how I like it.",
+  "Pass the cranberry sauce. Don't throw it. PASS it. There's a difference, and it's on the screen."
 ];
 // Things Mortimer says. Add more lines here any time.
 // There are two lists. NPC_LINES is his everyday chatter and is what you hear most of the time.
@@ -5460,7 +5553,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.27 · 2026-11-17";
+const BUILD = "v2.29 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
