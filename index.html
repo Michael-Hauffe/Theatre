@@ -4517,8 +4517,13 @@ addEventListener("pagehide", () => { try { if (p2p) p2p.peer.destroy(); } catch 
 //   - Open Relay by Metered (staticauth.openrelay.metered.ca), 20 GB a month free with no account. Its login is
 //     made from a public "shared secret" (the standard way TURN servers hand out temporary logins).
 //   - PeerJS's own relay servers (what PeerJS uses when nothing is set up).
-// For a private, more reliable relay: make a free account at metered.ca, create an app, and paste its
-// "TURN credentials" address (…/api/v1/turn/credentials?apiKey=…) into TURN_API_URL below.
+// NOTE (November 2026): both free relays appear to have shut down (their addresses no longer lead
+// anywhere), so for now there may be no working relay unless a private one is set up. The debug
+// screen's "Relay check" line tests them from your own browser (see checkRelays()).
+// For a private, reliable relay, put an address that hands out relay logins into TURN_API_URL below:
+// either a Metered credentials address (…metered.live/api/v1/turn/credentials?apiKey=…; free plan is
+// only 500 MB a month) or a Cloudflare credentials Worker (1,000 GB a month free), which answers with
+// { iceServers: [...] }.
 const TURN_API_URL = "";
 const OPENRELAY = { host: "staticauth.openrelay.metered.ca", secret: "openrelayprojectsecret" };
 let iceInfo = "not set up yet";   // what was set up, for the debug screen
@@ -4530,7 +4535,9 @@ async function iceServers() {
     try {
       const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 4000);
       const got = await (await fetch(TURN_API_URL, { signal: ctl.signal })).json(); clearTimeout(timer);
-      if (Array.isArray(got) && got.length) { iceInfo = "private Metered relay (" + got.length + " servers)"; return list.concat(got.slice(0, 6)); }
+      // Metered sends a plain list; a Cloudflare credentials Worker sends { iceServers: [...] }. Either works.
+      const servers = Array.isArray(got) ? got : got && Array.isArray(got.iceServers) ? got.iceServers : null;
+      if (servers && servers.length) { iceInfo = "private relay (" + servers.length + " server groups)"; return list.concat(servers.slice(0, 6)); }
     } catch {}
   }
   // Open Relay: the login is "<expiry time>:<any name>" and the password is a signature of it made
@@ -4546,6 +4553,28 @@ async function iceServers() {
   list.push({ urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"], username: "peerjs", credential: "peerjsp" });
   return list;
 }
+// ---- Relay check ----
+// A few seconds after the page opens, test each relay server from this browser: ask it for a relay
+// address (a "relay candidate"), which only works if the server is reachable and accepts our login.
+// The result shows on the debug screen ("Relay check"), and the join screen uses it to explain failures.
+let relayCheck = "not run yet", relaysWork = null;   // relaysWork: true / false / null (unknown yet)
+async function checkRelays() {
+  relayCheck = "checking…";
+  const groups = (await iceServers()).filter((sv) => [].concat(sv.urls).some((u) => /^turns?:/.test(u)));
+  const results = await Promise.all(groups.map((sv) => new Promise((res) => {
+    const name = [].concat(sv.urls)[0].replace(/^turns?:/, "").split(/[:?]/)[0];
+    let pc, done = false;
+    const fin = (ok) => { if (done) return; done = true; try { pc.close(); } catch {} res({ name, ok }); };
+    try { pc = new RTCPeerConnection({ iceServers: [sv], iceTransportPolicy: "relay" }); } catch { return fin(false); }
+    pc.onicecandidate = (e) => { if (e.candidate && / typ relay /.test(e.candidate.candidate)) fin(true); else if (!e.candidate) fin(false); };
+    pc.createDataChannel("check"); pc.createOffer().then((o) => pc.setLocalDescription(o)).catch(() => fin(false));
+    setTimeout(() => fin(false), 9000);
+  })));
+  relaysWork = results.some((r) => r.ok);
+  relayCheck = results.length ? results.map((r) => r.name + (r.ok ? ": works" : ": not reachable")).join(" · ") : "no relay servers set up";
+}
+setTimeout(checkRelays, 4000);
+
 // The options every PeerJS connection is created with.
 async function peerOptions() { return { config: { iceServers: await iceServers() } }; }
 
@@ -4574,9 +4603,18 @@ async function join(code) {
   p.on("call", onCall);
   let done = false;
   const fail = (msg) => { if (done) return; done = true; try { p.destroy(); } catch {} setBusy(false); lobbyMsg(msg); };
-  const timer = setTimeout(() => fail("No answer from room " + code + ". Check the code, and make sure the host still has the page open."), 15000);
+  let cn = null;
+  // After 25 seconds without a connection, explain what went wrong as well as we can tell:
+  //  - the host's page never answered (closed, or asleep in a background tab or on a sleeping computer), or
+  //  - it answered, but the two computers couldn't link up: their networks block a direct connection,
+  //    and no relay server was available to pass the connection through (see "Relay servers").
+  const timer = setTimeout(() => {
+    const pc = cn && cn.peerConnection, answered = !!(pc && pc.remoteDescription);
+    if (!answered) fail("No answer from room " + code + ". Make sure the host still has the page open (and their computer isn't asleep), then try again.");
+    else fail("Found room " + code + ", but your computer and the host's couldn't connect. Your networks are blocking a direct link" + (relaysWork === false ? ", and the backup relay servers aren't reachable right now" : "") + ". Try again; if it keeps happening, one of you could try a different network (a phone hotspot, say) or turn off any VPN.");
+  }, 25000);
   p.on("open", () => {
-    const cn = p.connect(PREFIX + code, { reliable: true });
+    cn = p.connect(PREFIX + code, { reliable: true });
     cn.on("open", () => { if (done) return; done = true; clearTimeout(timer); goLive(guestNet(p, cn), code, p, false, PREFIX + code); });
   });
   p.on("error", (err) => {
@@ -5557,7 +5595,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.30 · 2026-11-17";
+const BUILD = "v2.31 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -5645,6 +5683,7 @@ function dbgRows() {
       ["Picture", remoteOn ? "on, " + rVideo.videoWidth + "×" + rVideo.videoHeight + ", ready " + rVideo.readyState : "off"],
       ["Video arriving", rxQ ? rate(rxQ.kbps) + ", " + rxQ.w + "×" + rxQ.h + " " + Math.round(rxQ.fps) + "fps, " + rxQ.lost + " packets lost" + (rxQ.route ? ", " + rxQ.route : "") : "–"],
       ["Relay servers", iceInfo],
+      ["Relay check", relayCheck + (relaysWork === false ? " (friends whose networks can't connect directly won't be able to join or watch)" : "")],
       ["Frames received", rVideo.getVideoPlaybackQuality ? String(rVideo.getVideoPlaybackQuality().totalVideoFrames) : "?"],
       ["Self-repair", (repair.gaveUp ? "gave up after 3 reconnects" : repair.tries ? "trying: " + repair.tries + " reconnect(s) in a row" : "picture OK") + " · " + repairsTotal + " reconnect(s) in total"],
       ["Fresh starts", String(mediaResets) + " (one each time the projector is freed)"],
