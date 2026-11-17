@@ -2120,9 +2120,9 @@ function makePersonBody(gh) {
 // At an Independence Day showing, every bite of food makes your person a little heavier, from BASE_LBS
 // up to MAX_LBS, and walking slims you back down. Your weight is shared in your presence ("lbs"), so
 // everyone sees it. It lasts for the showing (reloading the page starts you over).
-// Walking burns it back off (LBS_PER_FOOT for every foot walked), down to BASE_LBS again.
+// Walking burns it back off: 1 lb for every FEET_PER_LB feet walked (3), down to BASE_LBS again.
 // The game measures distances in meters, so walking is converted to feet (FEET_PER_METER) first.
-const BASE_LBS = 180, MAX_LBS = 800, LBS_PER_BITE = 14, LBS_PER_FOOT = 1, FEET_PER_METER = 3.28084;
+const BASE_LBS = 180, MAX_LBS = 800, LBS_PER_BITE = 14, FEET_PER_LB = 3, FEET_PER_METER = 3.28084;
 let myLbs = BASE_LBS;
 const walkFrom = { x: 0, z: 0 };   // where you were last frame (to measure how far you walked)
 let lbsSharedAt = 0;   // when our weight was last sent to everyone (while walking it's sent at most once a second)
@@ -2145,7 +2145,7 @@ function setFat(gh, lbs) {
 function burnWeight(dist, t) {
   if (holiday !== "july4" || me.ghost.kind !== "person" || myLbs <= BASE_LBS || dist <= 0) return;
   const feet = dist * FEET_PER_METER;
-  const before = myLbs; myLbs = Math.max(BASE_LBS, myLbs - feet * LBS_PER_FOOT);
+  const before = myLbs; myLbs = Math.max(BASE_LBS, myLbs - feet / FEET_PER_LB);
   setFat(me.ghost, myLbs);
   if (t - lbsSharedAt > 1 || myLbs === BASE_LBS) { lbsSharedAt = t; sharePresence(true); }   // friends see you slim down
   if (myLbs === BASE_LBS) toast("You've walked it all off. Back to " + BASE_LBS + " lbs!");
@@ -5460,7 +5460,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.26 · 2026-11-17";
+const BUILD = "v2.27 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
