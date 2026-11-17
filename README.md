@@ -21,7 +21,7 @@ Saved as the branch [`v2.0-working`](https://github.com/Michael-Hauffe/Theatre/t
 - **Lobby posters**: 20 original ghost movies as JPG files, six shown at a time, picked randomly per room, with numbered frames. Add, remove or replace them like any image (below).
 - **Admin commands** typed in chat, for everyone in the room (below).
 - **Show Shortcuts** button that shows the shortcut list only while held.
-- **Debug screen**: hold the ` key to see live details on the room, the projector, picture and sound, snacks and performance. Press **P** to copy it all so you can paste it into a message.
+- **Debug screen**: hold the ` key to see live details on the room, the projector, picture and sound, snacks and performance. Press **P** to copy it all so you can paste it into a message. On the welcome screen, **P** or the **Copy connection details** link copies it too, including a "Last join attempt" section that shows step by step how far a failed join got (joining waits 30 seconds before giving up).
 
 If the picture or sound doesn't reach someone, have them hold ` and press P, then paste what was copied. The "Receiving" section shows whether their computer is connected to the projector and how many frames have arrived.
 

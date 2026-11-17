@@ -418,7 +418,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
           <dt><kbd>M</kbd></dt><dd>Full view: just the movie, filling the screen (M or Esc to leave)</dd>
           <dt><kbd>H</kbd></dt><dd>Hide or show the HUD (hiding it also hides names, ghosts and snacks in hands; thrown food stays visible)</dd>
           <dt><kbd>`</kbd> <span class="alt">hold</span></dt><dd>Show the debug screen</dd>
-          <dt><kbd>P</kbd></dt><dd>Copy the debug screen</dd>
+          <dt><kbd>P</kbd></dt><dd>Copy the debug screen (works on the welcome screen too)</dd>
         </dl>
       </section>
     </div>
@@ -496,6 +496,8 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
       <button type="button" class="linkish" id="solo">Just look around alone</button>
     </div>
     <p class="fine" id="lobbyMsg"></p>
+    <!-- Copies the debug screen (with details of the last join attempt) so it can be pasted into a message. Also: P. -->
+    <button type="button" class="linkish" id="copyDiag">Copy connection details</button>
     <p class="fine">Movies stream straight from the projectionist's browser to friends. Nothing is uploaded to a server.</p>
   </div>
 </div>
@@ -2841,7 +2843,7 @@ const typing = () => document.activeElement && (document.activeElement.tagName =
 // because they act on press AND release.) Keep the shortcut sheet in the HTML in sync with this list.
 addEventListener("keydown", (e) => {
   if (typing()) { if (e.key === "Escape") document.activeElement.blur(); return; }
-  if (!$("lobby").hidden) return;
+  if (!$("lobby").hidden) { if (e.key.toLowerCase() === "p") copyDebug(); return; }   // on the welcome screen only P (copy details) works
   if (!$("shop").hidden) { if (e.key === "Escape" || e.key.toLowerCase() === "o") closeShop(); return; }
   const k = e.key.toLowerCase(); keys.add(k);
   if (k === "v") toggleView();
@@ -4599,12 +4601,15 @@ async function join(code) {
   code = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (code.length !== 5) { lobbyMsg("Room codes are 5 characters, like K7QPM."); return; }
   readNick(); setBusy(true); lobbyMsg("Finding room " + code + "…");
+  joinLog = { code, t0: performance.now(), steps: [], ice: "", cands: "", result: "trying…" }; joinNote("started");
   const p = new Peer(await peerOptions());   // with the relay servers (see "Relay servers" above)
   p.on("call", onCall);
   let done = false;
-  const fail = (msg) => { if (done) return; done = true; try { p.destroy(); } catch {} setBusy(false); lobbyMsg(msg); };
+  const fail = (msg) => { if (done) return; done = true; joinNote("gave up"); joinLog.result = "failed: " + msg; clearInterval(watch); try { p.destroy(); } catch {} setBusy(false); lobbyMsg(msg); };
   let cn = null;
-  // After 25 seconds without a connection, explain what went wrong as well as we can tell:
+  // While trying, record how the connection attempt is going (for the debug screen's "Last join attempt").
+  const watch = setInterval(() => watchJoin(cn), 500);
+  // After 30 seconds without a connection, explain what went wrong as well as we can tell:
   //  - the host's page never answered (closed, or asleep in a background tab or on a sleeping computer), or
   //  - it answered, but the two computers couldn't link up: their networks block a direct connection,
   //    and no relay server was available to pass the connection through (see "Relay servers").
@@ -4612,19 +4617,45 @@ async function join(code) {
     const pc = cn && cn.peerConnection, answered = !!(pc && pc.remoteDescription);
     if (!answered) fail("No answer from room " + code + ". Make sure the host still has the page open (and their computer isn't asleep), then try again.");
     else fail("Found room " + code + ", but your computer and the host's couldn't connect. Your networks are blocking a direct link" + (relaysWork === false ? ", and the backup relay servers aren't reachable right now" : "") + ". Try again; if it keeps happening, one of you could try a different network (a phone hotspot, say) or turn off any VPN.");
-  }, 25000);
+  }, 30000);
   p.on("open", () => {
+    joinNote("reached the matchmaking server; asking the room to connect");
     cn = p.connect(PREFIX + code, { reliable: true });
-    cn.on("open", () => { if (done) return; done = true; clearTimeout(timer); goLive(guestNet(p, cn), code, p, false, PREFIX + code); });
+    cn.on("open", () => { if (done) return; done = true; clearTimeout(timer); watchJoin(cn); clearInterval(watch); joinNote("connected"); joinLog.result = "joined"; goLive(guestNet(p, cn), code, p, false, PREFIX + code); });
   });
   p.on("error", (err) => {
+    joinNote("error: " + (err && err.type || "unknown"));
     clearTimeout(timer);
     if (err && err.type === "peer-unavailable") fail("There's no showing with code " + code + " right now.");
     else if (!entered) fail("Couldn't connect (" + (err && err.type || "network") + "). Try again.");
   });
 }
+// ---- Last join attempt (for the debug screen) ----
+// Each step of the most recent attempt to join a room, with the time it happened, plus how the
+// connection to the host was getting on: whether the host's page answered, the connection state, and
+// which kinds of network addresses each side offered ("host" = local network, "srflx" = public internet
+// address, "relay" = through a relay server). If a join fails, this shows where it got stuck.
+let joinLog = null;
+function joinNote(what) { if (joinLog) joinLog.steps.push(((performance.now() - joinLog.t0) / 1000).toFixed(1) + "s " + what); }
+async function watchJoin(cn) {
+  const pc = cn && cn.peerConnection; if (!pc || !joinLog) return;
+  const ice = (pc.remoteDescription ? "host answered" : "no answer from the host yet") + ", connection " + pc.iceConnectionState + ", gathering " + pc.iceGatheringState;
+  if (ice !== joinLog.ice) { joinLog.ice = ice; joinNote(ice); }
+  try {
+    const rep = await pc.getStats(), mine = new Set(), theirs = new Set(); let pairs = 0, tried = 0;
+    rep.forEach((r) => { if (r.type === "local-candidate") mine.add(r.candidateType); if (r.type === "remote-candidate") theirs.add(r.candidateType); if (r.type === "candidate-pair") { pairs++; if (r.state === "failed" || r.state === "succeeded" || r.state === "in-progress") tried++; } });
+    joinLog.cands = "mine: " + ([...mine].join("+") || "none") + " · host's: " + ([...theirs].join("+") || "none") + " · " + pairs + " routes (" + tried + " tried)";
+  } catch {}
+}
+// Rows for the debug screen.
+function joinRows() {
+  if (!joinLog) return [["Last join attempt", "none on this page"]];
+  return [["Room", joinLog.code], ["Result", joinLog.result], ["Addresses", joinLog.cands || "–"], ["Steps", joinLog.steps.join(" → ")]];
+}
+
 // Welcome-screen wiring. Opening an invite link (…#K7QPM) fills in the code for you.
 $("nick").value = myNick;
+$("copyDiag").addEventListener("click", copyDebug);   // copy the debug screen from the welcome screen
 $("joinForm").addEventListener("submit", (e) => { e.preventDefault(); join($("code").value); });
 // Just look around alone: the Holiday dropdown works here too.
 $("solo").addEventListener("click", () => { readNick(); setHoliday(pickedHoliday()); enterTheater(); });
@@ -5595,7 +5626,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.31 · 2026-11-17";
+const BUILD = "v2.32 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -5637,6 +5668,7 @@ function dbgRows() {
   const outCalls = [...calls.entries()].map(([id, c]) => { const st = c.call.peerConnection && c.call.peerConnection.iceConnectionState; return whoIs(id) + "=" + (st || "?"); });
   const ago = (ms) => (ms ? ((performance.now() - ms) / 1000).toFixed(1) + "s ago" : "never");
   return [
+    ["Last join attempt", joinRows()],   // how the most recent try at joining a room went (see joinLog)
     ["Room", [
       ["Build", BUILD],
       ["Latest on website", latestBuild ? latestBuild + (latestBuild === BUILD ? " (up to date)" : " (refresh to update)") + ", checked " + new Date(latestCheckedAt).toLocaleTimeString() : "not checked yet"],
@@ -5727,7 +5759,8 @@ function dbgRows() {
 // Turn the rows into HTML (text only, nothing from other players is treated as HTML).
 function renderDebug() {
   const box = $("dbgBody"); box.textContent = "";
-  for (const [title, rows] of dbgRows()) {
+  let sections; try { sections = dbgRows(); } catch (err) { sections = [["Last join attempt", joinRows()], ["Problem", [["Reading the rest", String(err)]]]]; }
+  for (const [title, rows] of sections) {
     const sec = document.createElement("section"), h = document.createElement("h3"), dl = document.createElement("dl");
     h.textContent = title;
     for (const [k, v] of rows) { const dt = document.createElement("dt"), dd = document.createElement("dd"); dt.textContent = k; dd.textContent = v; dl.append(dt, dd); }
@@ -5737,7 +5770,11 @@ function renderDebug() {
 // Turn the debug screen into plain text: a title line, then "[Section]" and "Label: value" lines.
 function debugText() {
   const lines = ["Ghost Matinee debug screen · " + new Date().toLocaleString()];
-  for (const [title, rows] of dbgRows()) { lines.push("", "[" + title + "]"); for (const [k, v] of rows) lines.push(k + ": " + v); }
+  // If gathering the full screen fails for any reason, still copy the join details and the error,
+  // so there is always something useful to paste.
+  let sections;
+  try { sections = dbgRows(); } catch (err) { sections = [["Last join attempt", joinRows()], ["Room", [["Build", BUILD], ["Relay check", relayCheck], ["Problem reading the rest", String(err)]]]]; }
+  for (const [title, rows] of sections) { lines.push("", "[" + title + "]"); for (const [k, v] of rows) lines.push(k + ": " + v); }
   return lines.join("\n");
 }
 // Copy Debug Screen (P): put that text on the clipboard. Browsers only allow this right after a key
