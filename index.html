@@ -221,6 +221,11 @@ input[type=range] { accent-color: var(--brass); }
 .menu-card .chip { width: 14px; height: 14px; border-radius: 3px; }
 .menu-card .nm { min-width: 0; }
 .menu-card .nm b { display: block; font-weight: 700; font-size: 14px; }
+/* Christmas: the handwritten-looking first line of the letter to Santa. */
+#shopIntro { margin: 10px 20px 0; font: italic 17px Georgia, serif; color: #f3e6c8; }
+/* Christmas: the letter to Santa sits on the right with a lighter backdrop, so you can see yourself on his lap. */
+#shop.santa { place-items: center end; padding-right: 3vw; background: rgba(5, 2, 3, 0.15); }
+@media (max-width: 760px) { #shop.santa { place-items: end center; padding-right: 0; } }
 .menu-card .nm span { color: var(--smoke); font-size: 12px; }
 .menu-card .price { font-variant-numeric: tabular-nums; color: var(--bone); font-size: 14px; }
 .menu-card footer { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 20px 18px; border-top: 1px solid var(--line); align-items: center; }
@@ -401,7 +406,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
           <dt><kbd>S</kbd><span class="alt">or</span><kbd>&darr;</kbd></dt><dd>Drift backward</dd>
           <dt><kbd>A</kbd> <kbd>D</kbd></dt><dd>Drift left and right</dd>
           <dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Turn left and right</dd>
-          <dt><kbd>Space</kbd><span class="alt">or</span><kbd>E</kbd></dt><dd>Rise</dd>
+          <dt><kbd>Space</kbd><span class="alt">or</span><kbd>E</kbd></dt><dd>Rise (Easter: jump, since bunnies can't fly)</dd>
           <dt><kbd>Shift</kbd><span class="alt">or</span><kbd>Q</kbd><span class="alt">or</span><kbd>C</kbd></dt><dd>Sink</dd>
           <dt><span class="act">Drag the view</span></dt><dd>Look around</dd>
         </dl>
@@ -433,7 +438,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
         <dl>
           <dt><kbd>Enter</kbd></dt><dd>Type a message</dd>
           <dt><kbd>Esc</kbd></dt><dd>Leave the message box</dd>
-          <dt><kbd>B</kbd></dt><dd>Boo! (Gobble! at a Thanksgiving showing)</dd>
+          <dt><kbd>B</kbd></dt><dd>Boo! (or the holiday's version: Gobble!, Jingle!, Boing!, USA!, Cheers!)</dd>
           <dt><kbd>1</kbd> to <kbd>5</kbd></dt><dd>Emotes: scream, laugh, cry, clap, shush</dd>
           <dt><span class="act">/admin…</span></dt><dd>Admin commands. Type /admin show commands</dd>
         </dl>
@@ -443,7 +448,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
         <dl>
           <dt><kbd>O</kbd></dt><dd>Order, when you're at the counter</dd>
           <dt><kbd>Esc</kbd></dt><dd>Close the menu</dd>
-          <dt><kbd>F</kbd></dt><dd>Eat or drink what you're holding</dd>
+          <dt><kbd>F</kbd></dt><dd>Eat or drink what you're holding (or light a firework)</dd>
           <dt><kbd>G</kbd></dt><dd>Switch to your next snack</dd>
           <dt><kbd>T</kbd> <span class="alt">hold</span></dt><dd>Throw it. Hold longer to throw harder</dd>
           <dt><kbd>R</kbd></dt><dd>Talk to Mortimer at the counter</dd>
@@ -464,6 +469,8 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
 <div id="shop" hidden role="dialog" aria-label="Concession stand">
   <div class="menu-card">
     <header><h2>Concessions</h2><span class="wallet" id="walletTop"></span></header>
+    <!-- At Christmas the menu is a letter to Santa (see "Christmas: Santa's lap" in the script). -->
+    <p id="shopIntro" hidden>For Christmas, I would like…</p>
     <ul id="menuList"></ul>
     <footer><p>Ghost Bucks only. No refunds in the afterlife.</p><div style="display:flex;gap:8px"><button type="button" id="atm">Ghost ATM +$20</button><button type="button" class="btn primary" id="closeShop">Done</button></div></footer>
   </div>
@@ -683,9 +690,12 @@ const valance = new THREE.Mesh(curtain(ROOM.x * 2, 1.3, 3), curtainMat); valance
 // SCREEN.maxW/maxH = the largest picture we'll show; the actual size follows the video's shape.
 // the screen
 const SCREEN = { maxW: 14, maxH: 7.4, cy: 4.75, z: ROOM.zFront + 0.18 };
-// thanksgiving = the Thanksgiving theme is on (see "Thanksgiving theme"). Declared here because the
-// title card below is drawn right away and needs to know which title to show.
+// thanksgiving = the Thanksgiving theme is on (see "Thanksgiving theme"); holiday = the holiday running
+// right now ("" = none; see "Holidays"); holidayTitle = the name on the screen's title card. Declared here
+// because the title card and the menu board are drawn right away and need to know them.
 let thanksgiving = false;
+let holiday = "";
+let holidayTitle = "Ghost Matinee";
 // What the screen shows when nothing is playing: an old film-leader look with a line of status text.
 const placeholderTex = canvasTex(1024, 576, () => {}, null);
 function drawPlaceholder(line2) {
@@ -696,7 +706,7 @@ function drawPlaceholder(line2) {
   x.strokeStyle = "rgba(40,30,25,0.6)"; x.lineWidth = 4; x.beginPath(); x.arc(w / 2, h / 2 - 20, 150, 0, 7); x.stroke();
   x.beginPath(); x.moveTo(w / 2, h / 2 - 190); x.lineTo(w / 2, h / 2 + 150); x.moveTo(w / 2 - 190, h / 2 - 20); x.lineTo(w / 2 + 190, h / 2 - 20); x.stroke();
   x.fillStyle = "#24170f"; x.textAlign = "center"; x.textBaseline = "middle";
-  x.font = "84px Limelight, Georgia, serif"; x.fillText(thanksgiving ? "Gobble Matinee" : "Ghost Matinee", w / 2, h / 2 - 30);
+  x.font = "84px Limelight, Georgia, serif"; x.fillText(holidayTitle, w / 2, h / 2 - 30);   // e.g. "Gobble Matinee" at Thanksgiving
   x.font = "500 30px Karla, sans-serif"; x.fillText(line2, w / 2, h / 2 + 50);
   placeholderTex.needsUpdate = true;
 }
@@ -830,16 +840,37 @@ const MENU = [
   { id: "tomato", name: "Rotten tomato", price: 2.25, uses: 2, verb: "Eat", color: "#b8352a", sounds: ["*squelch*", "*gags*"], done: "*regrets everything*" },
   // Each sip is a third of a drink; drink enough and things get wobbly (see "Margaritas").
   { id: "margarita", name: "Margarita", price: 6, uses: 3, verb: "Drink", color: "#b5e36a", sounds: ["*sip*", "*slurp*", "*hic*"], done: "*licks the salt off the rim*" },
-  // Thanksgiving foods (tg: true): only on the menu during a Thanksgiving showing (see "Thanksgiving theme").
+  // Holiday foods (hol: [the holidays they're sold at]): only on the menu during those showings (see "Holidays").
   // They stay in this list all the time so a friend holding one still shows up right if the theme ends.
-  { id: "turkeyleg", tg: true, name: "Turkey leg", price: 8.5, uses: 4, verb: "Eat", color: "#9c5a2c", sounds: ["*gnaws*", "*rips off a chunk*", "*chomp*"], done: "*waves the bone around*" },
-  { id: "pie", tg: true, name: "Pumpkin pie", price: 5.75, uses: 4, verb: "Eat", color: "#d9822b", sounds: ["*nom*", "*mmm, whipped cream*", "*crumbs*"], done: "*licks the fork*" },
-  { id: "mashed", tg: true, name: "Potatoes & gravy", price: 4.75, uses: 5, verb: "Eat", color: "#e8dcc0", sounds: ["*scoop*", "*gravy everywhere*", "*mmm*"], done: "*scrapes the bowl*" },
-  { id: "cranberry", tg: true, name: "Cranberry sauce", price: 3.25, uses: 3, verb: "Eat", color: "#9b1b30", sounds: ["*jiggle*", "*wobble wobble*", "*slurp*"], done: "*it kept the shape of the can*" },
-  { id: "cider", tg: true, name: "Hot apple cider", price: 4.5, uses: 5, verb: "Drink", color: "#c68a3a", sounds: ["*blows on it*", "*sip*", "*ahh*"], done: "*warm and cozy*" }
+  { id: "turkeyleg", hol: ["thanksgiving"], name: "Turkey leg", price: 8.5, uses: 4, verb: "Eat", color: "#9c5a2c", sounds: ["*gnaws*", "*rips off a chunk*", "*chomp*"], done: "*waves the bone around*" },
+  { id: "pie", hol: ["thanksgiving"], name: "Pumpkin pie", price: 5.75, uses: 4, verb: "Eat", color: "#d9822b", sounds: ["*nom*", "*mmm, whipped cream*", "*crumbs*"], done: "*licks the fork*" },
+  { id: "mashed", hol: ["thanksgiving"], name: "Potatoes & gravy", price: 4.75, uses: 5, verb: "Eat", color: "#e8dcc0", sounds: ["*scoop*", "*gravy everywhere*", "*mmm*"], done: "*scrapes the bowl*" },
+  { id: "cranberry", hol: ["thanksgiving"], name: "Cranberry sauce", price: 3.25, uses: 3, verb: "Eat", color: "#9b1b30", sounds: ["*jiggle*", "*wobble wobble*", "*slurp*"], done: "*it kept the shape of the can*" },
+  { id: "cider", hol: ["thanksgiving"], name: "Hot apple cider", price: 4.5, uses: 5, verb: "Drink", color: "#c68a3a", sounds: ["*blows on it*", "*sip*", "*ahh*"], done: "*warm and cozy*" },
+  // Christmas (ordered from Santa: see "Christmas: Santa's lap"). The cookies are still around at New Year.
+  { id: "cocoa", hol: ["christmas"], name: "Hot cocoa", price: 4.5, uses: 5, verb: "Drink", color: "#6b3e26", sounds: ["*blows on it*", "*sip*", "*marshmallow!*"], done: "*cocoa mustache*" },
+  { id: "candycane", hol: ["christmas"], name: "Candy cane", price: 2.5, uses: 4, verb: "Eat", color: "#e23b3b", sounds: ["*lick*", "*crunch*", "*minty*"], done: "*sticky hooves*" },
+  { id: "gingerbread", hol: ["christmas"], name: "Gingerbread man", price: 3.75, uses: 4, verb: "Eat", color: "#b0672e", sounds: ["*bites the head off first*", "*crunch*", "*not the gumdrop buttons!*"], done: "*he didn't run fast enough*" },
+  { id: "eggnog", hol: ["christmas"], name: "Eggnog", price: 4.25, uses: 4, verb: "Drink", color: "#f3e4b5", sounds: ["*sip*", "*nutmeg sneeze*", "*creamy*"], done: "*eggnog mustache*" },
+  { id: "xmascookies", hol: ["christmas", "newyear"], name: "Christmas cookies", price: 3.5, uses: 5, verb: "Eat", color: "#e8c27a", sounds: ["*crumbs*", "*sprinkles everywhere*", "*nom*"], done: "*licks the frosting off*" },
+  // Easter.
+  { id: "carrot", hol: ["easter"], name: "Carrots", price: 2, uses: 5, verb: "Eat", color: "#f28c28", sounds: ["*crunch*", "*munch munch munch*", "*nibble*"], done: "*what's up, doc?*" },
+  { id: "chocobunny", hol: ["easter"], name: "Chocolate bunny", price: 4.75, uses: 5, verb: "Eat", color: "#5a3420", sounds: ["*ears first*", "*it was hollow*", "*nom*"], done: "*chocolate on your paws*" },
+  { id: "jellybeans", hol: ["easter"], name: "Jelly beans", price: 3, uses: 6, verb: "Eat", color: "#e85d9b", sounds: ["*chew*", "*a black one. ugh*", "*chew chew*"], done: "*picks out the last green one*" },
+  { id: "crossbun", hol: ["easter"], name: "Hot cross bun", price: 3.25, uses: 4, verb: "Eat", color: "#d9a066", sounds: ["*nom*", "*a raisin!*", "*warm*"], done: "*brushes off the crumbs*" },
+  { id: "marshchick", hol: ["easter"], name: "Marshmallow chicks", price: 2.75, uses: 5, verb: "Eat", color: "#f7e14b", sounds: ["*squish*", "*sugar crunch*", "*peep*"], done: "*sugar-high*" },
+  // Independence Day and New Year's Day. A firework is lit with F (it shoots up and bursts) or thrown
+  // with T (it bursts where it lands): see "Fireworks". Champagne counts toward drinks like a margarita.
+  { id: "firework", hol: ["july4", "newyear"], name: "Firework", price: 4, uses: 1, verb: "Light", color: "#d63a3a", sounds: ["*fssss*"], done: "*fssss…*" },
+  { id: "fries", hol: ["july4"], name: "Freedom fries", price: 4.75, uses: 6, verb: "Eat", color: "#f2c94c", sounds: ["*crunch*", "*tastes like liberty*", "*munch*"], done: "*salutes the empty carton*" },
+  { id: "applepie", hol: ["july4"], name: "Apple pie (as American as)", price: 5.25, uses: 4, verb: "Eat", color: "#c98b3e", sounds: ["*nom*", "*patriotic crumbs*", "*mmm*"], done: "*hums the anthem*" },
+  { id: "icepop", hol: ["july4"], name: "Red, white & blue ice pop", price: 2.75, uses: 4, verb: "Eat", color: "#2d5fbf", sounds: ["*slurp*", "*brain freeze of freedom*", "*lick*"], done: "*blue tongue*" },
+  { id: "burger", hol: ["july4"], name: "Liberty burger", price: 7.75, uses: 5, verb: "Eat", color: "#8a4b22", sounds: ["*chomp*", "*ketchup everywhere*", "*nom*"], done: "*wipes off the freedom*" },
+  { id: "champagne", hol: ["newyear"], name: "Champagne", price: 6.5, uses: 4, verb: "Drink", color: "#f2d98a", sounds: ["*sip*", "*bubbles up the nose*", "*hic*"], done: "*clinks the empty glass*" },
+  { id: "peas", hol: ["newyear"], name: "Black-eyed peas (for luck)", price: 3.5, uses: 5, verb: "Eat", color: "#a38f6b", sounds: ["*spoonful*", "*feels luckier*", "*nom*"], done: "*good luck all year*" }
 ];
-// The items on sale right now: everything, except the Thanksgiving foods when it isn't a Thanksgiving showing.
-const shownMenu = () => MENU.filter((m) => !m.tg || thanksgiving);
+// The items on sale right now: everything, except holiday foods when it isn't their holiday.
+const shownMenu = () => MENU.filter((m) => !m.hol || m.hol.includes(holiday));
 // Look up a menu item by id, e.g. MENU_BY_ID.popcorn.
 const MENU_BY_ID = Object.fromEntries(MENU.map((m) => [m.id, m]));
 {
@@ -1264,6 +1295,129 @@ function makeItemMesh(id) {
     add(new THREE.TorusGeometry(0.045, 0.013, 6, 12, Math.PI), im(0xb5653a), 0.075, 0, 0, 0, 0, -Math.PI / 2);              // handle
     add(new THREE.CylinderGeometry(0.008, 0.008, 0.16, 6), im(0x6b3a1a), 0.02, 0.1, 0, 0, 0, 0.3);                          // cinnamon stick
   }
+  // ---- Christmas foods ----
+  else if (id === "cocoa") {
+    // A red mug of hot cocoa with marshmallows floating on top.
+    add(new THREE.CylinderGeometry(0.08, 0.07, 0.16, 16), im(0xc0262d));                                                    // mug
+    add(new THREE.CylinderGeometry(0.072, 0.072, 0.01, 16), im(0x4a2814, { roughness: 0.3 }), 0, 0.075, 0);                 // cocoa
+    add(new THREE.TorusGeometry(0.045, 0.013, 6, 12, Math.PI), im(0xc0262d), 0.075, 0, 0, 0, 0, -Math.PI / 2);              // handle
+    for (const [x, z] of [[0.02, 0.01], [-0.025, 0.02], [0, -0.03]]) add(new THREE.BoxGeometry(0.03, 0.025, 0.03), im(0xfffdf6), x, 0.085, z);   // marshmallows
+  }
+  else if (id === "candycane") {
+    // A red-and-white striped candy cane: a straight stick with a hook at the top.
+    const stripes = canvasTex(64, 256, (x, w, h) => { x.fillStyle = "#ffffff"; x.fillRect(0, 0, w, h); x.fillStyle = "#d42a2a"; for (let i = -4; i < 16; i++) { x.beginPath(); x.moveTo(0, i * 24); x.lineTo(w, i * 24 + 30); x.lineTo(w, i * 24 + 42); x.lineTo(0, i * 24 + 12); x.fill(); } });
+    const cane = new THREE.MeshStandardMaterial({ map: stripes, roughness: 0.3 });
+    add(new THREE.CylinderGeometry(0.017, 0.017, 0.26, 10), cane);
+    add(new THREE.TorusGeometry(0.045, 0.017, 8, 14, Math.PI), cane, -0.045, 0.13, 0);
+  }
+  else if (id === "gingerbread") {
+    // A flat gingerbread man with white icing eyes and gumdrop buttons.
+    const dough = im(0xb0672e, { roughness: 0.8 });
+    add(new THREE.CylinderGeometry(0.05, 0.05, 0.025, 14), dough, 0, 0.1, 0, Math.PI / 2, 0, 0);       // head
+    add(new THREE.BoxGeometry(0.09, 0.1, 0.025), dough, 0, 0.02, 0);                                   // body
+    for (const sd of [-1, 1]) { add(new THREE.BoxGeometry(0.06, 0.03, 0.025), dough, sd * 0.07, 0.04, 0, 0, 0, sd * 0.4); add(new THREE.BoxGeometry(0.035, 0.07, 0.025), dough, sd * 0.03, -0.06, 0); add(new THREE.SphereGeometry(0.008, 6, 4), im(0xffffff), sd * 0.017, 0.11, -0.013); }
+    add(new THREE.SphereGeometry(0.012, 6, 4), im(0xd42a2a), 0, 0.04, -0.013); add(new THREE.SphereGeometry(0.012, 6, 4), im(0x2fa84f), 0, 0.005, -0.013);   // gumdrop buttons
+  }
+  else if (id === "eggnog") {
+    // A glass of eggnog: creamy yellow, with a sprinkle of nutmeg and a cinnamon stick.
+    add(new THREE.CylinderGeometry(0.065, 0.055, 0.18, 16), im(0xdff3ff, { transparent: true, opacity: 0.35, roughness: 0.1 }));
+    add(new THREE.CylinderGeometry(0.06, 0.052, 0.15, 16), im(0xf3e4b5, { roughness: 0.6 }), 0, -0.01, 0);
+    add(new THREE.CylinderGeometry(0.061, 0.061, 0.005, 16), im(0x9a6a3a), 0, 0.066, 0);
+    add(new THREE.CylinderGeometry(0.007, 0.007, 0.16, 6), im(0x6b3a1a), 0.025, 0.1, 0, 0, 0, 0.25);
+  }
+  else if (id === "xmascookies") {
+    // A plate of round sugar cookies with colored frosting.
+    add(new THREE.CylinderGeometry(0.15, 0.13, 0.01, 18), im(0xf7f3ea), 0, -0.02, 0);
+    for (const [x, z, c] of [[-0.05, -0.03, 0xd42a2a], [0.05, -0.02, 0x2fa84f], [0, 0.05, 0xffffff], [0.06, 0.06, 0x3d8bfd]]) {
+      add(new THREE.CylinderGeometry(0.04, 0.04, 0.015, 14), im(0xe8c27a), x, -0.005, z);
+      add(new THREE.CylinderGeometry(0.032, 0.032, 0.004, 14), im(c), x, 0.004, z);
+    }
+  }
+  // ---- Easter foods ----
+  else if (id === "carrot") {
+    // A small bunch of three carrots with leafy green tops.
+    for (const [x, rz] of [[-0.03, 0.2], [0.01, 0], [0.04, -0.25]]) {
+      add(new THREE.ConeGeometry(0.03, 0.22, 10), im(0xf28c28, { roughness: 0.7 }), x, -0.02, 0, Math.PI, 0, rz);
+      for (let i = 0; i < 3; i++) add(new THREE.ConeGeometry(0.01, 0.09, 4), im(0x3f8f3a), x + (i - 1) * 0.012, 0.13, 0, 0, 0, (i - 1) * 0.3);
+    }
+  }
+  else if (id === "chocobunny") {
+    // A chocolate bunny: body, head, two tall ears and a gold foil bow.
+    const choc = im(0x5a3420, { roughness: 0.35 });
+    const b = add(new THREE.SphereGeometry(0.07, 12, 10), choc, 0, -0.03, 0); b.scale.set(1, 1.2, 0.85);
+    add(new THREE.SphereGeometry(0.05, 12, 10), choc, 0, 0.08, -0.005);
+    for (const sd of [-1, 1]) { const e = add(new THREE.SphereGeometry(0.018, 8, 6), choc, sd * 0.02, 0.15, 0); e.scale.y = 3; }
+    add(new THREE.TorusGeometry(0.03, 0.008, 6, 12), im(0xe0b84a, { metalness: 0.7, roughness: 0.3 }), 0, 0.035, -0.05);
+  }
+  else if (id === "jellybeans") {
+    // A little glass bowl of jelly beans in every color.
+    add(new THREE.SphereGeometry(0.11, 16, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), im(0xdff3ff, { transparent: true, opacity: 0.35, side: THREE.DoubleSide }), 0, 0.03, 0);
+    const cols = [0xe85d9b, 0xf2c94c, 0x7bd389, 0x3d8bfd, 0xf28c28, 0x9b59b6, 0x111111];
+    for (let i = 0; i < 16; i++) { const a = i * 2.4, r = 0.02 + (i % 4) * 0.018; const bn = add(new THREE.SphereGeometry(0.015, 8, 6), im(cols[i % cols.length], { roughness: 0.3 }), Math.cos(a) * r, -0.035 + (i % 3) * 0.012, Math.sin(a) * r, 0, a, 0); bn.scale.set(1.5, 1, 1); }
+  }
+  else if (id === "crossbun") {
+    // A glossy hot cross bun with a white cross piped on top.
+    const bun = add(new THREE.SphereGeometry(0.09, 16, 10), im(0xc98a4b, { roughness: 0.45 })); bun.scale.y = 0.6;
+    add(new THREE.BoxGeometry(0.16, 0.012, 0.022), im(0xfaf6ee), 0, 0.052, 0); add(new THREE.BoxGeometry(0.022, 0.012, 0.16), im(0xfaf6ee), 0, 0.052, 0);
+  }
+  else if (id === "marshchick") {
+    // A row of three yellow marshmallow chicks with tiny dark eyes and orange beaks.
+    for (const x of [-0.07, 0, 0.07]) {
+      const body = add(new THREE.SphereGeometry(0.035, 10, 8), im(0xf7e14b, { roughness: 0.9 }), x, -0.02, 0); body.scale.set(1, 0.9, 1.3);
+      add(new THREE.SphereGeometry(0.025, 10, 8), im(0xf7e14b, { roughness: 0.9 }), x, 0.025, -0.02);
+      add(new THREE.ConeGeometry(0.007, 0.018, 4), im(0xf28c28), x, 0.025, -0.048, -Math.PI / 2, 0, 0);
+      for (const sd of [-1, 1]) add(new THREE.SphereGeometry(0.004, 4, 3), im(0x111111), x + sd * 0.01, 0.033, -0.042);
+    }
+  }
+  // ---- Independence Day / New Year's Day ----
+  else if (id === "firework") {
+    // A rocket firework: a striped tube with a pointed cap, a fuse, and a long guide stick.
+    const tube = canvasTex(64, 128, (x, w, h) => { const c = ["#b22234", "#ffffff", "#3c3b6e"]; for (let i = 0; i < 6; i++) { x.fillStyle = c[i % 3]; x.fillRect(0, i * h / 6, w, h / 6 + 1); } });
+    add(new THREE.CylinderGeometry(0.03, 0.03, 0.16, 12), new THREE.MeshStandardMaterial({ map: tube, roughness: 0.6 }), 0, 0.03, 0);
+    add(new THREE.ConeGeometry(0.035, 0.07, 12), im(0xd63a3a), 0, 0.145, 0);
+    add(new THREE.CylinderGeometry(0.004, 0.004, 0.04, 4), im(0x6b4e2e), 0, -0.07, 0);   // fuse
+    add(new THREE.CylinderGeometry(0.005, 0.005, 0.3, 4), im(0xc9a97a), 0.032, -0.1, 0); // stick
+  }
+  else if (id === "fries") {
+    // Freedom fries: a red carton with stars, full of fries.
+    add(new THREE.BoxGeometry(0.12, 0.13, 0.07), im(0xb22234)); add(new THREE.BoxGeometry(0.122, 0.03, 0.072), im(0xffffff), 0, 0.02, 0);
+    for (let i = 0; i < 9; i++) add(new THREE.BoxGeometry(0.014, 0.12, 0.014), im(0xf2c94c, { roughness: 0.6 }), -0.045 + (i % 5) * 0.022, 0.09 + (i % 3) * 0.012, -0.015 + Math.floor(i / 5) * 0.025, 0, 0, (i % 3 - 1) * 0.15);
+  }
+  else if (id === "applepie") {
+    // A slice of apple pie with a lattice top, on a paper plate.
+    add(new THREE.CylinderGeometry(0.18, 0.16, 0.01, 20), im(0xf7f3ea), 0, -0.03, 0);
+    add(new THREE.CylinderGeometry(0.16, 0.16, 0.05, 12, 1, false, 0, Math.PI / 3), im(0xc98b3e), 0, 0, -0.08);
+    for (const k of [0.04, 0.08, 0.12]) add(new THREE.BoxGeometry(0.01, 0.008, k * 1.2), im(0xe0b070), Math.sin(Math.PI / 6) * k * 0.9, 0.028, Math.cos(Math.PI / 6) * k * 0.9 - 0.08, 0, Math.PI / 6, 0);
+  }
+  else if (id === "icepop") {
+    // A rocket-shaped ice pop: red on top, white in the middle, blue at the bottom, on a stick.
+    add(new THREE.CylinderGeometry(0.03, 0.035, 0.06, 12), im(0x2d5fbf, { roughness: 0.3 }), 0, -0.03, 0);
+    add(new THREE.CylinderGeometry(0.027, 0.03, 0.06, 12), im(0xffffff, { roughness: 0.3 }), 0, 0.03, 0);
+    add(new THREE.ConeGeometry(0.027, 0.07, 12), im(0xd42a2a, { roughness: 0.3 }), 0, 0.095, 0);
+    add(new THREE.BoxGeometry(0.012, 0.07, 0.004), im(0xd9c49a), 0, -0.09, 0);
+  }
+  else if (id === "burger") {
+    // A burger: sesame bun, patty, cheese and lettuce.
+    const bun = im(0xd99a4e, { roughness: 0.6 });
+    add(new THREE.CylinderGeometry(0.085, 0.085, 0.03, 18), bun, 0, -0.04, 0);
+    add(new THREE.CylinderGeometry(0.09, 0.09, 0.03, 18), im(0x5a2e14), 0, -0.012, 0);
+    add(new THREE.BoxGeometry(0.15, 0.006, 0.15), im(0xf2b21b), 0, 0.006, 0, 0, 0.6, 0);
+    add(new THREE.CylinderGeometry(0.095, 0.095, 0.008, 18), im(0x5cb340), 0, 0.012, 0);
+    const top = add(new THREE.SphereGeometry(0.087, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), bun, 0, 0.015, 0); top.scale.y = 0.55;
+  }
+  else if (id === "champagne") {
+    // A champagne flute: tall narrow glass of pale gold bubbly on a stem.
+    const glass = im(0xdff3ff, { transparent: true, opacity: 0.35, roughness: 0.1 });
+    add(new THREE.CylinderGeometry(0.035, 0.02, 0.16, 14, 1, true), glass, 0, 0.08, 0);
+    add(new THREE.CylinderGeometry(0.031, 0.018, 0.12, 14), im(0xf2d98a, { transparent: true, opacity: 0.85, emissive: 0x2a2208 }), 0, 0.065, 0);
+    add(new THREE.CylinderGeometry(0.005, 0.005, 0.1, 6), glass, 0, -0.05, 0);
+    add(new THREE.CylinderGeometry(0.04, 0.04, 0.008, 14), glass, 0, -0.1, 0);
+  }
+  else if (id === "peas") {
+    // A bowl of black-eyed peas.
+    add(new THREE.CylinderGeometry(0.11, 0.08, 0.07, 16), im(0xf4efe6));
+    for (let i = 0; i < 18; i++) { const a = i * 2.4, r = (i % 5) * 0.018; const pe = add(new THREE.SphereGeometry(0.014, 6, 5), im(0xd8cba8), Math.cos(a) * r, 0.04, Math.sin(a) * r); pe.scale.set(1.3, 0.8, 1); add(new THREE.SphereGeometry(0.004, 4, 3), im(0x111111), Math.cos(a) * r, 0.05, Math.sin(a) * r); }
+  }
   else if (id === "candy") { add(new THREE.BoxGeometry(0.16, 0.22, 0.05), im(0x7bd389)); add(new THREE.BoxGeometry(0.12, 0.08, 0.052), im(0xff8fab), 0, 0.03, 0); }
   else { add(new THREE.CylinderGeometry(0.05, 0.05, 0.26, 14), im(0xbfe6ff, { transparent: true, opacity: 0.55, roughness: 0.1 })); add(new THREE.CylinderGeometry(0.03, 0.03, 0.04, 10), im(0x2b6fd6), 0, 0.15, 0); add(new THREE.CylinderGeometry(0.051, 0.051, 0.07, 14), im(0x3d8bfd), 0, 0.02, 0); }
   return g;
@@ -1354,13 +1508,16 @@ function makeGhost(colorIdx) {
   glow.scale.set(2.4, 2.4, 1); glow.position.y = 0.6; group.add(glow);
   // emote / emoteAt: the emote being acted out (see EMOTES) and when it started.
   // sheet = the bedsheet body's parts; turkey = the turkey body's parts (built the first time it's needed).
-  return { group, bodyG, mat, shadow, colorIdx, mouth, arms, glow, sheet: { group: sheetG, arms, mouth }, turkey: null, isTurkey: false,
+  // kind = which body is showing ("ghost", or a holiday body: "turkey", "reindeer", "bunny", "person");
+  // bodies = the holiday bodies built so far (each made the first time it's needed; see setGhostKind()).
+  return { group, bodyG, mat, shadow, colorIdx, mouth, arms, glow, sheet: { group: sheetG, arms, mouth }, turkey: null, isTurkey: false, kind: "ghost", bodies: {}, armRest: null,
     booAt: -10, munchAt: -10, throwAt: -10, windup: 0, phase: Math.random() * 6, held: null, heldId: null, emote: null, emoteAt: -10 };
 }
 // Change a ghost's sheet color (when a friend picks a different one).
 function setGhostColor(gh, idx) {
   if (gh.colorIdx === idx) return; gh.colorIdx = idx; const c = new THREE.Color(SHEETS[idx].hex);
   gh.mat.color.copy(c); gh.mat.emissive.copy(c);
+  if (gh.solid) gh.solid.color.copy(c);   // the solid version used by holiday bodies (see solidMat())
 }
 // Take a ghost out of the scene (when a friend leaves).
 function removeGhost(gh) { scene.remove(gh.group); scene.remove(gh.shadow); }
@@ -1369,7 +1526,7 @@ function removeGhost(gh) { scene.remove(gh.group); scene.remove(gh.shadow); }
 // fade-out. t = time in seconds.
 function poseGhost(gh, x, y, z, ry, t) {
   if (gh.isTurkey) trackFlight(gh, x, y, z, t);   // turkeys flap their wings while flying (see actEmote)
-  const bob = Math.sin(t * 2 + gh.phase) * 0.06;
+  const bob = gh.kind === "bunny" || gh.kind === "person" ? 0 : Math.sin(t * 2 + gh.phase) * 0.06;   // bunnies and people don't hover up and down
   gh.group.position.set(x, y + bob, z); gh.group.rotation.y = ry;
   const boo = clamp(1 - (t - gh.booAt) / 0.7, 0, 1);
   const s = 1 + Math.sin(boo * Math.PI) * 0.35; gh.bodyG.scale.set(s, 1 + Math.sin(boo * Math.PI) * 0.2, s);
@@ -1424,7 +1581,8 @@ function startEmote(gh, kind, t) { gh.emote = kind; gh.emoteAt = t; if (kind ===
 // smoothly (env goes 0 -> 1 -> 0 over EMOTE_TIME) so it starts and ends without a jump.
 function actEmote(gh, t) {
   // Start from the normal pose each frame: arms back in place, body at its usual height.
-  if (gh.arms) gh.arms.forEach((a, i) => { const sd = i ? 1 : -1; a.position.set(sd * 0.5, 0.48, -0.08); a.rotation.set(0, 0, sd * 0.5); });
+  // (Bodies with arms somewhere else, like people, say where in gh.armRest; see setGhostKind().)
+  if (gh.arms) gh.arms.forEach((a, i) => { const sd = i ? 1 : -1, r = gh.armRest; if (r) { a.position.set(sd * r.x, r.y, r.z); a.rotation.set(0, 0, sd * r.rz); } else { a.position.set(sd * 0.5, 0.48, -0.08); a.rotation.set(0, 0, sd * 0.5); } });
   gh.bodyG.position.y = 0;
   if (gh.isTurkey && !gh.emote && gh.flap > 0.01) flapWings(gh, t);   // a flying turkey flaps (an emote takes over the wings)
   if (!gh.emote) return;
@@ -1505,13 +1663,16 @@ function fadeGhost(gh) {
    The "Holiday" dropdown on the welcome screen. The host's choice applies to the whole room: the host
    shares it in their presence ("hol"), and every guest switches to match (noteTheme()). Your last pick
    is remembered in this browser. It also works with "Just look around alone".
-   To add a holiday: add a line to HOLIDAYS, then make setHoliday() switch your theme on and off
-   (the way it does setThanksgiving()). */
+   To add a holiday: add a line to HOLIDAYS and an entry in HOLIDAY_DEFS (see "More holidays"):
+   the body everyone gets, the title card, the Boo button, Mortimer's outfit and lines, and the decorations. */
 const HOLIDAYS = [
   { id: "", name: "None (ghosts)" },
-  { id: "thanksgiving", name: "Thanksgiving (everyone's a turkey)" }
+  { id: "thanksgiving", name: "Thanksgiving (everyone's a turkey)" },
+  { id: "christmas", name: "Christmas (everyone's a reindeer)" },
+  { id: "newyear", name: "New Year's Day (everyone's a person, with fireworks)" },
+  { id: "easter", name: "Easter (everyone's a hopping bunny)" },
+  { id: "july4", name: "Independence Day (everyone's a person, with fireworks)" }
 ];
-let holiday = "";   // the holiday running right now ("" = none)
 // Fill in the dropdown and preselect the last holiday you picked.
 {
   const sel = $("holiday"), saved = store.get("gm.holiday", "");
@@ -1523,8 +1684,7 @@ let holiday = "";   // the holiday running right now ("" = none)
 // announce=true shows a toast when it changes (used when a host's choice reaches a guest).
 function setHoliday(id, announce) {
   if (!HOLIDAYS.some((h) => h.id === id)) id = "";
-  holiday = id;
-  setThanksgiving(id === "thanksgiving", announce);
+  applyHoliday(id, announce);   // see "More holidays"
 }
 // The holiday picked in the dropdown (used when hosting or looking around alone).
 const pickedHoliday = () => $("holiday").value;
@@ -1538,7 +1698,7 @@ const pickedHoliday = () => $("holiday").value;
      - leaves drift down from the ceiling (they vanish in Hide HUD mode, like the ghosts, so they never
        get in the way of the movie), and a warm orange light fills the rooms,
      - the screen's title card says "Gobble Matinee", and Boo! becomes "Gobble gobble!",
-     - the concession stand sells Thanksgiving foods (the MENU items marked tg: true) and Mortimer
+     - the concession stand sells Thanksgiving foods (the MENU items marked hol: ["thanksgiving"]) and Mortimer
        has holiday remarks (NPC_THANKSGIVING).
    (`thanksgiving` itself is declared up by the screen's title card, which needs it first.) */
 
@@ -1622,15 +1782,21 @@ function setLegsLost(gh, n) {
   gh.legsLost = n;
   if (gh.turkey) gh.turkey.legs.forEach((parts, i) => { const gone = i === 1 ? n >= 1 : n >= 2; parts.forEach((m) => (m.visible = !gone)); });
 }
-// Switch one ghost between bedsheet and turkey (building the turkey body the first time).
-function setGhostKind(gh, turkey) {
-  if (gh.isTurkey === turkey) return;
-  if (turkey && !gh.turkey) gh.turkey = makeTurkeyBody(gh);
-  gh.isTurkey = turkey;
-  gh.sheet.group.visible = !turkey; if (gh.turkey) gh.turkey.group.visible = turkey;
-  const part = turkey ? gh.turkey : gh.sheet; gh.arms = part.arms; gh.mouth = part.mouth;   // animations use the showing body
-  gh.glow.visible = !turkey;   // turkeys don't glow like ghosts do
-  if (turkey) setLegsLost(gh, gh.legsLost || 0);   // a leg Mortimer already stole stays gone
+// Switch one ghost's body: "ghost" (the bedsheet) or a holiday body ("turkey", "reindeer", "bunny",
+// "person"; see BODY_BUILDERS in "More holidays"). Each holiday body is built the first time it's needed,
+// then just shown or hidden. (true/false still work, meaning turkey/ghost, as in older code.)
+function setGhostKind(gh, kind) {
+  if (kind === true) kind = "turkey"; if (!kind) kind = "ghost";
+  if (gh.kind === kind) return;
+  if (kind !== "ghost" && !gh.bodies[kind]) { gh.bodies[kind] = BODY_BUILDERS[kind](gh); if (kind === "turkey") gh.turkey = gh.bodies.turkey; }
+  gh.kind = kind; gh.isTurkey = kind === "turkey";
+  gh.sheet.group.visible = kind === "ghost";
+  for (const k in gh.bodies) gh.bodies[k].group.visible = k === kind;
+  const part = kind === "ghost" ? gh.sheet : gh.bodies[kind];
+  gh.arms = part.arms; gh.mouth = part.mouth; gh.armRest = part.rest || null;   // animations use the showing body
+  gh.glow.visible = kind === "ghost";   // only ghosts glow
+  if (kind === "turkey") setLegsLost(gh, gh.legsLost || 0);     // a leg Mortimer already stole stays gone
+  if (kind === "person") setPartsLost(gh, gh.partsLost || 0);   // so do limbs lost to fireworks
   gh.fadeNow = undefined;      // so fadeGhost() applies the current Hide HUD fade to the new parts too
 }
 
@@ -1729,21 +1895,8 @@ function updateLeaves(dt, t) {
   });
   tgLeaves.mesh.instanceMatrix.needsUpdate = true;
 }
-// Turn the whole theme on or off on this computer: turkeys, decorations, the title card and the Boo button.
-// announce=true shows a toast (used when a host's choice reaches a guest).
-function setThanksgiving(on, announce) {
-  on = !!on;
-  if (on && !tgDecor) tgDecor = buildDecor();
-  const changed = on !== thanksgiving; thanksgiving = on;
-  if (tgDecor) tgDecor.visible = on;
-  setGhostKind(me.ghost, on);
-  for (const o of others.values()) setGhostKind(o.gh, on);
-  if (npc.ghost.hats) { npc.ghost.hats.usher.visible = !on; npc.ghost.hats.pilgrim.visible = on; }   // Mortimer's pilgrim hat
-  $("boo").textContent = on ? "Gobble!" : "Boo!";
-  if (changed) { window.__drawMenuBoard(); if (!$("shop").hidden) renderShop(); }   // Thanksgiving foods appear on (or leave) the menus
-  if (changed) drawPlaceholder(placeholderLine);   // the title card says "Gobble Matinee" during the theme
-  if (changed && announce) toast(on ? "Happy Thanksgiving! Everyone's a turkey tonight." : "Back to ghosts.");
-}
+// (Switching the theme on and off, with the turkeys, decorations, title card and Boo button, is done by
+// applyHoliday() in "More holidays", which handles every holiday the same way.)
 // GUESTS: follow the host's holiday, from the host's presence. (Hosts decide for themselves.)
 // "hol" is the holiday's id. Hosts running v2.20 only sent "tg: true" for Thanksgiving, so that still counts.
 function noteTheme() {
@@ -1751,6 +1904,695 @@ function noteTheme() {
   const hostPe = peersSnap.find((pe) => pe.peer === p2p.hostId), pr = hostPe && hostPe.presence;
   if (pr) setHoliday(typeof pr.hol === "string" ? clean(pr.hol, 24) : pr.tg === true ? "thanksgiving" : "", true);
 }
+
+/* =====================================================================
+   MORE HOLIDAYS: Christmas, Easter, Independence Day and New Year's Day
+   Each holiday (picked by the host in the welcome screen's Holiday dropdown) changes:
+     - everyone's body (reindeer, bunnies, people), built by BODY_BUILDERS below,
+     - Mortimer's outfit (Santa suit, bunny ears, flag cape and top hat, party hat) and his remarks,
+     - the decorations in the theater and lobby, the screen's title card and the Boo button,
+     - the concession menu (the MENU items marked hol: [...]).
+   Special rules:
+     - Christmas: to order, you sit on Mortimer's lap (he's playing Santa) and ask him for things
+       ("Christmas: Santa's lap").
+     - Easter: bunnies can't fly; they hop along the floor, and Space makes them jump ("Easter: hopping").
+     - Independence Day and New Year's Day: the stand sells fireworks. One bursting near you blows off
+       an arm or a leg for the rest of the showing; lose all four and you're a ghost ("Fireworks").
+   Thanksgiving is in its own section above ("Thanksgiving theme") and is switched by the same code here.
+   ===================================================================== */
+
+// ---- What each holiday changes ----
+// body: everyone's body (see BODY_BUILDERS); title: the screen's title card; booBtn / boo: the Boo button's
+// label and what it says; outfit: Mortimer's outfit (see dressMortimer()); hello: the toast when it starts;
+// lines: Mortimer's holiday remarks; decor: builds the decorations (the first time they're needed).
+const HOLIDAY_DEFS = {
+  thanksgiving: { body: "turkey", title: "Gobble Matinee", booBtn: "Gobble!", boo: "Gobble gobble!", outfit: "pilgrim", hello: "Happy Thanksgiving! Everyone's a turkey tonight.", lines: () => NPC_THANKSGIVING },
+  christmas: { body: "reindeer", title: "Merry Matinee", booBtn: "Jingle!", boo: "Jingle jingle!", outfit: "santa", hello: "Merry Christmas! Everyone's a reindeer tonight. Santa's taking orders at the counter.", lines: () => NPC_CHRISTMAS, decor: () => buildChristmasDecor() },
+  easter: { body: "bunny", title: "Hoppy Matinee", booBtn: "Boing!", boo: "Boing boing!", outfit: "bunny", hello: "Happy Easter! Everyone's a bunny tonight. Bunnies can't fly, so hop (Space to jump).", lines: () => NPC_EASTER, decor: () => buildEasterDecor() },
+  july4: { body: "person", title: "Star-Spangled Matinee", booBtn: "USA!", boo: "USA! USA! USA!", outfit: "july4", hello: "Happy Independence Day! Everyone's a person tonight. Careful with the fireworks.", lines: () => NPC_JULY4, decor: () => buildJuly4Decor() },
+  newyear: { body: "person", title: "New Year's Matinee", booBtn: "Cheers!", boo: "Happy New Year!", outfit: "newyear", hello: "Happy New Year! Everyone's a person tonight. Careful with the fireworks.", lines: () => NPC_NEWYEAR, decor: () => buildNewYearDecor() }
+};
+// Lines that make your character puff up (like Boo): Boo itself and every holiday's version.
+const BOO_WORDS = /^(boo|gobble|jingle|boing|usa|happy new year)/i;
+// Mortimer's remarks for the holiday running now (null when there's none).
+function holidayLines() { const d = HOLIDAY_DEFS[holiday]; return d && d.lines ? d.lines() : null; }
+// The body a player should have right now. People who've lost all four limbs to fireworks are ghosts.
+function bodyFor(limbsLost) { const d = HOLIDAY_DEFS[holiday], k = d ? d.body : "ghost"; return k === "person" && limbsLost >= LIMBS ? "ghost" : k; }
+const holidayDecor = {};   // each holiday's decorations, built the first time: { group, update(dt, t) }
+// Switch this computer to a holiday ("" = none): bodies, decorations, Mortimer's outfit, the title card,
+// the Boo button and the menus. announce=true shows a toast when it changes.
+function applyHoliday(id, announce) {
+  const prev = holiday, def = HOLIDAY_DEFS[id] || null;
+  holiday = id; thanksgiving = id === "thanksgiving";
+  // Thanksgiving's decorations (built by buildDecor() in "Thanksgiving theme"), then the others'.
+  if (thanksgiving && !tgDecor) tgDecor = buildDecor();
+  if (tgDecor) tgDecor.visible = thanksgiving;
+  if (def && def.decor && !holidayDecor[id]) holidayDecor[id] = def.decor();
+  for (const k in holidayDecor) holidayDecor[k].group.visible = k === id;
+  holidayTitle = def ? def.title : "Ghost Matinee";
+  setGhostKind(me.ghost, bodyFor(myPartsLost));
+  for (const o of others.values()) setGhostKind(o.gh, bodyFor(o.lost || 0));
+  dressMortimer(def ? def.outfit : "usher");
+  $("boo").textContent = def ? def.booBtn : "Boo!";
+  if (prev !== id) {
+    window.__drawMenuBoard(); if (!$("shop").hidden) renderShop();   // holiday foods appear on (or leave) the menus
+    drawPlaceholder(placeholderLine);                                // the title card
+    if (announce) toast(def ? def.hello : "Back to ghosts.");
+  }
+}
+// Every frame: run the current holiday's moving decorations (snow, confetti, twinkling lights, fireworks
+// in the sky) and any fireworks bursting.
+function updateHolidayFx(dt, t) {
+  const d = holidayDecor[holiday]; if (d && d.update) d.update(dt, t);
+  updateBursts(dt, t);
+}
+
+/* ---------------- Holiday bodies ----------------
+   Each builder makes a body for one player, in the same spots the bedsheet ghost's parts use, so all the
+   animations (Boo puff, eating, throwing, emotes) work on every body. Each returns its group, its two
+   arms (whatever stands in for them), its mouth, and optionally `rest` (where its arms hang, if not
+   where a ghost's do) and `parts` (pieces that fireworks can blow off). Everything faces -z, like the ghost.
+   Each body shows the player's chosen color somewhere (scarf, fur, shirt) so friends can tell each other apart. */
+// Make a mesh from a shape and a material, stretched by [sx, sy, sz] and placed at [x, y, z] in `parent`.
+function bodyPart(parent, geo, mat, sc, pos) { const m = new THREE.Mesh(geo, mat); m.scale.set(sc[0], sc[1], sc[2]); m.position.set(pos[0], pos[1], pos[2]); parent.add(m); return m; }
+const BALL = new THREE.SphereGeometry(1, 18, 12);                 // stretched into heads, bodies, noses…
+const ROD = new THREE.CylinderGeometry(1, 1, 1, 10);              // stretched into legs, necks, antlers
+const std = (color, extra) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.8 }, extra || {}));
+
+// The player's color as a solid, non-glowing material (fur, a shirt): the ghost's own sheet material is
+// see-through, which on a solid creature lets you see its insides. Made once per player.
+function solidMat(gh) { if (!gh.solid) gh.solid = std(gh.mat.color.getHex(), { roughness: 0.85 }); return gh.solid; }
+
+// ---- Reindeer (Christmas) ----
+const DEER = { fur: std(0x7a4a26), belly: std(0xd9b58c), antler: std(0xc9ad80, { roughness: 0.6 }), nose: std(0x1c1410, { roughness: 0.3 }), hoof: std(0x2b1d14), bell: std(0xe0b84a, { metalness: 0.6, roughness: 0.3 }), tail: std(0xf4efe6) };
+function makeReindeerBody(gh) {
+  const g = new THREE.Group(), D = DEER, P = (geo, mat, sc, pos, par) => bodyPart(par || g, geo, mat, sc, pos);
+  P(BALL, D.fur, [0.38, 0.42, 0.36], [0, 0.45, 0]);                      // round body
+  P(BALL, D.belly, [0.25, 0.3, 0.1], [0, 0.42, -0.28]);                  // pale belly
+  P(BALL, D.fur, [0.22, 0.21, 0.22], [0, 0.98, -0.1]);                   // head
+  P(BALL, D.belly, [0.12, 0.1, 0.15], [0, 0.92, -0.3]);                  // snout
+  P(BALL, D.nose, [0.045, 0.04, 0.04], [0, 0.95, -0.44]);                // a plain dark nose
+  for (const sd of [-1, 1]) {
+    P(eyeGeo, eyeMat, [0.5, 0.7, 0.4], [sd * 0.09, 1.04, -0.28]);         // eyes
+    const ear = P(BALL, D.fur, [0.045, 0.11, 0.03], [sd * 0.2, 1.1, -0.08]); ear.rotation.z = sd * 1.0;   // ears, sticking out sideways
+    // Antlers: a main beam curving up and out, with two tines branching off it.
+    const beam = P(ROD, D.antler, [0.022, 0.36, 0.022], [sd * 0.16, 1.3, -0.04]); beam.rotation.z = -sd * 0.45;
+    const t1 = P(ROD, D.antler, [0.017, 0.18, 0.017], [sd * 0.27, 1.42, -0.04]); t1.rotation.z = -sd * 1.15;
+    const t2 = P(ROD, D.antler, [0.017, 0.16, 0.017], [sd * 0.19, 1.5, -0.04]); t2.rotation.z = sd * 0.2;
+    P(ROD, D.fur, [0.07, 0.3, 0.07], [sd * 0.15, 0.15, 0]);              // legs
+    P(ROD, D.hoof, [0.075, 0.06, 0.075], [sd * 0.15, -0.02, 0]);         // hooves
+  }
+  // A scarf in the player's color, with a little gold bell at the front (it's why Boo says "Jingle!").
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.05, 8, 20), solidMat(gh)); scarf.rotation.x = Math.PI / 2; scarf.position.set(0, 0.8, -0.05); g.add(scarf);
+  P(BALL, solidMat(gh), [0.06, 0.16, 0.03], [0.1, 0.68, -0.2]);          // scarf end hanging down
+  P(BALL, D.bell, [0.045, 0.045, 0.045], [0, 0.74, -0.22]);              // bell
+  P(BALL, D.tail, [0.07, 0.06, 0.06], [0, 0.55, 0.36]);                  // fluffy white tail
+  // Front legs stand in for arms (same resting place as a ghost's arms).
+  const arms = [-1, 1].map((sd) => { const a = P(armGeo, D.fur, [0.5, 1.2, 0.55], [sd * 0.5, 0.48, -0.08]); a.rotation.z = sd * 0.5; return a; });
+  const holder = new THREE.Group(); holder.position.set(0, 0.86, -0.38); holder.scale.setScalar(0.4); g.add(holder);
+  const mouth = P(eyeGeo, eyeMat, [0.8, 1.1, 0.5], [0, 0, 0], holder);
+  gh.bodyG.add(g);
+  return { group: g, arms, mouth };
+}
+
+// ---- Bunny (Easter) ----
+// The fur is the player's own color.
+const BUNNY = { white: std(0xfbf7f2), pink: std(0xf2a7b8), teeth: std(0xffffff, { roughness: 0.4 }) };
+function makeBunnyBody(gh) {
+  const g = new THREE.Group(), B = BUNNY, P = (geo, mat, sc, pos, par) => bodyPart(par || g, geo, mat, sc, pos), fur = solidMat(gh);
+  P(BALL, fur, [0.36, 0.4, 0.34], [0, 0.42, 0]);                        // body
+  P(BALL, B.white, [0.24, 0.28, 0.1], [0, 0.38, -0.26]);                // white tummy
+  P(BALL, fur, [0.25, 0.23, 0.23], [0, 0.95, -0.05]);                   // head
+  P(BALL, B.white, [0.13, 0.08, 0.08], [0, 0.87, -0.24]);               // muzzle
+  P(BALL, B.pink, [0.03, 0.025, 0.025], [0, 0.92, -0.3]);               // nose
+  for (const sd of [-1, 1]) {
+    P(BALL, B.teeth, [0.016, 0.024, 0.006], [sd * 0.017, 0.81, -0.29]); // two front teeth
+    P(eyeGeo, eyeMat, [0.55, 0.75, 0.4], [sd * 0.1, 1.0, -0.22]);        // eyes
+    const ear = P(BALL, fur, [0.07, 0.3, 0.035], [sd * 0.1, 1.4, -0.02]); ear.rotation.z = -sd * 0.15;      // long ears
+    const inner = P(BALL, B.pink, [0.04, 0.24, 0.02], [sd * 0.1, 1.39, -0.05]); inner.rotation.z = -sd * 0.15;
+    P(BALL, B.white, [0.1, 0.05, 0.17], [sd * 0.14, 0.04, -0.06]);       // big feet
+  }
+  P(BALL, B.white, [0.1, 0.1, 0.1], [0, 0.35, 0.34]);                   // cotton tail
+  const arms = [-1, 1].map((sd) => { const a = P(armGeo, fur, [0.5, 0.9, 0.5], [sd * 0.5, 0.48, -0.08]); a.rotation.z = sd * 0.5; return a; });
+  const holder = new THREE.Group(); holder.position.set(0, 0.84, -0.28); holder.scale.setScalar(0.32); g.add(holder);
+  const mouth = P(eyeGeo, eyeMat, [0.8, 1.1, 0.5], [0, 0, 0], holder);
+  gh.bodyG.add(g);
+  return { group: g, arms, mouth };
+}
+
+// ---- Person (Independence Day, New Year's Day) ----
+// A simple cartoon person: a shirt in the player's color, jeans, shoes, and a skin tone and hair color
+// that vary from player to player (picked by their sheet color).
+const PERSON = {
+  skins: [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac, 0xa86b3c].map((c) => std(c, { roughness: 0.7 })),
+  hairs: [0x2a1a10, 0x6b3e1f, 0xd9b26f, 0x111111, 0x8a2f12, 0x5a5a5a].map((c) => std(c, { roughness: 0.9 })),
+  jeans: std(0x2f4a7a), shoe: std(0x1d1d1d),
+  torso: new THREE.CylinderGeometry(0.2, 0.18, 0.5, 16), cap: new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55)
+};
+const LIMBS = 4;   // a person has 4 limbs that fireworks can take: left arm, right arm, left leg, right leg (in that order)
+function makePersonBody(gh) {
+  const g = new THREE.Group(), PS = PERSON, P = (geo, mat, sc, pos, par) => bodyPart(par || g, geo, mat, sc, pos);
+  const skin = PS.skins[gh.colorIdx % PS.skins.length], hair = PS.hairs[gh.colorIdx % PS.hairs.length];
+  // Each leg (with its shoe) is its own group, so a blown-off leg disappears whole.
+  const legs = [-1, 1].map((sd) => { const lg = new THREE.Group(); g.add(lg); P(ROD, PS.jeans, [0.075, 0.48, 0.075], [sd * 0.1, 0.27, 0], lg); P(new THREE.BoxGeometry(1, 1, 1), PS.shoe, [0.12, 0.06, 0.22], [sd * 0.1, 0.03, -0.04], lg); return lg; });
+  const shirt = solidMat(gh);
+  P(PS.torso, shirt, [1, 1, 1], [0, 0.74, 0]);                           // shirt, in the player's color
+  P(ROD, skin, [0.06, 0.08, 0.06], [0, 1.02, 0]);                         // neck
+  P(BALL, skin, [0.16, 0.18, 0.16], [0, 1.2, 0]);                         // head
+  P(PS.cap, hair, [0.17, 0.17, 0.17], [0, 1.22, 0.015]);                  // hair
+  P(BALL, skin, [0.028, 0.034, 0.04], [0, 1.19, -0.165]);                 // nose
+  for (const sd of [-1, 1]) P(eyeGeo, eyeMat, [0.3, 0.4, 0.25], [sd * 0.06, 1.24, -0.145]);   // eyes
+  // Arms: sleeves in the shirt color with a hand at the end (the hand is shrunk back to round, because
+  // it sits inside the stretched sleeve).
+  const rest = { x: 0.27, y: 0.74, z: 0, rz: 0.12 };   // where the arms hang (actEmote() puts them back here)
+  const arms = [-1, 1].map((sd) => {
+    const a = P(armGeo, shirt, [0.42, 1.75, 0.42], [sd * rest.x, rest.y, rest.z]); a.rotation.z = sd * rest.rz;
+    P(BALL, skin, [0.06 / 0.42, 0.06 / 1.75, 0.06 / 0.42], [0, -0.13, 0], a);   // at the bottom end of the sleeve
+    return a;
+  });
+  const holder = new THREE.Group(); holder.position.set(0, 1.12, -0.15); holder.scale.setScalar(0.26); g.add(holder);
+  const mouth = P(eyeGeo, eyeMat, [0.8, 1.1, 0.5], [0, 0, 0], holder);
+  gh.bodyG.add(g);
+  return { group: g, arms, mouth, rest, parts: [arms[0], arms[1], legs[0], legs[1]] };
+}
+// Show a person with n limbs blown off (0 to 4), in the order left arm, right arm, left leg, right leg.
+// Remembered on the ghost, so it still applies if the person body is built later.
+function setPartsLost(gh, n) {
+  gh.partsLost = n;
+  const pb = gh.bodies && gh.bodies.person; if (pb) pb.parts.forEach((m, i) => (m.visible = i >= n));
+}
+// Every kind of holiday body, by name (used by setGhostKind()).
+const BODY_BUILDERS = { turkey: makeTurkeyBody, reindeer: makeReindeerBody, bunny: makeBunnyBody, person: makePersonBody };
+
+/* ---------------- Mortimer's holiday outfits ----------------
+   Each outfit is a group on Mortimer's body; dressMortimer() shows the right one (and his everyday red
+   pillbox hat when there's no holiday). Built the first time a holiday needs them. */
+let mortOutfitsBuilt = false;
+function buildMortOutfits(gh) {
+  const red = std(0xc0262d, { roughness: 0.6, side: THREE.DoubleSide }), white = std(0xf7f4ee, { roughness: 0.95 }), black = std(0x141414, { roughness: 0.5 });
+  const gold = std(0xe0b84a, { metalness: 0.6, roughness: 0.3 }), pink = std(0xf2a7b8);
+  const add = (grp, geo, mat, sc, pos) => bodyPart(grp, geo, mat, sc, pos);
+  // Santa (Christmas): red hat with white trim and a pom-pom, a big white beard and mustache, and a red
+  // coat with white trim and a black belt over his usher's vest.
+  const santa = new THREE.Group(); gh.bodyG.add(santa);
+  const hat = new THREE.Group(); hat.position.set(0.02, 1.07, 0); hat.rotation.z = -0.3; santa.add(hat);
+  add(hat, new THREE.ConeGeometry(0.17, 0.42, 24), red, [1, 1, 1], [0, 0.21, 0]);
+  const trim = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.04, 8, 24), white); trim.rotation.x = Math.PI / 2; hat.add(trim);
+  add(hat, BALL, white, [0.055, 0.055, 0.055], [0, 0.43, 0]);
+  add(santa, BALL, white, [0.3, 0.27, 0.15], [0, 0.48, -0.42]);                       // beard
+  add(santa, BALL, white, [0.15, 0.045, 0.06], [0, 0.66, -0.49]);                     // mustache
+  add(santa, new THREE.CylinderGeometry(0.555, 0.58, 0.5, 40, 1, true), red, [1, 1, 1], [0, 0.42, 0]);   // coat
+  const hem = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.035, 8, 40), white); hem.rotation.x = Math.PI / 2; hem.position.y = 0.17; santa.add(hem);
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.565, 0.04, 8, 40), black); belt.rotation.x = Math.PI / 2; belt.position.y = 0.33; santa.add(belt);
+  add(santa, new THREE.BoxGeometry(1, 1, 1), gold, [0.12, 0.1, 0.03], [0, 0.33, -0.6]);   // belt buckle
+  // Bunny ears (Easter): a headband with two tall ears.
+  const ears = new THREE.Group(); gh.bodyG.add(ears);
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.016, 6, 20, Math.PI), pink); band.position.set(0, 1.0, 0); ears.add(band);
+  for (const sd of [-1, 1]) {
+    const e = add(ears, BALL, white, [0.06, 0.26, 0.03], [sd * 0.1, 1.3, 0]); e.rotation.z = -sd * 0.2;
+    const i = add(ears, BALL, pink, [0.035, 0.2, 0.02], [sd * 0.1, 1.3, -0.02]); i.rotation.z = -sd * 0.2;
+  }
+  // Independence Day: a stars-and-stripes top hat and the American flag worn as a cape.
+  const j4 = new THREE.Group(); gh.bodyG.add(j4);
+  const jh = new THREE.Group(); jh.position.set(0.02, 1.08, 0); jh.rotation.z = -0.12; j4.add(jh);
+  const stripes = canvasTex(256, 128, (x, w, h) => { for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? "#ffffff" : "#b22234"; x.fillRect(i * w / 8, 0, w / 8 + 1, h); } });
+  const starBand = canvasTex(256, 32, (x, w, h) => { x.fillStyle = "#3c3b6e"; x.fillRect(0, 0, w, h); x.fillStyle = "#fff"; for (let i = 0; i < 10; i++) drawStar(x, 13 + i * 25.5, h / 2, 9); });
+  add(jh, new THREE.CylinderGeometry(0.3, 0.3, 0.025, 32), std(0x3c3b6e), [1, 1, 1], [0, 0, 0]);   // brim
+  add(jh, new THREE.CylinderGeometry(0.15, 0.17, 0.38, 28), new THREE.MeshStandardMaterial({ map: stripes, roughness: 0.7 }), [1, 1, 1], [0, 0.2, 0]);   // crown
+  add(jh, new THREE.CylinderGeometry(0.172, 0.176, 0.07, 28), new THREE.MeshStandardMaterial({ map: starBand, roughness: 0.7 }), [1, 1, 1], [0, 0.06, 0]);   // starry band
+  // The cape: a flag wrapped around his back. (Turned around so the stars sit at the top left as you
+  // look at his back.)
+  const flag = usFlagTex().clone(); flag.needsUpdate = true; flag.wrapS = THREE.RepeatWrapping; flag.repeat.x = -1; flag.offset.x = 1;
+  add(j4, new THREE.CylinderGeometry(0.6, 0.66, 0.85, 32, 1, true, -Math.PI / 2, Math.PI), new THREE.MeshStandardMaterial({ map: flag, side: THREE.DoubleSide, roughness: 0.8 }), [1, 1, 1], [0, 0.5, 0.02]);
+  // New Year's Day: a striped gold and black party hat with a pom-pom.
+  const ny = new THREE.Group(); gh.bodyG.add(ny);
+  const pt = new THREE.Group(); pt.position.set(0.02, 1.07, 0); pt.rotation.z = -0.25; ny.add(pt);
+  const party = canvasTex(256, 128, (x, w, h) => { x.fillStyle = "#151515"; x.fillRect(0, 0, w, h); x.fillStyle = "#e5b93e"; for (let i = 0; i < 8; i++) x.fillRect(i * w / 8, 0, w / 16, h); });
+  add(pt, new THREE.ConeGeometry(0.15, 0.4, 24), new THREE.MeshStandardMaterial({ map: party, roughness: 0.5, metalness: 0.3 }), [1, 1, 1], [0, 0.2, 0]);
+  add(pt, BALL, gold, [0.05, 0.05, 0.05], [0, 0.41, 0]);
+  Object.assign(gh.hats, { santa, bunny: ears, july4: j4, newyear: ny });
+}
+// Put Mortimer in an outfit: "usher" (everyday), "pilgrim", "santa", "bunny", "july4" or "newyear".
+function dressMortimer(which) {
+  const gh = npc.ghost; if (!gh.hats) return;
+  if (which !== "usher" && which !== "pilgrim" && !mortOutfitsBuilt) { buildMortOutfits(gh); mortOutfitsBuilt = true; }
+  for (const k in gh.hats) gh.hats[k].visible = k === which;
+  gh.fadeNow = undefined;   // let the Hide HUD fade reach the newly shown parts
+}
+
+/* ---------------- Decoration helpers ---------------- */
+// Draw a five-pointed star of radius r centered at (cx, cy) on a canvas.
+function drawStar(x, cx, cy, r) {
+  x.beginPath();
+  for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.42 : r; x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); }
+  x.closePath(); x.fill();
+}
+// The American flag as a picture (made once): 13 stripes and 50 stars on a blue field.
+let usFlagTexCache = null;
+function usFlagTex() {
+  if (usFlagTexCache) return usFlagTexCache;
+  usFlagTexCache = canvasTex(570, 300, (x, w, h) => {
+    const sh = h / 13;
+    for (let i = 0; i < 13; i++) { x.fillStyle = i % 2 ? "#ffffff" : "#b22234"; x.fillRect(0, i * sh, w, sh + 1); }
+    const cw = w * 0.4, ch = sh * 7; x.fillStyle = "#3c3b6e"; x.fillRect(0, 0, cw, ch); x.fillStyle = "#ffffff";
+    for (let r = 0; r < 9; r++) for (let c = 0; c < (r % 2 ? 5 : 6); c++) drawStar(x, cw * ((c * 2 + (r % 2 ? 2 : 1)) / 12), ch * ((r + 1) / 10), sh * 0.32);
+  });
+  return usFlagTexCache;
+}
+// A flat picture (flag, banner…) of size w×h at (x, y, z), turned by rotY to face into the room.
+function wallPic(grp, tex, w, h, x, y, z, rotY, extra) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial(Object.assign({ map: tex, roughness: 0.8, side: THREE.DoubleSide }, extra || {})));
+  m.position.set(x, y, z); m.rotation.y = rotY || 0; grp.add(m); return m;
+}
+// A banner with big text on it. bg/fg = background and text colors; emoji are fine in the text.
+function textBanner(text, bg, fg, border) {
+  return canvasTex(1024, 220, (x, w, h) => {
+    x.fillStyle = bg; x.fillRect(0, 0, w, h);
+    if (border) { x.strokeStyle = border; x.lineWidth = 12; x.strokeRect(10, 10, w - 20, h - 20); }
+    x.fillStyle = fg; x.textAlign = "center"; x.textBaseline = "middle";
+    let size = 120; do { x.font = "700 " + size + "px Limelight, Georgia, 'Segoe UI Emoji', serif"; size -= 6; } while (x.measureText(text).width > w - 70 && size > 30);
+    x.fillText(text, w / 2, h / 2 + 6);
+  });
+}
+// Where the theater and lobby walls are, for hanging things: [x0, y, z0] to [x1, y, z1], plus which way
+// the things face (rotY). sag = how much a string droops in the middle.
+const WALL_RUNS = (yT, yL) => [
+  [[-(ROOM.x - 0.25), yT, -9], [-(ROOM.x - 0.25), yT, 13], 0.6, Math.PI / 2],     // theater left wall
+  [[ROOM.x - 0.25, yT, -9], [ROOM.x - 0.25, yT, 13], 0.6, -Math.PI / 2],         // theater right wall
+  [[-11.5, yT - 1.4, ROOM.zBack - 0.08], [11.5, yT - 1.4, ROOM.zBack - 0.08], 0.5, Math.PI],   // theater back wall, over the doors
+  [[-11.5, yL + 0.1, LOBBY.z0 + 0.36], [11.5, yL + 0.1, LOBBY.z0 + 0.36], 0.12, 0],   // lobby wall by the hallways (kept high, above the banners)
+  [[-11.5, yL + 0.4, LOBBY.z1 - 0.08], [11.5, yL + 0.4, LOBBY.z1 - 0.08], 0.1, Math.PI]   // lobby back wall, above the menu board
+];
+// Points along a drooping string from p0 to p1: n+1 points, sagging by `sag` in the middle.
+function sagPoints(p0, p1, sag, n) {
+  const out = [];
+  for (let i = 0; i <= n; i++) { const t = i / n; out.push([p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t - sag * 4 * t * (1 - t), p0[2] + (p1[2] - p0[2]) * t]); }
+  return out;
+}
+// Little pennant flags on strings along the given wall runs, cycling through `colors`.
+function bunting(grp, runs, colors, n) {
+  const tri = new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(-0.17, 0), new THREE.Vector2(0.17, 0), new THREE.Vector2(0, -0.38)]));
+  const spots = [];
+  for (const [p0, p1, sag, ry] of runs) {
+    const pts = sagPoints(p0, p1, sag, n);
+    grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map((p) => new THREE.Vector3(...p))), new THREE.LineBasicMaterial({ color: 0xdddddd })));
+    for (const p of pts) spots.push([p, ry]);
+  }
+  const im = new THREE.InstancedMesh(tri, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, side: THREE.DoubleSide }), spots.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), col = new THREE.Color();
+  spots.forEach(([p, ry], i) => { im.setMatrixAt(i, m4.compose(v.set(p[0], p[1], p[2]), q.setFromEuler(e.set(0, ry, 0)), one)); im.setColorAt(i, col.setHex(colors[i % colors.length])); });
+  grp.add(im);
+}
+// Strings of little colored bulbs along the given wall runs. Returns update(t), which makes them twinkle
+// (a third of the bulbs dim at a time, changing every 0.6 s).
+function stringLights(grp, runs, colors, n) {
+  const spots = [];
+  for (const [p0, p1, sag] of runs) {
+    const pts = sagPoints(p0, p1, sag, n);
+    grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map((p) => new THREE.Vector3(...p))), new THREE.LineBasicMaterial({ color: 0x1e3a1e })));
+    spots.push(...pts);
+  }
+  const im = new THREE.InstancedMesh(new THREE.SphereGeometry(0.065, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }), spots.length);
+  const m4 = new THREE.Matrix4(), col = new THREE.Color();
+  spots.forEach((p, i) => { im.setMatrixAt(i, m4.makeTranslation(p[0], p[1] - 0.06, p[2])); im.setColorAt(i, col.setHex(colors[i % colors.length])); });
+  grp.add(im);
+  let phase = -1;
+  return (t) => {
+    const ph = Math.floor(t / 0.6) % 3; if (ph === phase) return; phase = ph;
+    spots.forEach((p, i) => { col.setHex(colors[i % colors.length]); if ((i + ph) % 3 === 0) col.multiplyScalar(0.25); im.setColorAt(i, col); });
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  };
+}
+// Things drifting down from the ceiling (snow, confetti, petals, stars): n pieces of shape `geo`, cycling
+// through `colors`, three quarters of them in the theater and the rest in the lobby. Like the Thanksgiving
+// leaves, they vanish in Hide HUD mode. Returns update(dt, t) to call every frame.
+function fallers(grp, geo, colors, n, speed, size, sway) {
+  const spawn = (inTheater, anywhere) => {
+    const top = inTheater ? ROOM.h - 0.5 : LOBBY.h - 0.3;
+    return { inTheater, x: (Math.random() * 2 - 1) * (ROOM.x - 0.6), z: inTheater ? -9 + Math.random() * 24 : LOBBY.z0 + 0.6 + Math.random() * (LOBBY.z1 - LOBBY.z0 - 1.2),
+      y: anywhere ? Math.random() * top : top, speed: speed * (0.7 + Math.random() * 0.6), ph: Math.random() * 6, spin: (Math.random() - 0.5) * 3, size: size * (0.75 + Math.random() * 0.5) };
+  };
+  const list = []; for (let i = 0; i < n; i++) list.push(spawn(i < n * 0.75, true));
+  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, side: THREE.DoubleSide }), n);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled = false;   // they move every frame and are spread all over
+  const col = new THREE.Color(); list.forEach((p, i) => mesh.setColorAt(i, col.setHex(colors[i % colors.length])));
+  grp.add(mesh);
+  return (dt, t) => {
+    mesh.visible = ghostFade > 0.5; if (!mesh.visible) return;
+    list.forEach((p, i) => {
+      p.y -= p.speed * dt; p.x += Math.sin(t * 1.3 + p.ph) * sway * dt;
+      if (p.y < 0.05) Object.assign(p, spawn(p.inTheater, false));
+      leafE.set(Math.sin(t * 1.7 + p.ph) * 0.9, t * p.spin + p.ph, Math.cos(t * 1.1 + p.ph) * 0.6);
+      mesh.setMatrixAt(i, leafM4.compose(leafV.set(p.x, p.y, p.z), leafQ.setFromEuler(leafE), leafS.setScalar(p.size)));
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+}
+// A Christmas tree of height h standing at (x, y, z): stacked green cones, a gold star, colored baubles
+// and a few wrapped presents underneath.
+function xmasTree(grp, x, y, z, h) {
+  const green = std(0x1f5e2e, { roughness: 0.9 }), trunk = std(0x5a3a1e);
+  bodyPart(grp, ROD, trunk, [0.12 * h / 3, 0.35 * h / 3, 0.12 * h / 3], [x, y + 0.17 * h / 3, z]);
+  for (let i = 0; i < 4; i++) { const r = (1.1 - i * 0.24) * h / 3, ch = 1.0 * h / 3; const c = new THREE.Mesh(new THREE.ConeGeometry(r, ch, 18), green); c.position.set(x, y + (0.75 + i * 0.6) * h / 3, z); grp.add(c); }
+  const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.16 * h / 3), new THREE.MeshBasicMaterial({ color: 0xffd34d })); star.position.set(x, y + h + 0.05, z); grp.add(star);
+  const cols = [0xd63a3a, 0xf2c94c, 0x3d8bfd, 0xffffff, 0xb05ce0];
+  for (let i = 0; i < 26; i++) {
+    const lvl = Math.random(), r = (1.05 - lvl * 0.85) * h / 3 * 0.9, a = Math.random() * 6.28;
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.06 * h / 3, 10, 8), new THREE.MeshStandardMaterial({ color: cols[i % cols.length], metalness: 0.5, roughness: 0.25, emissive: cols[i % cols.length], emissiveIntensity: 0.25 }));
+    b.position.set(x + Math.cos(a) * r, y + (0.5 + lvl * 2.1) * h / 3, z + Math.sin(a) * r); grp.add(b);
+  }
+  const papers = [0xc0262d, 0x1f6f3a, 0x2d5fbf, 0xe0b84a];
+  for (let i = 0; i < 4; i++) {
+    const s = 0.28 + Math.random() * 0.18, a = i * 1.6 + 0.4, r = 0.75 * h / 3 + 0.2;
+    bodyPart(grp, new THREE.BoxGeometry(1, 1, 1), std(papers[i]), [s, s * 0.8, s], [x + Math.cos(a) * r, y + s * 0.4, z + Math.sin(a) * r]);
+    bodyPart(grp, new THREE.BoxGeometry(1, 1, 1), std(0xf2e6c9), [s * 1.02, s * 0.82, 0.05], [x + Math.cos(a) * r, y + s * 0.4, z + Math.sin(a) * r]);   // ribbon
+  }
+}
+// A green wreath with a red bow, flat against a wall at (x, y, z), facing rotY.
+function wreath(grp, x, y, z, rotY) {
+  const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = rotY; grp.add(g);
+  g.add(new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.13, 10, 24), std(0x1f5e2e, { roughness: 0.95 })));
+  for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; bodyPart(g, BALL, std(0xc0262d), [0.045, 0.045, 0.045], [Math.cos(a) * 0.4, Math.sin(a) * 0.4, 0.1]); }   // berries
+  bodyPart(g, BALL, std(0xc0262d), [0.14, 0.09, 0.05], [0, -0.42, 0.12]);   // bow
+}
+
+/* ---------------- Christmas decorations ----------------
+   Two decorated trees by the screen and one in the lobby, twinkling string lights along every wall,
+   wreaths over the theater doors, snow drifting down, and a cool wintry light. */
+function buildChristmasDecor() {
+  const grp = new THREE.Group(); scene.add(grp);
+  xmasTree(grp, -10.4, 0.7, -12, 3.6); xmasTree(grp, 10.4, 0.7, -12, 3.6);   // beside the screen, on the stage
+  xmasTree(grp, -10.6, 0, 27.4, 3.4);                                       // lobby, between the posters on the left wall
+  const twinkle = stringLights(grp, WALL_RUNS(6.6, 4.85), [0xff4d4d, 0x4dff7a, 0xffd34d, 0x4da6ff, 0xffffff], 34);
+  for (const sx of [-1, 1]) wreath(grp, sx * (DOOR.x0 + DOOR.x1) / 2, 3.9, ROOM.zBack - 0.1, Math.PI);   // over the theater doors
+  for (const sx of [-1, 1]) wreath(grp, sx * (DOOR.x0 + DOOR.x1) / 2, 3.9, LOBBY.z0 + 0.32, 0);           // over the hallway openings in the lobby
+  const snow = fallers(grp, new THREE.CircleGeometry(0.5, 6), [0xffffff, 0xeef6ff], 90, 0.45, 0.09, 0.4);
+  grp.add(new THREE.AmbientLight(0x9cc4ff, 0.16));
+  return { group: grp, update: (dt, t) => { twinkle(t); snow(dt, t); } };
+}
+
+/* ---------------- Easter decorations ----------------
+   Pastel eggs hidden all over (on the stage, in the aisles, around the lobby), pots of tulips, pastel
+   bunting along the walls, a "Happy Easter" banner, flower petals drifting down, and soft spring light. */
+const PASTELS = [0xf7a8c4, 0xa8d8f7, 0xc9f7a8, 0xf7e3a8, 0xd2b0f7, 0xffc7a3];
+function buildEasterDecor() {
+  const grp = new THREE.Group(); scene.add(grp);
+  // Eggs: a stretched sphere each, in pastel colors, sitting on the floor.
+  const spots = [];
+  for (let i = 0; i < 16; i++) spots.push([-11 + Math.random() * 22, 0.7, -13.4 + Math.random() * 1.6]);          // along the stage
+  for (let i = 0; i < 14; i++) spots.push([(Math.random() < 0.5 ? -1 : 1) * (8.5 + Math.random() * 3), 0, -8 + Math.random() * 21]);   // theater side aisles
+  for (let i = 0; i < 24; i++) spots.push([-11.3 + Math.random() * 22.6, 0, LOBBY.z0 + 0.6 + Math.random() * 9.5]); // lobby
+  const eggs = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 14, 10), std(0xffffff, { roughness: 0.4 }), spots.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3(0.11, 0.15, 0.11), col = new THREE.Color();
+  spots.forEach(([x, y, z], i) => { eggs.setMatrixAt(i, m4.compose(v.set(x, y + 0.14, z), q.setFromEuler(e.set(0, 0, (Math.random() - 0.5) * 0.6)), sc)); eggs.setColorAt(i, col.setHex(PASTELS[i % PASTELS.length])); });
+  grp.add(eggs);
+  // Pots of tulips in the lobby corners and at the ends of the counter.
+  const pot = std(0xb5653a), stem = std(0x3f8f3a);
+  const tulips = (x, y, z) => {
+    bodyPart(grp, new THREE.CylinderGeometry(0.28, 0.2, 0.4, 14), pot, [1, 1, 1], [x, y + 0.2, z]);
+    for (let i = 0; i < 6; i++) {
+      const a = i * 1.05, r = 0.12, hx = x + Math.cos(a) * r, hz = z + Math.sin(a) * r, h = 0.55 + Math.random() * 0.25;
+      bodyPart(grp, ROD, stem, [0.015, h, 0.015], [hx, y + 0.4 + h / 2, hz]);
+      bodyPart(grp, new THREE.SphereGeometry(1, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6), std(PASTELS[i % PASTELS.length]), [0.07, 0.1, 0.07], [hx, y + 0.42 + h, hz]).rotation.x = Math.PI;
+    }
+  };
+  for (const [x, z] of [[-11.2, 23.4], [11.2, 23.4], [-11.2, 35.5], [11.2, 35.5], [-7.2, 33.4], [7.2, 33.4]]) tulips(x, 0, z);
+  bunting(grp, WALL_RUNS(6.4, 4.75), PASTELS, 30);
+  wallPic(grp, textBanner("🐣 Happy Easter! 🐰", "#fdf3d6", "#c0577e", "#f7a8c4"), 4.6, 1.0, 0, 3.85, LOBBY.z0 + 0.37, 0);
+  wallPic(grp, textBanner("🥕 Hoppy viewing 🥕", "#fdf3d6", "#5c8f3a", "#c9f7a8"), 5.4, 1.15, 0, 7.4, ROOM.zBack - 0.1, Math.PI);
+  const petals = fallers(grp, new THREE.CircleGeometry(0.5, 7), [0xf7c4d8, 0xffffff, 0xf7e3a8], 60, 0.35, 0.08, 0.6);
+  grp.add(new THREE.AmbientLight(0xfff2c8, 0.16));
+  return { group: grp, update: (dt, t) => petals(dt, t) };
+}
+
+/* ---------------- Independence Day decorations ----------------
+   As much America as the building can hold: giant flags on every wall, red-white-and-blue bunting
+   everywhere, patriotic banners (with eagles), stars drifting down, fireworks going off over the seats
+   and in the lobby every couple of seconds, and the room light slowly cycling red, white and blue. */
+function buildJuly4Decor() {
+  const grp = new THREE.Group(); scene.add(grp);
+  const flag = usFlagTex(), RWB = [0xb22234, 0xffffff, 0x3c3b6e];
+  for (const sx of [-1, 1]) for (const z of [-7, -1, 5, 11]) wallPic(grp, flag, 3.4, 1.8, sx * (ROOM.x - 0.12), 5.6, z, -sx * Math.PI / 2);   // theater side walls
+  wallPic(grp, flag, 9, 4.7, 0, 6.2, ROOM.zBack - 0.1, Math.PI);                                                // a huge one over the theater doors
+  for (const sx of [-1, 1]) wallPic(grp, flag, 2.3, 1.2, sx * (ROOM.x - 0.12), 4.55, 27.5, -sx * Math.PI / 2);  // lobby side walls, above the posters
+  bunting(grp, WALL_RUNS(7.2, 4.85), RWB, 36);
+  bunting(grp, WALL_RUNS(8.3, 4.3).slice(0, 3), RWB, 30);   // a second row up near the theater ceiling, because one wasn't enough
+  const B = (t) => textBanner(t, "#ffffff", "#b22234", "#3c3b6e");
+  wallPic(grp, B("🦅 LAND OF THE FREE 🦅"), 7, 1.5, -(ROOM.x - 0.12), 3.3, 2, Math.PI / 2);
+  wallPic(grp, B("🦅 HOME OF THE BRAVE 🦅"), 7, 1.5, ROOM.x - 0.12, 3.3, 2, -Math.PI / 2);
+  wallPic(grp, textBanner("★ FREEDOM ★ FREEDOM ★", "#3c3b6e", "#ffffff", "#b22234"), 6, 1.3, 0, 3.85, LOBBY.z0 + 0.37, 0);
+  wallPic(grp, B("🦅 U·S·A! U·S·A! U·S·A! 🦅"), 9.6, 0.9, 0, 0.62, 33.4 - 0.53, Math.PI);   // across the front of the counter (facing the lobby)
+  // Tall banners on the front wall, either side of the screen, with the words running down them.
+  const tall = (word) => canvasTex(256, 1024, (x, w, h) => {
+    x.fillStyle = "#3c3b6e"; x.fillRect(0, 0, w, h); x.fillStyle = "#b22234"; x.fillRect(0, 0, 26, h); x.fillRect(w - 26, 0, 26, h);
+    x.fillStyle = "#ffffff"; x.textAlign = "center"; x.textBaseline = "middle"; x.font = "700 110px Limelight, Georgia, serif";
+    const letters = [...word], step = (h - 160) / letters.length; letters.forEach((ch, i) => x.fillText(ch, w / 2, 110 + step * (i + 0.5)));
+    x.font = "90px 'Segoe UI Emoji', serif"; x.fillText("🦅", w / 2, 60);
+  });
+  wallPic(grp, tall("LIBERTY"), 1.4, 5.6, -9.6, 4.6, ROOM.zFront + 1.1, 0);   // hung in front of the stage curtains
+  wallPic(grp, tall("FREEDOM"), 1.4, 5.6, 9.6, 4.6, ROOM.zFront + 1.1, 0);
+  // A giant flag stretched across the theater ceiling, for anyone who looks up.
+  const ceilingFlag = wallPic(grp, flag, 16, 8.4, 0, ROOM.h - 0.25, 1, 0); ceilingFlag.rotation.set(Math.PI / 2, 0, 0);
+  // Little flags on poles along the front of the stage, on both sides of the screen (none in front of it,
+  // so they never block the movie).
+  const pole = std(0xd8c9a0, { metalness: 0.4 });
+  for (const x of [-11.2, -10.4, -9.6, -8.8, -8.0, 7.7, 8.5, 9.3, 10.1, 10.9]) {
+    bodyPart(grp, ROD, pole, [0.02, 1.3, 0.02], [x, 0.7 + 0.65, -11.65]);
+    wallPic(grp, flag, 0.6, 0.32, x + 0.3, 0.7 + 1.12, -11.65, 0);
+  }
+  // Flags hanging down from the lobby ceiling, in a row over the middle of the lobby.
+  for (const x of [-8, -4, 0, 4, 8]) { const hf = wallPic(grp, flag, 1.5, 0.8, x, LOBBY.h - 0.75, 27.2, 0); hf.rotation.z = Math.PI / 2; }
+  const stars = fallers(grp, new THREE.ShapeGeometry(starShape()), [0xb22234, 0xffffff, 0x3c3b6e], 80, 0.5, 0.13, 0.5);
+  const tint = new THREE.AmbientLight(0xffffff, 0.14); grp.add(tint);
+  const sky = skyFireworks([[0xb22234, 0xffffff], [0x3c3b6e, 0xffffff], [0xb22234, 0x3c3b6e, 0xffffff]], 1.2, 2.6);
+  const RGB = [new THREE.Color(0xff3b3b), new THREE.Color(0xffffff), new THREE.Color(0x4a5cff)];
+  return { group: grp, update: (dt, t) => {
+    stars(dt, t); sky(dt, t);
+    const k = (t / 3) % 3, i = Math.floor(k), f = k - i; tint.color.copy(RGB[i]).lerp(RGB[(i + 1) % 3], f);   // red → white → blue, every 9 s
+  } };
+}
+// A five-pointed star outline (for falling stars).
+function starShape() { const pts = []; for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 0.2 : 0.5; pts.push(new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r)); } return new THREE.Shape(pts); }
+
+/* ---------------- New Year's Day decorations ----------------
+   "Happy New Year" banners, clusters of gold, silver and black balloons, confetti drifting down, gold
+   and silver fireworks now and then, and a few things still up from Christmas: string lights in the
+   lobby, a little tree in the corner, and a sign promising to take it down. */
+function buildNewYearDecor() {
+  const grp = new THREE.Group(); scene.add(grp);
+  // The year being welcomed: the coming one, except in January and February, when it's the one that just began.
+  const now = new Date(), year = now.getMonth() <= 1 ? now.getFullYear() : now.getFullYear() + 1;
+  const B = (t) => textBanner(t, "#121212", "#e5b93e", "#c9c9c9");
+  wallPic(grp, B("✨ HAPPY NEW YEAR " + year + " ✨"), 6.6, 1.4, 0, 3.85, LOBBY.z0 + 0.37, 0);
+  wallPic(grp, B("🎉 HAPPY NEW YEAR " + year + " 🎉"), 9, 1.9, 0, 6.6, ROOM.zBack - 0.1, Math.PI);
+  // Balloons: clusters of shiny gold, silver and black, each on a string.
+  const cols = [0xe5b93e, 0xc9c9c9, 0x151515, 0xe5b93e, 0xf2f2f2];
+  const cluster = (x, y, z) => {
+    for (let i = 0; i < 5; i++) {
+      const bx = x + (Math.random() - 0.5) * 0.7, by = y + 1.6 + Math.random() * 0.8, bz = z + (Math.random() - 0.5) * 0.7;
+      bodyPart(grp, BALL, std(cols[i], { metalness: 0.6, roughness: 0.25 }), [0.24, 0.3, 0.24], [bx, by, bz]);
+      grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(bx, by - 0.3, bz), new THREE.Vector3(x, y, z)]), new THREE.LineBasicMaterial({ color: 0xdddddd })));
+    }
+  };
+  for (const [x, y, z] of [[-10.6, 0.7, -12.4], [10.6, 0.7, -12.4], [-11.2, 0, 23.4], [11.2, 0, 23.4], [-7.4, 0, 33.2], [7.4, 0, 33.2], [-11.2, 0, 35.4], [11.2, 0, 35.4]]) cluster(x, y, z);
+  // Still up from Christmas.
+  const twinkle = stringLights(grp, WALL_RUNS(6.6, 4.85).slice(3), [0xff4d4d, 0x4dff7a, 0xffd34d, 0x4da6ff, 0xffffff], 34);
+  xmasTree(grp, -10.6, 0, 27.4, 2.4);
+  wallPic(grp, textBanner("Taking it down soon. Promise.", "#f7f1e1", "#1f5e2e"), 1.8, 0.4, -10.6 + 0.9, 0.35, 27.4 - 0.9, Math.PI / 4);
+  const confetti = fallers(grp, new THREE.PlaneGeometry(0.6, 0.35), [0xe5b93e, 0xc9c9c9, 0xff4fa3, 0x4fd1ff, 0xffffff], 110, 0.5, 0.11, 0.7);
+  const sky = skyFireworks([[0xe5b93e, 0xffffff], [0xc9c9c9, 0xe5b93e], [0xff4fa3, 0x4fd1ff, 0xe5b93e]], 2.5, 5);
+  grp.add(new THREE.AmbientLight(0xffe7b0, 0.12));
+  return { group: grp, update: (dt, t) => { twinkle(t); confetti(dt, t); sky(dt, t); } };
+}
+
+/* ---------------- Fireworks ----------------
+   Bursts of colored sparks with a flash of light. Used two ways:
+     - for decoration: skyFireworks() sets them off high up in the theater and lobby every few seconds
+       (only on your screen, harmless, and paused in Hide HUD mode so they don't distract from the movie);
+     - for real: the Firework item. Light it (F) and it shoots up from your hand; throw it (T) and it
+       flies like any food. Either way it bursts FIREWORK_FUSE seconds later wherever it is. Every
+       computer runs the same flight, so it bursts in about the same place for everyone, and each player's
+       own computer checks whether it was close enough to blow off one of their limbs (see onFireworkBurst()).
+   Lose all four limbs and you're a ghost for the rest of the showing. Limbs lost are shared in your
+   presence ("lost"), so everyone sees you missing them. */
+const FIREWORK_FUSE = 1.4;    // seconds from leaving your hand to bursting
+const FIREWORK_REACH = 2.4;   // meters: a burst this close to you takes a limb
+const PART_NAMES = ["left arm", "right arm", "left leg", "right leg"];
+let myPartsLost = 0;          // limbs I've lost this showing (0 to LIMBS)
+let burstsTotal = 0;          // real fireworks that have burst on this page (debug screen)
+const bursts = [];            // sparks flying right now: { pts, vel, born, life }
+let flashLight = null;        // one light reused for every burst's flash (adding lights is slow in three.js)
+// Set off a burst of sparks at pos in the given colors. big = a real firework (more sparks, bigger flash).
+function burstFx(pos, colors, big) {
+  const n = big ? 120 : 80, posArr = new Float32Array(n * 3), colArr = new Float32Array(n * 3), vel = [], c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, s = (big ? 5.5 : 4.2) * (0.6 + Math.random() * 0.4), r = Math.sqrt(1 - u * u);
+    vel.push(new THREE.Vector3(r * Math.cos(a) * s, u * s, r * Math.sin(a) * s));   // evenly in every direction
+    posArr.set([pos.x, pos.y, pos.z], i * 3); c.setHex(colors[i % colors.length]); colArr.set([c.r, c.g, c.b], i * 3);
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(posArr, 3)); geo.setAttribute("color", new THREE.BufferAttribute(colArr, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: big ? 0.34 : 0.22, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  pts.frustumCulled = false; scene.add(pts);
+  bursts.push({ pts, vel, born: nowS(), life: 1.6 });
+  if (!flashLight) { flashLight = new THREE.PointLight(0xffffff, 0, 22); scene.add(flashLight); }
+  flashLight.position.copy(pos); flashLight.color.setHex(colors[0]); flashLight.intensity = big ? 5 : 2.5;
+}
+// Every frame: sparks fly outward, slow down, droop and fade; the flash dies away.
+function updateBursts(dt, t) {
+  for (let i = bursts.length - 1; i >= 0; i--) {
+    const b = bursts[i], age = t - b.born, pa = b.pts.geometry.attributes.position;
+    if (age > b.life) { scene.remove(b.pts); b.pts.geometry.dispose(); b.pts.material.dispose(); bursts.splice(i, 1); continue; }
+    for (let k = 0; k < b.vel.length; k++) { const v = b.vel[k]; v.multiplyScalar(1 - 1.6 * dt); v.y -= 2.2 * dt; pa.array[k * 3] += v.x * dt; pa.array[k * 3 + 1] += v.y * dt; pa.array[k * 3 + 2] += v.z * dt; }
+    pa.needsUpdate = true; b.pts.material.opacity = 1 - age / b.life;
+  }
+  if (flashLight && flashLight.intensity > 0) flashLight.intensity = Math.max(0, flashLight.intensity - dt * 9);
+}
+// Decorative fireworks for a holiday: every `minGap` to `maxGap` seconds, a burst in one of the color
+// sets, high up over the seats (or now and then in the lobby). Returns update(dt, t).
+function skyFireworks(colorSets, minGap, maxGap) {
+  let next = 0;
+  return (dt, t) => {
+    if (ghostFade < 0.5 || t < next) return;   // none in Hide HUD mode
+    next = t + minGap + Math.random() * (maxGap - minGap);
+    const lobby = Math.random() < 0.25;
+    burstFx(new THREE.Vector3((Math.random() * 2 - 1) * 9, lobby ? 4.3 + Math.random() * 0.6 : 6.6 + Math.random() * 1.6, lobby ? 25 + Math.random() * 8 : -7 + Math.random() * 18), pickOne(colorSets), false);
+  };
+}
+// The colors a real firework bursts in at the current holiday.
+const fireworkColors = () => holiday === "july4" ? pickOne([[0xb22234, 0xffffff, 0x3c3b6e], [0xffffff, 0x3c3b6e]]) : pickOne([[0xe5b93e, 0xffffff], [0xff4fa3, 0x4fd1ff, 0xe5b93e]]);
+// F with a firework: light it and let it go: it shoots up out of your hand (and a little forward) and
+// bursts high up (usually far enough from everyone to be safe). Everyone sees it: it's sent like a throw.
+function lightFirework() {
+  const h = heldItem(); if (!h || h.id !== "firework") return;
+  const p = new THREE.Vector3(); if (me.ghost.held && !firstPerson) me.ghost.held.getWorldPosition(p); else p.set(me.x, me.y + 0.9, me.z);
+  const v = new THREE.Vector3(-Math.sin(me.yaw) * 1.2, 11, -Math.cos(me.yaw) * 1.2);
+  inventory.shift(); refreshHeld(); say("*lights the fuse*");
+  const fid = Math.random().toString(36).slice(2, 12);
+  spawnThrow("firework", p, v, myPeerId(), fid, 1);
+  if (room && room.toAll) room.toAll({ t: "throw", i: "firework", p: [p.x, p.y, p.z].map(r3), v: [v.x, v.y, v.z].map(r3), fid, left: 1 });
+}
+// A real firework burst at pos (on this computer). If it's close to me and I'm a person, I lose the next
+// limb (and become a ghost after the last one). Mortimer has something to say if it's near him.
+function onFireworkBurst(pos) {
+  burstsTotal++; burstFx(pos, fireworkColors(), true);
+  const d = Math.hypot(pos.x - me.x, pos.y - (me.y + 0.7), pos.z - me.z);
+  if (d < FIREWORK_REACH && me.ghost.kind === "person" && myPartsLost < LIMBS) {
+    myPartsLost++;
+    setPartsLost(me.ghost, myPartsLost);
+    if (myPartsLost >= LIMBS) { setGhostKind(me.ghost, bodyFor(myPartsLost)); toast("BOOM! There goes your " + PART_NAMES[LIMBS - 1] + ". That was your last limb: you're a ghost now!"); }
+    else toast("BOOM! You lost your " + PART_NAMES[myPartsLost - 1] + ". (" + (LIMBS - myPartsLost) + " limb" + (LIMBS - myPartsLost === 1 ? "" : "s") + " left.)");
+    sharePresence(true);
+  }
+  if (Math.hypot(pos.x - npc.x, pos.z - npc.z) < 4 && nowS() - npc.lastHitTalk > 3) { npc.lastHitTalk = nowS(); npcSay(pickOne(MORT_BOOM)); }
+}
+const MORT_BOOM = [
+  "My hat! I've had this hat since 1931!",
+  "NOT INDOORS. How many times? Not. Indoors.",
+  "Ah. That's going to leave a mark on the ceiling. And on my soul.",
+  "I'm already dead, and that still scared me half to death."
+];
+
+/* ---------------- Christmas: Santa's lap ----------------
+   At Christmas, Mortimer is playing Santa. Ordering (O, or the Order button at the counter) sits you on
+   his lap behind the counter, and the order menu turns into a letter to Santa: you ask him for what you
+   want, and he hands it over (for Ghost Bucks: Santa has overheads). Closing the menu puts you back
+   where you were. Everyone sees you up on his lap, since it's just your position. */
+let lap = null;   // while on Santa's lap: { x, y, z, yaw, pitch } = where you were before
+// Climb up (called when the order menu opens at Christmas).
+function startLap() {
+  if (lap) return;
+  lap = { x: me.x, y: me.y, z: me.z, yaw: me.yaw, pitch: me.pitch };
+  npcSay(pickOne(SANTA_HELLO));
+}
+// Climb down (called when the order menu closes).
+function endLap() {
+  if (!lap) return;
+  Object.assign(me, { x: lap.x, y: lap.y, z: lap.z, yaw: lap.yaw, pitch: lap.pitch }); lap = null;
+  npcSay(pickOne(SANTA_BYE));
+}
+// Every frame while on his lap: perched on one knee, a little to his side (so his face still shows),
+// turned slightly toward the camera.
+function sitOnLap() { me.x = npc.x + 0.5; me.z = npc.z - 0.3; me.y = npc.y + 0.1; me.yaw = 0.45; me.pitch = -0.05; }
+// While on his lap, the camera looks down at the two of you from above the front of the counter (high
+// enough to see over the things on it). It aims a little off to the side so the two of you appear on the
+// left of the screen, beside the letter to Santa (which moves to the right; see #shop.santa in the styles).
+function lapCamera() { camera.position.set(npc.x, 2.7, npc.z - 2.6); camera.lookAt(npc.x - 0.5, 1.1, npc.z - 0.3); }
+// The menu dressed up as a letter to Santa (or back to normal). Called whenever the menu is drawn.
+function dressShopForSanta() {
+  const xmas = holiday === "christmas";
+  $("shop").querySelector("h2").textContent = xmas ? "Dear Santa," : "Concessions";
+  $("shopIntro").hidden = !xmas;
+  $("shop").querySelector("footer p").textContent = xmas ? "Santa takes Ghost Bucks. The elves have bills too." : "Ghost Bucks only. No refunds in the afterlife.";
+  $("closeShop").textContent = xmas ? "Hop down" : "Done";
+  $("shop").classList.toggle("santa", xmas);   // the letter moves aside so you can see yourself on his lap
+}
+const SANTA_HELLO = [
+  "Ho ho ho! Up you hop, little reindeer. Now, what would you like for Christmas?",
+  "Ho ho ho! Careful with the antlers. What can Santa get you this year?",
+  "Ho ho… oof. You're heavier than you look. What would you like for Christmas?"
+];
+const SANTA_BYE = ["Off you trot! Merry Christmas!", "Ho ho ho! Mind the counter on your way down.", "Merry Christmas! Next!"];
+// Santa's reply when you ask for something ({item} and {price} are filled in).
+const SANTA_GIFT = [
+  "Ho ho ho! One {item}, coming right up. You've been good this year. Mostly.",
+  "A {item}? Excellent choice. The elves will be thrilled. Well, the elf. It's just me.",
+  "{Item}! I'll put you on the nice list. In pencil.",
+  "Ho ho… ho. That'll be {price} Ghost Bucks. Santa has overheads.",
+  "One {item}. Don't tell the other reindeer. They'll all want one."
+];
+function santaGift(m) {
+  const t = pickOne(SANTA_GIFT), item = m.name.toLowerCase();
+  return t.replace("{item}", item).replace("{Item}", m.name).replace("{price}", money(m.price).slice(1));
+}
+
+/* ---------------- Easter: hopping ----------------
+   Bunnies can't fly. They stay on the floor, bounce along in little hops whenever they move, and Space
+   (or E, or the Rise button) makes a bigger jump. Handled in the main loop's movement (see frame()). */
+const HOP_STEP = 3.2, HOP_JUMP = 5.2, HOP_GRAVITY = 14;   // hop and jump launch speeds, and how fast you fall (m/s, m/s²)
+let hopVy = 0;    // your current up/down speed while hopping
+let hopsDone = 0; // hops on this page (debug screen)
+
+/* ---------------- Mortimer's holiday remarks ----------------
+   Used only during their holiday (about 4 talks in 10). Add more any time. */
+const NPC_CHRISTMAS = [
+  "Ho ho ho! I'm Santa. The beard is real. The rest of me is mostly ectoplasm.",
+  "Santa's been doing this since 1931. The chimney thing never caught on with me. I go through the wall.",
+  "Rudol… no, I'm not allowed to say his name. Lawyers. Have a candy cane.",
+  "Ninety Christmases behind this counter, and nobody ever leaves cookies out for the ghost.",
+  "Every reindeer in here owes me a sleigh ride. I'm keeping a list. Checking it twice, even.",
+  "The eggnog is fresh. I mean, it's from this year. Probably.",
+  "Is that snow, or is the ceiling falling in again? Either way: festive.",
+  "Merry Christmas! Do please sit on Santa's lap to order. It's in my contract. I wrote the contract."
+];
+const NPC_EASTER = [
+  "Happy Easter! I've hidden eggs all over the building. I've also forgotten where. Good luck.",
+  "Bunnies can't fly, I'm told. You'll have to hop. Mind the stairs.",
+  "These ears are a hundred percent real. I grew them for the occasion.",
+  "Carrots are on special. Good for your eyesight. You'll want it for the movie.",
+  "Every bunny in the house, and not one of you brought me a chocolate egg.",
+  "The chocolate bunny is hollow. Like me. We have a lot in common.",
+  "Please don't hop on the seats. They're older than I am. Well. Nearly."
+];
+const NPC_JULY4 = [
+  "Happy Independence Day! FREEDOM! Sorry. It slips out. FREEDOM.",
+  "I was going to wear the flag as a bandana, but a cape felt more… liberating.",
+  "Freedom fries, apple pie, liberty burgers. If it's not red, white or blue, we don't sell it. The fries are yellow. We're working on it.",
+  "Fireworks are on the menu. Light them outside. There is no outside. Light them carefully.",
+  "I've counted the flags in this building. Forty-seven. I'm told it's not enough. Somebody's bringing more.",
+  "In 1931 we did the Fourth properly: one sparkler, one flag, one very small band. Look at us now. Magnificent.",
+  "Every person in here has all their limbs. Let's keep it that way. Unless you buy fireworks. Then, who knows.",
+  "U! S! A! That's all of my letters. I've been practicing.",
+  "The eagle on the banner is named Gerald. He represents liberty. And Gerald."
+];
+const NPC_NEWYEAR = [
+  "Happy New Year! My resolution is to finally take down the Christmas tree. Same as last year.",
+  "Another year behind this counter. That's ninety-something. I've stopped counting. I've started estimating.",
+  "Black-eyed peas for luck. I had some in 1931. Look how lucky I turned out.",
+  "Champagne's on the menu. Remember what happened with the margaritas. I do. I always will.",
+  "Fireworks at midnight! And at 12:01. And all day, apparently. Mind your limbs.",
+  "The Christmas lights are staying up. They're New Year lights now. That's how it works.",
+  "Out with the old, in with the new. Except me. I'm staying old. It's my brand."
+];
 
 /* ---------------- me ---------------- */
 // You: position, yaw = which way you face, pitch = looking up/down, your ghost and your speech bubble.
@@ -2281,7 +3123,7 @@ function sharePresence(force) {
   if (!room) return;
   const g = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), r: +me.yaw.toFixed(3), c: myColor };
   const patch = { g };
-  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; patch.emo = myEmote; /* my latest emote (see "emotes") */ patch.legs = myLegsLost || null; /* legs Mortimer stole from me */ if (amRoomHost()) patch.heirs = heirList(); if (amRoomHost()) { patch.hol = holiday || null; /* host: the room's holiday (see "Holidays") */ patch.tg = thanksgiving || null; /* the same, for guests still on v2.20 */ } patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
+  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; patch.emo = myEmote; /* my latest emote (see "emotes") */ patch.legs = myLegsLost || null; /* legs Mortimer stole from me */ patch.lost = myPartsLost || null; /* limbs I've lost to fireworks */ if (amRoomHost()) patch.heirs = heirList(); if (amRoomHost()) { patch.hol = holiday || null; /* host: the room's holiday (see "Holidays") */ patch.tg = thanksgiving || null; /* the same, for guests still on v2.20 */ } patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
   room.presence(patch).catch(() => {});
 }
 // Send the shared playback state on its own channel.
@@ -2339,8 +3181,9 @@ function onPeers(ch) {
     seen.add(pe.peer);
     let o = others.get(pe.peer);
     const x = clamp(num(g.x, 0), -ROOM.x, ROOM.x), y = clamp(num(g.y, 0.3), 0, 6), z = clamp(num(g.z, 0), ROOM.zFront, LOBBY.z1), r = num(g.r, 0), c = clamp(num(g.c, 0) | 0, 0, SHEETS.length - 1);
-    if (!o) { o = { gh: makeGhost(c), tag: makeTag(), x, y, z, yaw: r, sayKey: null, sayAt: -99, sayText: "" }; others.set(pe.peer, o); setGhostKind(o.gh, thanksgiving); /* a turkey during the Thanksgiving theme */ }
+    if (!o) { o = { gh: makeGhost(c), tag: makeTag(), x, y, z, yaw: r, sayKey: null, sayAt: -99, sayText: "" }; others.set(pe.peer, o); setGhostKind(o.gh, bodyFor(0)); /* a turkey during the Thanksgiving theme */ }
     o.legs = clamp(num(pe.presence.legs, 0) | 0, 0, 2); if (o.gh.legsLost !== o.legs) setLegsLost(o.gh, o.legs);   // legs Mortimer stole from them
+    o.lost = clamp(num(pe.presence.lost, 0) | 0, 0, LIMBS); if (o.gh.partsLost !== o.lost) { setPartsLost(o.gh, o.lost); setGhostKind(o.gh, bodyFor(o.lost)); }   // limbs lost to fireworks (see "Fireworks")
     setGhostColor(o.gh, c); o.tx = x; o.ty = y; o.tz = z; o.tyaw = r;
     friendEmote(o, pe.presence.emo, pe.peer);   // an emote (1 to 5): act it out on their ghost
     const hid = typeof pe.presence.hold === "string" && MENU_BY_ID[pe.presence.hold] ? pe.presence.hold : null; setHeld(o.gh, hid);
@@ -3550,15 +4393,15 @@ renderCrowd();
 /* ---------------- chat and Boo ---------------- */
 /* ---------------- chat + boo ---------------- */
 // Show text in a speech bubble over your ghost (and everyone else's view of it).
-// Lines starting with "Boo" (or "Gobble", for turkeys) make your ghost puff up.
+// Lines starting with "Boo" (or a holiday's version, like "Gobble") make your ghost puff up.
 function say(text) {
   text = clean(text, 80).trim(); if (!text) return;
   me.say = text; me.sayAt = Date.now(); me.sayLocal = performance.now() / 1000;
-  if (/^(boo|gobble)/i.test(text)) me.ghost.booAt = performance.now() / 1000;
+  if (BOO_WORDS.test(text)) me.ghost.booAt = performance.now() / 1000;
   sharePresence(true);
 }
-// B / the Boo button. Turkeys gobble instead (Thanksgiving theme).
-function boo() { say(thanksgiving ? "Gobble gobble!" : "Boo!"); }
+// B / the Boo button. At a holiday showing it says the holiday's version (Gobble gobble!, Jingle jingle!…).
+function boo() { const d = HOLIDAY_DEFS[holiday]; say(d ? d.boo : "Boo!"); }
 // Send button / Enter in the chat box. A line starting with "/admin" is an admin command, not speech.
 $("chat").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -3596,14 +4439,15 @@ const money = (v) => "$" + v.toFixed(2);
 function saveWallet() { store.set("gm.wallet", Math.round(wallet * 100) / 100); }
 // Build the order menu: one row per MENU item, Buy disabled if you can't afford it or your hands are full.
 function renderShop() {
+  dressShopForSanta();   // at Christmas, the menu is a letter to Santa
   $("walletTop").textContent = money(wallet) + " Ghost Bucks";
   const ul = $("menuList"); ul.textContent = "";
-  for (const m of shownMenu()) {   // Thanksgiving foods only during a Thanksgiving showing
+  for (const m of shownMenu()) {   // holiday foods only during their holiday
     const li = document.createElement("li");
     const chip = document.createElement("span"); chip.className = "chip"; chip.style.background = m.color;
     const nm = document.createElement("div"); nm.className = "nm"; const b = document.createElement("b"); b.textContent = m.name; const sp = document.createElement("span"); sp.textContent = m.uses + " " + (m.verb === "Drink" ? "sips" : "bites"); nm.append(b, sp);
     const pr = document.createElement("span"); pr.className = "price"; pr.textContent = money(m.price);
-    const buy = document.createElement("button"); buy.type = "button"; buy.textContent = "Buy"; buy.disabled = wallet + 1e-9 < m.price || inventory.length >= 6;
+    const buy = document.createElement("button"); buy.type = "button"; buy.textContent = holiday === "christmas" ? "Ask for it" : "Buy"; buy.disabled = wallet + 1e-9 < m.price || inventory.length >= 6;
     buy.title = inventory.length >= 6 ? "Your hands are full" : wallet < m.price ? "Not enough Ghost Bucks" : "Buy " + m.name;
     buy.addEventListener("click", () => buyItem(m.id));
     li.append(chip, nm, pr, buy); ul.appendChild(li);
@@ -3611,8 +4455,8 @@ function renderShop() {
   $("atm").disabled = wallet >= 100;
 }
 // Open/close the order menu (only works near the counter).
-function openShop() { if (!nearCounter()) return; renderShop(); $("shop").hidden = false; keys.clear(); const f = $("menuList").querySelector("button:not(:disabled)"); if (f) f.focus(); }
-function closeShop() { $("shop").hidden = true; }
+function openShop() { if (!nearCounter()) return; if (holiday === "christmas") startLap(); /* climb onto Santa's lap */ renderShop(); $("shop").hidden = false; keys.clear(); const f = $("menuList").querySelector("button:not(:disabled)"); if (f) f.focus(); }
+function closeShop() { $("shop").hidden = true; endLap(); /* off Santa's lap, if you were on it */ }
 // Pay and put the snack in your hands (or pockets).
 function buyItem(id) {
   const m = MENU_BY_ID[id]; if (!m) return;
@@ -3623,8 +4467,9 @@ function buyItem(id) {
   if (id === "turkeyleg") { orderTurkeyLeg(); renderShop(); closeShop(); mortNoteOrder(id); return; }
   inventory.push({ id, left: m.uses });
   if (inventory.length === 1) refreshHeld(); else renderTray();
-  renderShop(); toast("Got " + m.name.toLowerCase() + ". Press F to " + m.verb.toLowerCase() + ".");
+  renderShop(); toast((holiday === "christmas" ? "Santa gave you " : "Got ") + m.name.toLowerCase() + ". Press F to " + m.verb.toLowerCase() + ".");
   mortNoteOrder(id);   // Mortimer remembers (and may comment on a repeat order)
+  if (holiday === "christmas") npcSay(santaGift(m));   // at Christmas, Santa has the last word
 }
 // After your held snack changes: update your ghost's hand, the tray, and tell everyone.
 function refreshHeld() { setHeld(me.ghost, heldItem() ? heldItem().id : null); renderTray(); sharePresence(true); }
@@ -3746,9 +4591,10 @@ function updateAlcohol(dt, t) {
 // Take one bite/sip (F): animate, say a sound like *crunch*, and finish the item when it's empty.
 function eatHeld() {
   const h = heldItem(); if (!h) return;
+  if (h.id === "firework") { lightFirework(); return; }   // F lights a firework instead (see "Fireworks")
   const m = MENU_BY_ID[h.id]; h.left -= 1;
   me.ghost.munchAt = performance.now() / 1000;
-  if (h.id === "margarita") sipAlcohol(1 / m.uses);   // a third of a drink per sip (see "Margaritas")
+  if (h.id === "margarita" || h.id === "champagne") sipAlcohol(1 / m.uses);   // a glass is one drink (see "Margaritas")
   if (h.id === "water") sipWater();                   // water helps you sober up a bit faster
   if (h.left <= 0) { inventory.shift(); say(m.done); toast("Finished the " + m.name.toLowerCase() + "."); refreshHeld(); }
   else { say(m.sounds[Math.floor(Math.random() * m.sounds.length)]); renderTray(); }
@@ -3797,7 +4643,7 @@ npc.tag.nm.textContent = "Mortimer · Concessions";
   const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.18, 0.15, 24), red); hat.position.set(0.02, 1.14, 0); hat.rotation.z = -0.12; usherHat.add(hat);
   const band = new THREE.Mesh(new THREE.CylinderGeometry(0.183, 0.183, 0.035, 24), brass); band.position.set(0.02, 1.085, 0); band.rotation.z = -0.12; usherHat.add(band);
   // At a Thanksgiving showing he wears a pilgrim hat instead: a tall black crown, a wide brim, and a
-  // dark band with a square brass buckle at the front. Hidden until setThanksgiving() swaps it in.
+  // dark band with a square brass buckle at the front. Hidden until dressMortimer() swaps it in (see "More holidays").
   // Built at the hat's resting spot, then the whole hat is tipped a little to the side like the pillbox.
   const pilgrimHat = new THREE.Group(); pilgrimHat.position.set(0.02, 1.08, 0); pilgrimHat.rotation.z = -0.12; pilgrimHat.visible = false; gh.bodyG.add(pilgrimHat);
   const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.025, 32), black); pilgrimHat.add(brim);
@@ -3805,7 +4651,7 @@ npc.tag.nm.textContent = "Mortimer · Concessions";
   const hatBand = new THREE.Mesh(new THREE.CylinderGeometry(0.177, 0.181, 0.06, 28), new THREE.MeshStandardMaterial({ color: 0x3b2414, roughness: 0.7 })); hatBand.position.y = 0.05; pilgrimHat.add(hatBand);
   const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.075, 0.012), brass); buckle.position.set(0, 0.05, -0.181); pilgrimHat.add(buckle);   // on the front (he faces -z)
   const hole = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.038, 0.014), black); hole.position.set(0, 0.05, -0.182); pilgrimHat.add(hole);           // the buckle's dark middle
-  gh.hats = { usher: usherHat, pilgrim: pilgrimHat };   // setThanksgiving() shows one or the other
+  gh.hats = { usher: usherHat, pilgrim: pilgrimHat };   // dressMortimer() shows one (the other holidays' outfits are added later)
   const badge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.012), brass); const ba = Math.PI - 0.78;
   badge.position.set(Math.sin(ba) * 0.545, 0.6, Math.cos(ba) * 0.545); badge.rotation.y = ba; gh.bodyG.add(badge);
 })(npc.ghost);
@@ -4011,6 +4857,8 @@ function talkNpc() {
     else if (proj.kind === "screen") ctx.push((proj.nick || "Somebody") + " has their screen up on the big screen. In my day we had newsreels.");
     else if (!proj.owner) ctx.push("Nothing on the screen yet. Anybody can put a movie up with the Load movie button.");
     if (flying.length > 3) ctx.push("Somebody's been throwing food. I'll find out who. I always find out who.");
+    if (myPartsLost && myPartsLost < LIMBS) ctx.push("You seem to be missing your " + PART_NAMES[myPartsLost - 1] + ". We don't have a lost and found. We have a lost and lost.");
+    if (myPartsLost >= LIMBS && (holiday === "july4" || holiday === "newyear")) ctx.push("Welcome to the other side! Fireworks? Fireworks. It's always fireworks.");
     ctx.push(...mortMemoryLines());
    // what he remembers about you (see "Mortimer remembers you")
     // If you've been drinking, he usually mentions it (see "Margaritas").
@@ -4020,8 +4868,8 @@ function talkNpc() {
     else if (Math.random() < BACKSTORY_CHANCE) { npc.lastBack = pickFresh(NPC_BACKSTORY, npc.lastBack); line = NPC_BACKSTORY[npc.lastBack]; npc.backTold++; }
     // Otherwise, a bit under half the time, a remark about what's going on right now (if anything is).
     else if (ctx.length && Math.random() < 0.45) line = pickOne(ctx);
-    // At a Thanksgiving showing, often a holiday remark (see "Thanksgiving theme").
-    else if (thanksgiving && Math.random() < 0.4) line = pickOne(NPC_THANKSGIVING);
+    // At a holiday showing, often a holiday remark (see "Holidays" and "More holidays").
+    else if (holidayLines() && Math.random() < 0.4) line = pickOne(holidayLines());
     // Otherwise his everyday chatter.
     else { npc.last = pickFresh(NPC_LINES, npc.last); line = NPC_LINES[npc.last]; }
   }
@@ -4390,6 +5238,7 @@ function stepThrows(dt, t) {
     const f = flying[i], age = t - f.born;
     if (age > 30 || Math.abs(f.p.x) > 30 || f.p.y < -3 || f.p.z < -25 || f.p.z > 45) { killThrow(i); continue; }
     if (age > 29.4) f.mesh.scale.setScalar(1.25 * Math.max(0.02, (30 - age) / 0.6));
+    if (f.id === "firework" && age >= FIREWORK_FUSE) { onFireworkBurst(f.p); killThrow(i); continue; }   // the fuse ran out: BOOM (see "Fireworks")
     if (f.rest) continue;
     const n = Math.max(1, Math.ceil(dt / (1 / 90))), h = dt / n;
     for (let s = 0; s < n && !f.rest; s++) {
@@ -4481,7 +5330,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.22 · 2026-11-13";
+const BUILD = "v2.23 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -4591,6 +5440,8 @@ function dbgRows() {
       ["Holding", inventory.length ? inventory.map((it, i) => (i ? "" : "▶ ") + MENU_BY_ID[it.id].name + " (" + it.left + ")").join(", ") : "nothing"],
       ["Food in the air", flying.length + " (" + flying.filter((f) => f.rest).length + " landed)"],
       ["Alcohol", alcohol.toFixed(2) + " drinks" + (alcohol >= 3.99 ? "" : alcohol >= 2.99 ? " (drifting + blurry)" : alcohol >= 1.99 ? " (drifting)" : "") + (blackout ? ", blacked out" : "") + (nowS() - lastSipAt < SOBER_DELAY ? ", still drinking" : alcohol > 0 ? ", sobering up" : "") + " · " + blackouts + " blackout(s)"],
+      ["Holiday body", "your body: " + me.ghost.kind + (lap ? " · on Santa's lap" : "") + (me.ghost.kind === "bunny" ? " · " + hopsDone + " hops" : "")],
+      ["Fireworks", burstsTotal + " burst here · you've lost " + myPartsLost + " of " + LIMBS + " limbs" + (myPartsLost ? " (" + PART_NAMES.slice(0, myPartsLost).join(", ") + ")" : "")],
       ["Tomato splats", splats.length + " on the screen now, " + splatsTotal + " so far"],
       ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
       ["Last emote", lastEmoteSeen ? lastEmoteSeen.who + ": " + lastEmoteSeen.kind + ", " + Math.round(performance.now() / 1000 - lastEmoteSeen.at) + "s ago" : "none yet"],
@@ -4958,6 +5809,7 @@ function frame() {
   const dt = Math.min(clock.getDelta(), 0.05), t = performance.now() / 1000;
   updateGhostFade(dt); // ghosts fade out while the HUD is hidden
   updateLeaves(dt, t); // Thanksgiving theme: falling leaves (does nothing when the theme is off)
+  updateHolidayFx(dt, t); // other holidays: snow, confetti, twinkling lights, fireworks (see "More holidays")
   fpsFrames++; if (performance.now() - fpsT >= 1000) { fps = fpsFrames * 1000 / (performance.now() - fpsT); fpsFrames = 0; fpsT = performance.now(); }
 
   // On the welcome screen, slowly pan the view back and forth as a backdrop.
@@ -4987,18 +5839,32 @@ function frame() {
     else if (walkable(me.x, nz)) me.z = nz;
     // Float between the floor (higher on the stage) and the ceiling of wherever you are.
     const minY = me.z < ROOM.zFront + 2.8 ? 0.72 : 0.05, maxY = Math.max(minY, ceilingAt(me.x, me.z));
-    me.y = Math.max(minY, me.y + u * 2.4 * dt);
-    if (me.y > maxY) me.y += (maxY - me.y) * Math.min(1, dt * 7);
+    if (me.ghost.kind === "bunny") {
+      // Easter: bunnies can't fly. On the floor, moving makes a little hop and Space (or E, or Rise) a big
+      // jump; in the air, you fall back down (see "Easter: hopping").
+      if (me.y <= minY + 0.001) {
+        me.y = minY;
+        const still = !$("shop").hidden || !!blackout, jump = !still && (keys.has(" ") || keys.has("e") || vHold > 0), moving = Math.abs(f) + Math.abs(s) > 0.1;
+        hopVy = jump ? HOP_JUMP : moving ? HOP_STEP : 0; if (hopVy) hopsDone++;
+      }
+      hopVy -= HOP_GRAVITY * dt; me.y = Math.max(minY, me.y + hopVy * dt);
+      if (me.y > maxY) { me.y = maxY; hopVy = Math.min(0, hopVy); }
+    } else {
+      me.y = Math.max(minY, me.y + u * 2.4 * dt);
+      if (me.y > maxY) me.y += (maxY - me.y) * Math.min(1, dt * 7);
+    }
+    if (lap) sitOnLap();   // Christmas: sitting on Santa's lap while ordering (see "Christmas: Santa's lap")
     // Show the counter / Mortimer buttons when you're close.
     const near = nearCounter(), nn = nearNpc();
     if (near !== lastNear || nn !== lastNearNpc) { lastNear = near; lastNearNpc = nn; $("openShop").hidden = !near; $("talkNpc").hidden = !nn; $("shopHint").hidden = !(near || nn) && $("pickBtn").hidden; if (!near) closeShop(); }
   }
   poseGhost(me.ghost, me.x, me.y, me.z, me.yaw, t);
-  me.ghost.group.visible = !firstPerson; // you can't see your own ghost from inside it
+  me.ghost.group.visible = !firstPerson || !!lap; // you can't see your own ghost from inside it (but on Santa's lap the camera is outside)
 
   // camera
   fwd.set(-Math.sin(me.yaw), 0, -Math.cos(me.yaw));
-  if (firstPerson) {
+  if (lap) lapCamera();   // Christmas: a side view of you on Santa's lap
+  else if (firstPerson) {
     // First person: the camera sits at your ghost's eyes.
     camera.position.set(me.x, me.y + 0.82, me.z); camera.rotation.order = "YXZ"; camera.rotation.set(me.pitch, me.yaw, 0);
   } else {
