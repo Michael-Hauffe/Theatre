@@ -2702,9 +2702,11 @@ function santaGift(m) {
 /* ---------------- Easter: hopping (and people walking) ----------------
    Bunnies can't fly. They stay on the floor, bounce along in little hops whenever they move, and Space
    (or E, or the Rise button) makes a bigger jump. People (Independence Day, New Year's Day) can't fly
-   either: they walk on the floor and Space jumps. Handled in the main loop's movement (see frame()). */
+   either: they walk on the floor and Space jumps, and someone fireworks have left with just one leg
+   hops along on it. Handled in the main loop's movement (see frame()). */
 const HOP_STEP = 3.2, HOP_JUMP = 5.2, HOP_GRAVITY = 14;   // hop and jump launch speeds, and how fast you fall (m/s, m/s²)
 const PERSON_JUMP = 4.6;   // people can't fly either; they walk and jump (about 0.75 m high)
+const ONE_LEG_HOP = 2.6;   // a person down to one leg hops along on it (little hops, about 0.25 m high)
 let hopVy = 0;    // your current up/down speed while hopping
 let hopsDone = 0; // hops on this page (debug screen)
 
@@ -5553,7 +5555,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.29 · 2026-11-17";
+const BUILD = "v2.30 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -5663,7 +5665,7 @@ function dbgRows() {
       ["Holding", inventory.length ? inventory.map((it, i) => (i ? "" : "▶ ") + MENU_BY_ID[it.id].name + " (" + it.left + ")").join(", ") : "nothing"],
       ["Food in the air", flying.length + " (" + flying.filter((f) => f.rest).length + " landed)"],
       ["Alcohol", alcohol.toFixed(2) + " drinks" + (alcohol >= 3.99 ? "" : alcohol >= 2.99 ? " (drifting + blurry)" : alcohol >= 1.99 ? " (drifting)" : "") + (blackout ? ", blacked out" : "") + (nowS() - lastSipAt < SOBER_DELAY ? ", still drinking" : alcohol > 0 ? ", sobering up" : "") + " · " + blackouts + " blackout(s)"],
-      ["Holiday body", "your body: " + me.ghost.kind + (lap ? " · on Santa's lap" : "") + (me.ghost.kind === "bunny" ? " · " + hopsDone + " hops" : "") + (holiday === "july4" ? " · " + Math.round(myLbs) + " lbs" : "")],
+      ["Holiday body", "your body: " + me.ghost.kind + (lap ? " · on Santa's lap" : "") + (me.ghost.kind === "bunny" || hopsDone ? " · " + hopsDone + " hops" : "") + (holiday === "july4" ? " · " + Math.round(myLbs) + " lbs" : "")],
       ["Fireworks", burstsTotal + " burst here · you've lost " + myPartsLost + " of " + LIMBS + " limbs" + (myPartsLost ? " (" + PART_NAMES.slice(0, myPartsLost).join(", ") + ")" : "")],
       ["Tomato splats", splats.length + " on the screen now, " + splatsTotal + " so far"],
       ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
@@ -6071,7 +6073,10 @@ function frame() {
         me.y = minY;
         const still = !$("shop").hidden || !!blackout, jump = !still && (keys.has(" ") || keys.has("e") || vHold > 0), moving = Math.abs(f) + Math.abs(s) > 0.1;
         const bunny = me.ghost.kind === "bunny";
-        hopVy = jump ? (bunny ? HOP_JUMP : PERSON_JUMP) : bunny && moving ? HOP_STEP : 0; if (hopVy && bunny) hopsDone++;
+        // A person with only one leg left (fireworks took the rest) can't walk, so they hop on it instead.
+        const oneLeg = me.ghost.kind === "person" && myPartsLost === LIMBS - 1;
+        hopVy = jump ? (bunny ? HOP_JUMP : PERSON_JUMP) : moving && bunny ? HOP_STEP : moving && oneLeg ? ONE_LEG_HOP : 0;
+        if (hopVy && (bunny || oneLeg) && !jump) hopsDone++;
       }
       hopVy -= HOP_GRAVITY * dt; me.y = Math.max(minY, me.y + hopVy * dt);
       if (me.y > maxY) { me.y = maxY; hopVy = Math.min(0, hopVy); }
