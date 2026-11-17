@@ -4194,7 +4194,8 @@ function freshStart() {
 // ---- Self-repair for a black or frozen screen ----
 // Every 2 seconds, a watcher checks the picture it's showing from the projectionist:
 //   - a connection that died (see callBroken(): "failed", or "disconnected" for 10 seconds), or
-//   - a screen share, or a playing movie, that hasn't delivered a single frame for 8 seconds, or
+//   - a screen share, or a playing movie, that hasn't delivered a single frame for 8 seconds
+//     (25 seconds while the computers are still searching for a route to each other), or
 //   - a playing movie whose frames stopped arriving for 8 seconds.
 // Then it hangs up that call and asks the projectionist (via a "recall" message) to call again.
 // After 3 tries in a row without success it stops and shows a notice instead of looping forever.
@@ -4216,7 +4217,11 @@ setInterval(() => {
   const expect = proj.kind === "screen" || (proj.kind === "movie" && pb.p);
   if (!expect) { repair.expectSince = 0; return; }
   if (!repair.expectSince) repair.expectSince = now;
-  const never = q === 0 && now - Math.max(repair.since, repair.expectSince) > 8000;
+  // While the two computers are still searching for a route ("new"/"checking"), hanging up would only make
+  // them start the search over, so give that search up to 25 seconds before calling it stalled.
+  const ice = currentCall.peerConnection && currentCall.peerConnection.iceConnectionState;
+  const searching = ice === "new" || ice === "checking";
+  const never = q === 0 && now - Math.max(repair.since, repair.expectSince) > (searching ? 25000 : 8000);
   const frozen = q > 0 && proj.kind === "movie" && pb.p && now - Math.max(repair.changedAt, repair.expectSince) > 8000;
   if (!(never || frozen) || repair.gaveUp) return;
   if (repair.tries >= 3) { repair.gaveUp = true; updateNotice(); return; }
@@ -4329,7 +4334,10 @@ function makeNet(peerObj, isHost, hostConn, onDown) {
       // HOST ONLY: send a message to one guest (used for admin replies and the kick notice).
       sendTo(pid, m) { const cn = isHost && conns.get(pid); if (cn && cn.open) { try { cn.send(Object.assign({}, m, { from: myPid })); } catch {} } },
       // HOST ONLY: disconnect one guest (/admin kick).
-      drop(pid) { const cn = isHost && conns.get(pid); if (cn) { try { cn.close(); } catch {} } }
+      drop(pid) { const cn = isHost && conns.get(pid); if (cn) { try { cn.close(); } catch {} } },
+      // The room-message connections this page has, as [their id, connection] pairs (for the debug screen's
+      // "Routes" rows): a host has one per guest, a guest just the one to the host.
+      links() { return isHost ? [...conns] : hostConn ? [[hostConn.peer, hostConn]] : []; }
     };
   }
   return api("lobby");
@@ -4595,7 +4603,7 @@ async function host(tries) {
     if (!entered) { setBusy(false); lobbyMsg("Couldn't open a room (" + (err && err.type || "network") + "). Try again in a moment."); }
   });
 }
-// Join a friend's room by code. Gives up after 15 s with a helpful message.
+// Join a friend's room by code. Gives up after 30 s with a helpful message.
 async function join(code) {
   if (typeof Peer === "undefined") { lobbyMsg("Couldn't load the connection library. Check your internet connection."); return; }
   code = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -5626,7 +5634,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.32 · 2026-11-17";
+const BUILD = "v2.33 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -5659,6 +5667,48 @@ function showUpdateBar(text) {
 // Refresh loads the latest page (a normal reload asks the website whether the saved copy is still current).
 $("updateBtn").addEventListener("click", () => location.reload());
 $("updateLater").addEventListener("click", () => { updateDismissed = true; $("updateBar").hidden = true; });
+// ---- Routes (for the debug screen) ----
+// Every 2 seconds, look at each live connection (the room-message link and every video link, in or out)
+// and note how it is doing: its state, how long it has existed, which kinds of network address each side
+// offered ("host" = local network, "srflx" = public internet address, "prflx" = one discovered while
+// testing, "relay" = through a relay server), how many possible routes were tried and how many worked,
+// and which route is in use. If chat works but video doesn't, comparing these shows why.
+const routeNotes = new WeakMap();   // connection -> its latest summary text
+const bornAt = new WeakMap();       // connection -> when we first saw it (to show its age)
+async function noteRoute(pc) {
+  if (!pc) return;
+  if (!bornAt.has(pc)) bornAt.set(pc, performance.now());
+  try {
+    const rep = await pc.getStats(), cand = {}, mine = new Set(), theirs = new Set(), n = { ok: 0, failed: 0, trying: 0, waiting: 0 };
+    let use = null;
+    rep.forEach((r) => {
+      if (r.type === "local-candidate") { mine.add(r.candidateType); cand[r.id] = r; }
+      if (r.type === "remote-candidate") { theirs.add(r.candidateType); cand[r.id] = r; }
+      if (r.type === "candidate-pair") {
+        if (r.state === "succeeded") n.ok++; else if (r.state === "failed") n.failed++; else if (r.state === "in-progress") n.trying++; else n.waiting++;
+        if (r.nominated && r.state === "succeeded") use = r;
+      }
+    });
+    const kind = (c) => c ? c.candidateType + (c.protocol ? "/" + c.protocol : "") : "?";
+    routeNotes.set(pc, pc.iceConnectionState + ", " + Math.round((performance.now() - bornAt.get(pc)) / 1000) + "s old · mine: " + ([...mine].join("+") || "none") + " · theirs: " + ([...theirs].join("+") || "none") +
+      " · routes " + n.ok + " worked, " + n.failed + " failed, " + n.trying + " trying, " + n.waiting + " waiting" + (use ? " · using " + kind(cand[use.localCandidateId]) + " → " + kind(cand[use.remoteCandidateId]) : ""));
+  } catch {}
+}
+// Every connection worth describing, as [label, connection] pairs.
+function routeLinks() {
+  const out = [];
+  try { if (room && room.links) for (const [id, cn] of room.links()) out.push(["Room link to " + whoIs(id), cn.peerConnection]); } catch {}
+  for (const [id, c] of calls) out.push(["Video to " + whoIs(id), c.call.peerConnection]);
+  for (const [id, ic] of inCalls) out.push(["Video from " + whoIs(id), ic.call.peerConnection]);
+  return out.filter(([, pc]) => pc);
+}
+setInterval(() => { for (const [, pc] of routeLinks()) noteRoute(pc); }, 2000);
+// Rows for the debug screen.
+function routeRows() {
+  const rows = routeLinks().map(([label, pc]) => [label, routeNotes.get(pc) || pc.iceConnectionState + " (measuring)"]);
+  return rows.length ? rows : [["Connections", "none"]];
+}
+
 // Collect everything worth knowing, grouped into sections of [label, value] rows.
 function dbgRows() {
   const pc = currentCall && currentCall.peerConnection;
@@ -5669,6 +5719,7 @@ function dbgRows() {
   const ago = (ms) => (ms ? ((performance.now() - ms) / 1000).toFixed(1) + "s ago" : "never");
   return [
     ["Last join attempt", joinRows()],   // how the most recent try at joining a room went (see joinLog)
+    ["Routes", routeRows()],             // how each connection to other players is doing (see "Routes")
     ["Room", [
       ["Build", BUILD],
       ["Latest on website", latestBuild ? latestBuild + (latestBuild === BUILD ? " (up to date)" : " (refresh to update)") + ", checked " + new Date(latestCheckedAt).toLocaleTimeString() : "not checked yet"],
