@@ -406,7 +406,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
           <dt><kbd>S</kbd><span class="alt">or</span><kbd>&darr;</kbd></dt><dd>Drift backward</dd>
           <dt><kbd>A</kbd> <kbd>D</kbd></dt><dd>Drift left and right</dd>
           <dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Turn left and right</dd>
-          <dt><kbd>Space</kbd><span class="alt">or</span><kbd>E</kbd></dt><dd>Rise (Easter: jump, since bunnies can't fly)</dd>
+          <dt><kbd>Space</kbd><span class="alt">or</span><kbd>E</kbd></dt><dd>Rise (bunnies and people can't fly: it jumps instead)</dd>
           <dt><kbd>Shift</kbd><span class="alt">or</span><kbd>Q</kbd><span class="alt">or</span><kbd>C</kbd></dt><dd>Sink</dd>
           <dt><span class="act">Drag the view</span></dt><dd>Look around</dd>
         </dl>
@@ -1916,6 +1916,7 @@ function noteTheme() {
      - Christmas: to order, you sit on Mortimer's lap (he's playing Santa) and ask him for things
        ("Christmas: Santa's lap").
      - Easter: bunnies can't fly; they hop along the floor, and Space makes them jump ("Easter: hopping").
+       People (Independence Day, New Year's Day) can't fly either: they walk, and Space jumps.
      - Independence Day and New Year's Day: the stand sells fireworks. One bursting near you blows off
        an arm or a leg for the rest of the showing; lose all four and you're a ghost ("Fireworks").
    Thanksgiving is in its own section above ("Thanksgiving theme") and is switched by the same code here.
@@ -1929,8 +1930,8 @@ const HOLIDAY_DEFS = {
   thanksgiving: { body: "turkey", title: "Gobble Matinee", booBtn: "Gobble!", boo: "Gobble gobble!", outfit: "pilgrim", hello: "Happy Thanksgiving! Everyone's a turkey tonight.", lines: () => NPC_THANKSGIVING },
   christmas: { body: "reindeer", title: "Merry Matinee", booBtn: "Jingle!", boo: "Jingle jingle!", outfit: "santa", hello: "Merry Christmas! Everyone's a reindeer tonight. Santa's taking orders at the counter.", lines: () => NPC_CHRISTMAS, decor: () => buildChristmasDecor() },
   easter: { body: "bunny", title: "Hoppy Matinee", booBtn: "Boing!", boo: "Boing boing!", outfit: "bunny", hello: "Happy Easter! Everyone's a bunny tonight. Bunnies can't fly, so hop (Space to jump).", lines: () => NPC_EASTER, decor: () => buildEasterDecor() },
-  july4: { body: "person", title: "Star-Spangled Matinee", booBtn: "USA!", boo: "USA! USA! USA!", outfit: "july4", hello: "Happy Independence Day! Everyone's a person tonight. Careful with the fireworks.", lines: () => NPC_JULY4, decor: () => buildJuly4Decor() },
-  newyear: { body: "person", title: "New Year's Matinee", booBtn: "Cheers!", boo: "Happy New Year!", outfit: "newyear", hello: "Happy New Year! Everyone's a person tonight. Careful with the fireworks.", lines: () => NPC_NEWYEAR, decor: () => buildNewYearDecor() }
+  july4: { body: "person", title: "Star-Spangled Matinee", booBtn: "USA!", boo: "USA! USA! USA!", outfit: "july4", hello: "Happy Independence Day! Everyone's a person tonight (people can't fly: Space jumps). Careful with the fireworks.", lines: () => NPC_JULY4, decor: () => buildJuly4Decor() },
+  newyear: { body: "person", title: "New Year's Matinee", booBtn: "Cheers!", boo: "Happy New Year!", outfit: "newyear", hello: "Happy New Year! Everyone's a person tonight (people can't fly: Space jumps). Careful with the fireworks.", lines: () => NPC_NEWYEAR, decor: () => buildNewYearDecor() }
 };
 // Lines that make your character puff up (like Boo): Boo itself and every holiday's version.
 const BOO_WORDS = /^(boo|gobble|jingle|boing|usa|happy new year)/i;
@@ -1987,8 +1988,8 @@ function solidMat(gh) { if (!gh.solid) gh.solid = std(gh.mat.color.getHex(), { r
 const DEER = { fur: std(0x7a4a26), belly: std(0xd9b58c), antler: std(0xc9ad80, { roughness: 0.6 }), nose: std(0x1c1410, { roughness: 0.3 }), hoof: std(0x2b1d14), bell: std(0xe0b84a, { metalness: 0.6, roughness: 0.3 }), tail: std(0xf4efe6) };
 function makeReindeerBody(gh) {
   const g = new THREE.Group(), D = DEER, P = (geo, mat, sc, pos, par) => bodyPart(par || g, geo, mat, sc, pos);
-  P(BALL, D.fur, [0.38, 0.42, 0.36], [0, 0.45, 0]);                      // round body
-  P(BALL, D.belly, [0.25, 0.3, 0.1], [0, 0.42, -0.28]);                  // pale belly
+  P(BALL, D.fur, [0.24, 0.36, 0.22], [0, 0.5, 0]);                       // body (a normal, slim build)
+  P(BALL, D.belly, [0.15, 0.24, 0.06], [0, 0.48, -0.18]);                // pale chest
   P(BALL, D.fur, [0.22, 0.21, 0.22], [0, 0.98, -0.1]);                   // head
   P(BALL, D.belly, [0.12, 0.1, 0.15], [0, 0.92, -0.3]);                  // snout
   P(BALL, D.nose, [0.045, 0.04, 0.04], [0, 0.95, -0.44]);                // a plain dark nose
@@ -1999,20 +2000,22 @@ function makeReindeerBody(gh) {
     const beam = P(ROD, D.antler, [0.022, 0.36, 0.022], [sd * 0.16, 1.3, -0.04]); beam.rotation.z = -sd * 0.45;
     const t1 = P(ROD, D.antler, [0.017, 0.18, 0.017], [sd * 0.27, 1.42, -0.04]); t1.rotation.z = -sd * 1.15;
     const t2 = P(ROD, D.antler, [0.017, 0.16, 0.017], [sd * 0.19, 1.5, -0.04]); t2.rotation.z = sd * 0.2;
-    P(ROD, D.fur, [0.07, 0.3, 0.07], [sd * 0.15, 0.15, 0]);              // legs
-    P(ROD, D.hoof, [0.075, 0.06, 0.075], [sd * 0.15, -0.02, 0]);         // hooves
+    P(ROD, D.fur, [0.055, 0.3, 0.055], [sd * 0.11, 0.15, 0]);            // legs
+    P(ROD, D.hoof, [0.06, 0.06, 0.06], [sd * 0.11, -0.02, 0]);           // hooves
   }
   // A scarf in the player's color, with a little gold bell at the front (it's why Boo says "Jingle!").
-  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.05, 8, 20), solidMat(gh)); scarf.rotation.x = Math.PI / 2; scarf.position.set(0, 0.8, -0.05); g.add(scarf);
-  P(BALL, solidMat(gh), [0.06, 0.16, 0.03], [0.1, 0.68, -0.2]);          // scarf end hanging down
-  P(BALL, D.bell, [0.045, 0.045, 0.045], [0, 0.74, -0.22]);              // bell
-  P(BALL, D.tail, [0.07, 0.06, 0.06], [0, 0.55, 0.36]);                  // fluffy white tail
-  // Front legs stand in for arms (same resting place as a ghost's arms).
-  const arms = [-1, 1].map((sd) => { const a = P(armGeo, D.fur, [0.5, 1.2, 0.55], [sd * 0.5, 0.48, -0.08]); a.rotation.z = sd * 0.5; return a; });
+  P(ROD, D.fur, [0.075, 0.16, 0.075], [0, 0.86, -0.06]);                // neck
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.04, 8, 20), solidMat(gh)); scarf.rotation.x = Math.PI / 2; scarf.position.set(0, 0.84, -0.05); g.add(scarf);
+  P(BALL, solidMat(gh), [0.05, 0.14, 0.025], [0.07, 0.74, -0.15]);       // scarf end hanging down
+  P(BALL, D.bell, [0.04, 0.04, 0.04], [0, 0.79, -0.16]);                 // bell
+  P(BALL, D.tail, [0.06, 0.05, 0.05], [0, 0.6, 0.23]);                   // fluffy white tail
+  // Front legs stand in for arms, hanging close to the slim body (actEmote() puts them back here).
+  const rest = { x: 0.27, y: 0.55, z: -0.04, rz: 0.3 };
+  const arms = [-1, 1].map((sd) => { const a = P(armGeo, D.fur, [0.38, 1.25, 0.4], [sd * rest.x, rest.y, rest.z]); a.rotation.z = sd * rest.rz; return a; });
   const holder = new THREE.Group(); holder.position.set(0, 0.86, -0.38); holder.scale.setScalar(0.4); g.add(holder);
   const mouth = P(eyeGeo, eyeMat, [0.8, 1.1, 0.5], [0, 0, 0], holder);
   gh.bodyG.add(g);
-  return { group: g, arms, mouth };
+  return { group: g, arms, mouth, rest };
 }
 
 // ---- Bunny (Easter) ----
@@ -2545,10 +2548,12 @@ function santaGift(m) {
   return t.replace("{item}", item).replace("{Item}", m.name).replace("{price}", money(m.price).slice(1));
 }
 
-/* ---------------- Easter: hopping ----------------
+/* ---------------- Easter: hopping (and people walking) ----------------
    Bunnies can't fly. They stay on the floor, bounce along in little hops whenever they move, and Space
-   (or E, or the Rise button) makes a bigger jump. Handled in the main loop's movement (see frame()). */
+   (or E, or the Rise button) makes a bigger jump. People (Independence Day, New Year's Day) can't fly
+   either: they walk on the floor and Space jumps. Handled in the main loop's movement (see frame()). */
 const HOP_STEP = 3.2, HOP_JUMP = 5.2, HOP_GRAVITY = 14;   // hop and jump launch speeds, and how fast you fall (m/s, m/s²)
+const PERSON_JUMP = 4.6;   // people can't fly either; they walk and jump (about 0.75 m high)
 let hopVy = 0;    // your current up/down speed while hopping
 let hopsDone = 0; // hops on this page (debug screen)
 
@@ -5330,7 +5335,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.23 · 2026-11-17";
+const BUILD = "v2.24 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -5839,13 +5844,16 @@ function frame() {
     else if (walkable(me.x, nz)) me.z = nz;
     // Float between the floor (higher on the stage) and the ceiling of wherever you are.
     const minY = me.z < ROOM.zFront + 2.8 ? 0.72 : 0.05, maxY = Math.max(minY, ceilingAt(me.x, me.z));
-    if (me.ghost.kind === "bunny") {
-      // Easter: bunnies can't fly. On the floor, moving makes a little hop and Space (or E, or Rise) a big
-      // jump; in the air, you fall back down (see "Easter: hopping").
+    if (me.ghost.kind === "bunny" || me.ghost.kind === "person") {
+      // Bunnies (Easter) and people (Independence Day, New Year's Day) can't fly: they stay on the floor,
+      // and Space (or E, or Rise) jumps; in the air, you fall back down. Bunnies also bounce along in
+      // little hops whenever they move (see "Easter: hopping"). People who've lost every limb to fireworks
+      // are ghosts again, and ghosts fly.
       if (me.y <= minY + 0.001) {
         me.y = minY;
         const still = !$("shop").hidden || !!blackout, jump = !still && (keys.has(" ") || keys.has("e") || vHold > 0), moving = Math.abs(f) + Math.abs(s) > 0.1;
-        hopVy = jump ? HOP_JUMP : moving ? HOP_STEP : 0; if (hopVy) hopsDone++;
+        const bunny = me.ghost.kind === "bunny";
+        hopVy = jump ? (bunny ? HOP_JUMP : PERSON_JUMP) : bunny && moving ? HOP_STEP : 0; if (hopVy && bunny) hopsDone++;
       }
       hopVy -= HOP_GRAVITY * dt; me.y = Math.max(minY, me.y + hopVy * dt);
       if (me.y > maxY) { me.y = maxY; hopVy = Math.min(0, hopVy); }
