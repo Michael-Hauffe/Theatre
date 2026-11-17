@@ -863,11 +863,11 @@ const MENU = [
   // with T (it bursts where it lands): see "Fireworks". Champagne counts toward drinks like a margarita.
   { id: "firework", hol: ["july4", "newyear"], name: "Firework", price: 4, uses: 1, verb: "Light", color: "#d63a3a", sounds: ["*fssss*"], done: "*fssss…*" },
   { id: "fries", hol: ["july4"], name: "Freedom fries", price: 4.75, uses: 6, verb: "Eat", color: "#f2c94c", sounds: ["*crunch*", "*tastes like liberty*", "*munch*"], done: "*salutes the empty carton*" },
-  { id: "applepie", hol: ["july4"], name: "Apple pie (as American as)", price: 5.25, uses: 4, verb: "Eat", color: "#c98b3e", sounds: ["*nom*", "*patriotic crumbs*", "*mmm*"], done: "*hums the anthem*" },
+  { id: "applepie", hol: ["july4"], name: "Apple Pie", price: 5.25, uses: 4, verb: "Eat", color: "#c98b3e", sounds: ["*nom*", "*patriotic crumbs*", "*mmm*"], done: "*hums the anthem*" },
   { id: "icepop", hol: ["july4"], name: "Red, white & blue ice pop", price: 2.75, uses: 4, verb: "Eat", color: "#2d5fbf", sounds: ["*slurp*", "*brain freeze of freedom*", "*lick*"], done: "*blue tongue*" },
   { id: "burger", hol: ["july4"], name: "Liberty burger", price: 7.75, uses: 5, verb: "Eat", color: "#8a4b22", sounds: ["*chomp*", "*ketchup everywhere*", "*nom*"], done: "*wipes off the freedom*" },
   { id: "champagne", hol: ["newyear"], name: "Champagne", price: 6.5, uses: 4, verb: "Drink", color: "#f2d98a", sounds: ["*sip*", "*bubbles up the nose*", "*hic*"], done: "*clinks the empty glass*" },
-  { id: "peas", hol: ["newyear"], name: "Black-eyed peas (for luck)", price: 3.5, uses: 5, verb: "Eat", color: "#a38f6b", sounds: ["*spoonful*", "*feels luckier*", "*nom*"], done: "*good luck all year*" }
+  { id: "peas", hol: ["newyear"], name: "Black-eyed peas", price: 3.5, uses: 5, verb: "Eat", color: "#a38f6b", sounds: ["*spoonful*", "*feels luckier*", "*nom*"], done: "*good luck all year*" }
 ];
 // The items on sale right now: everything, except holiday foods when it isn't their holiday.
 const shownMenu = () => MENU.filter((m) => !m.hol || m.hol.includes(holiday));
@@ -1222,7 +1222,9 @@ const walkable = (x, z) => WALK.some((w) => x >= w.x0 && x <= w.x1 && z >= w.z0 
 // How high can you float at (x, z)? Low in the hallways, high in the theater.
 const ceilingAt = (x, z) => { let t = 0.05; for (const w of WALK) if (x >= w.x0 && x <= w.x1 && z >= w.z0 && z <= w.z1) t = Math.max(t, w.top); return t; };
 // Close enough to the counter to order (front, ends or behind it).
-const nearCounter = () => me.z > 30.3 && Math.abs(me.x) < 7;
+// Close enough to order: in front of the counter, or at Christmas, beside Santa's chair (see "Christmas:
+// Santa's lap"), where Mortimer takes orders instead.
+const nearCounter = () => holiday === "christmas" ? Math.hypot(me.x - SANTA_SEAT.x, me.z - SANTA_SEAT.z) < 2.6 : me.z > 30.3 && Math.abs(me.x) < 7;
 
 // ---- 3D snack models ----
 // held snack models
@@ -1533,13 +1535,16 @@ function poseGhost(gh, x, y, z, ry, t) {
   gh.mouth.scale.set(0.8 + boo * 0.8, 1.1 + boo * 2.2, 0.5);
   if (gh.held) { const mu = Math.sin(clamp((t - gh.munchAt) / 0.7, 0, 1) * Math.PI);
     const wu = gh.windup || 0;
-    gh.held.position.set(0.56 - mu * 0.5, 0.42 + mu * 0.2 + wu * 0.22, -0.3 - mu * 0.22 + wu * 0.4); gh.held.rotation.set(-mu * 0.6 + wu * 0.8, 0, mu * 0.3);
+    const hm = gh.holdAt;   // four-legged bodies carry snacks in their mouths (see "Holiday bodies")
+    if (hm) { gh.held.position.set(hm.x, hm.y + wu * 0.25 - mu * 0.03, hm.z + wu * 0.3); gh.held.rotation.set(wu * 0.8, 0, Math.sin(t * 18) * mu * 0.15); gh.held.scale.setScalar(hm.s); }
+    else { gh.held.position.set(0.56 - mu * 0.5, 0.42 + mu * 0.2 + wu * 0.22, -0.3 - mu * 0.22 + wu * 0.4); gh.held.rotation.set(-mu * 0.6 + wu * 0.8, 0, mu * 0.3); gh.held.scale.setScalar(1); }
     if (mu > 0) gh.mouth.scale.set(0.8 + mu * 0.5, 1.1 + Math.abs(Math.sin(t * 20)) * mu * 1.4, 0.5); }
   fadeGhost(gh); // fades out in Hide HUD mode (see below)
   if (gh.held) gh.held.visible = heldSnacksShown(); // held snack disappears in Hide HUD mode
   gh.bodyG.rotation.z = Math.sin(t * 1.3 + gh.phase) * 0.05;
   const thr = Math.sin(clamp((t - gh.throwAt) / 0.35, 0, 1) * Math.PI); gh.bodyG.rotation.x = -thr * 0.35 + (gh.windup || 0) * 0.12;
   actEmote(gh, t); // scream, laugh, cry, clap or shush (see EMOTES)
+  if (gh.walkers) walkLegs(gh, x, z, t); // four-legged bodies move their legs as they walk (see "Holiday bodies")
   gh.shadow.position.set(x, 0.02, z); const k = clamp(1 - y / 5, 0.15, 1); gh.shadow.material.opacity = k * ghostFade; gh.shadow.scale.setScalar(0.7 + y * 0.15); // the shadow fades with the ghost in Hide HUD mode
 }
 
@@ -1794,9 +1799,10 @@ function setGhostKind(gh, kind) {
   for (const k in gh.bodies) gh.bodies[k].group.visible = k === kind;
   const part = kind === "ghost" ? gh.sheet : gh.bodies[kind];
   gh.arms = part.arms; gh.mouth = part.mouth; gh.armRest = part.rest || null;   // animations use the showing body
+  gh.holdAt = part.hold || null; gh.walkers = part.walkers || null;   // four-legged bodies: snacks in the mouth, walking legs
   gh.glow.visible = kind === "ghost";   // only ghosts glow
   if (kind === "turkey") setLegsLost(gh, gh.legsLost || 0);     // a leg Mortimer already stole stays gone
-  if (kind === "person") setPartsLost(gh, gh.partsLost || 0);   // so do limbs lost to fireworks
+  if (kind === "person") { setPartsLost(gh, gh.partsLost || 0); setFat(gh, gh.lbs || BASE_LBS); }   // so do limbs lost to fireworks, and weight
   gh.fadeNow = undefined;      // so fadeGhost() applies the current Hide HUD fade to the new parts too
 }
 
@@ -1984,63 +1990,94 @@ const std = (color, extra) => new THREE.MeshStandardMaterial(Object.assign({ col
 // see-through, which on a solid creature lets you see its insides. Made once per player.
 function solidMat(gh) { if (!gh.solid) gh.solid = std(gh.mat.color.getHex(), { roughness: 0.85 }); return gh.solid; }
 
+// ---- Four-legged bodies (reindeer and bunnies) ----
+// They walk on all fours, facing -z like every body. Their "arms" are two empty placeholders (so emotes
+// that wave arms around don't pull their legs off), they carry snacks in their mouths (hold), and their
+// legs swing as they walk (walkers, see walkLegs()).
+// One leg: a group pivoting at the hip (at hipY), with the leg hanging down to the floor and a hoof or paw.
+function quadLeg(g, mat, footMat, x, hipY, z, thick, foot) {
+  const pv = new THREE.Group(); pv.position.set(x, hipY, z); g.add(pv);
+  bodyPart(pv, ROD, mat, [thick, hipY, thick], [0, -hipY / 2, 0]);
+  bodyPart(pv, BALL, footMat, foot, [0, -hipY + foot[1] * 0.6, foot[2] * 0.3 - 0.01]);
+  return pv;
+}
+// Every frame, for a four-legged body: swing the legs in step with how fast it's moving (diagonal pairs
+// together, like a real trot). Speed is worked out from how far it moved since last frame, smoothed,
+// because friends' positions arrive in little jumps.
+function walkLegs(gh, x, z, t) {
+  const pv = gh.walkPrev; let sp = 0, dt = 0;
+  if (pv && t > pv.t) { dt = Math.min(0.1, t - pv.t); sp = Math.min(8, Math.hypot(x - pv.x, z - pv.z) / (t - pv.t)); }
+  gh.walkPrev = { x, z, t };
+  gh.walkSpeed = (gh.walkSpeed || 0) * 0.85 + sp * 0.15;
+  gh.walkPh = (gh.walkPh || 0) + gh.walkSpeed * dt * 6;
+  const amp = clamp(gh.walkSpeed / 2.5, 0, 1) * 0.6, off = [0, Math.PI, Math.PI, 0];
+  gh.walkers.forEach((leg, i) => (leg.rotation.x = Math.sin(gh.walkPh + off[i]) * amp));
+}
+
 // ---- Reindeer (Christmas) ----
+// A slim reindeer on four long legs, with antlers, a plain dark nose, a white tail, and a scarf in the
+// player's color with a little bell (it's why Boo says "Jingle!").
 const DEER = { fur: std(0x7a4a26), belly: std(0xd9b58c), antler: std(0xc9ad80, { roughness: 0.6 }), nose: std(0x1c1410, { roughness: 0.3 }), hoof: std(0x2b1d14), bell: std(0xe0b84a, { metalness: 0.6, roughness: 0.3 }), tail: std(0xf4efe6) };
 function makeReindeerBody(gh) {
   const g = new THREE.Group(), D = DEER, P = (geo, mat, sc, pos, par) => bodyPart(par || g, geo, mat, sc, pos);
-  P(BALL, D.fur, [0.24, 0.36, 0.22], [0, 0.5, 0]);                       // body (a normal, slim build)
-  P(BALL, D.belly, [0.15, 0.24, 0.06], [0, 0.48, -0.18]);                // pale chest
-  P(BALL, D.fur, [0.22, 0.21, 0.22], [0, 0.98, -0.1]);                   // head
-  P(BALL, D.belly, [0.12, 0.1, 0.15], [0, 0.92, -0.3]);                  // snout
-  P(BALL, D.nose, [0.045, 0.04, 0.04], [0, 0.95, -0.44]);                // a plain dark nose
+  P(BALL, D.fur, [0.18, 0.19, 0.42], [0, 0.68, 0.02]);                   // body: long, level and slim
+  P(BALL, D.belly, [0.13, 0.09, 0.32], [0, 0.58, 0.02]);                 // pale underside
+  const neck = P(ROD, D.fur, [0.065, 0.36, 0.075], [0, 0.88, -0.36]); neck.rotation.x = -0.55;   // neck, angled up and forward
+  P(BALL, D.fur, [0.1, 0.1, 0.13], [0, 1.04, -0.5]);                     // head
+  P(BALL, D.belly, [0.065, 0.055, 0.1], [0, 0.99, -0.61]);               // snout
+  P(BALL, D.nose, [0.032, 0.028, 0.028], [0, 1.0, -0.71]);               // nose
   for (const sd of [-1, 1]) {
-    P(eyeGeo, eyeMat, [0.5, 0.7, 0.4], [sd * 0.09, 1.04, -0.28]);         // eyes
-    const ear = P(BALL, D.fur, [0.045, 0.11, 0.03], [sd * 0.2, 1.1, -0.08]); ear.rotation.z = sd * 1.0;   // ears, sticking out sideways
-    // Antlers: a main beam curving up and out, with two tines branching off it.
-    const beam = P(ROD, D.antler, [0.022, 0.36, 0.022], [sd * 0.16, 1.3, -0.04]); beam.rotation.z = -sd * 0.45;
-    const t1 = P(ROD, D.antler, [0.017, 0.18, 0.017], [sd * 0.27, 1.42, -0.04]); t1.rotation.z = -sd * 1.15;
-    const t2 = P(ROD, D.antler, [0.017, 0.16, 0.017], [sd * 0.19, 1.5, -0.04]); t2.rotation.z = sd * 0.2;
-    P(ROD, D.fur, [0.055, 0.3, 0.055], [sd * 0.11, 0.15, 0]);            // legs
-    P(ROD, D.hoof, [0.06, 0.06, 0.06], [sd * 0.11, -0.02, 0]);           // hooves
+    P(eyeGeo, eyeMat, [0.32, 0.45, 0.28], [sd * 0.07, 1.08, -0.56]);     // eyes
+    const ear = P(BALL, D.fur, [0.032, 0.075, 0.02], [sd * 0.11, 1.1, -0.45]); ear.rotation.z = sd * 1.1;
+    // Antlers: a main beam curving up and out, with two tines.
+    const beam = P(ROD, D.antler, [0.016, 0.3, 0.016], [sd * 0.1, 1.27, -0.44]); beam.rotation.z = -sd * 0.45;
+    const t1 = P(ROD, D.antler, [0.012, 0.15, 0.012], [sd * 0.19, 1.37, -0.44]); t1.rotation.z = -sd * 1.15;
+    const t2 = P(ROD, D.antler, [0.012, 0.13, 0.012], [sd * 0.13, 1.44, -0.44]); t2.rotation.z = sd * 0.2;
   }
-  // A scarf in the player's color, with a little gold bell at the front (it's why Boo says "Jingle!").
-  P(ROD, D.fur, [0.075, 0.16, 0.075], [0, 0.86, -0.06]);                // neck
-  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.04, 8, 20), solidMat(gh)); scarf.rotation.x = Math.PI / 2; scarf.position.set(0, 0.84, -0.05); g.add(scarf);
-  P(BALL, solidMat(gh), [0.05, 0.14, 0.025], [0.07, 0.74, -0.15]);       // scarf end hanging down
-  P(BALL, D.bell, [0.04, 0.04, 0.04], [0, 0.79, -0.16]);                 // bell
-  P(BALL, D.tail, [0.06, 0.05, 0.05], [0, 0.6, 0.23]);                   // fluffy white tail
-  // Front legs stand in for arms, hanging close to the slim body (actEmote() puts them back here).
-  const rest = { x: 0.27, y: 0.55, z: -0.04, rz: 0.3 };
-  const arms = [-1, 1].map((sd) => { const a = P(armGeo, D.fur, [0.38, 1.25, 0.4], [sd * rest.x, rest.y, rest.z]); a.rotation.z = sd * rest.rz; return a; });
-  const holder = new THREE.Group(); holder.position.set(0, 0.86, -0.38); holder.scale.setScalar(0.4); g.add(holder);
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.032, 8, 20), solidMat(gh)); scarf.rotation.x = Math.PI / 2 - 0.55; scarf.position.set(0, 0.8, -0.3); g.add(scarf);
+  P(BALL, solidMat(gh), [0.04, 0.11, 0.02], [0.05, 0.7, -0.36]);         // scarf end hanging down
+  P(BALL, D.bell, [0.032, 0.032, 0.032], [0, 0.74, -0.37]);              // bell
+  P(BALL, D.tail, [0.045, 0.055, 0.04], [0, 0.76, 0.44]);                // white tail
+  // Four legs: front pair, then back pair (left, right). Diagonal pairs swing together.
+  const legs = [[-0.09, -0.26], [0.09, -0.26], [-0.09, 0.3], [0.09, 0.3]].map(([x, z]) => quadLeg(g, D.fur, D.hoof, x, 0.62, z, 0.03, [0.035, 0.035, 0.045]));
+  const arms = [new THREE.Object3D(), new THREE.Object3D()]; arms.forEach((a) => g.add(a));
+  const holder = new THREE.Group(); holder.position.set(0, 0.955, -0.66); holder.scale.setScalar(0.2); g.add(holder);
   const mouth = P(eyeGeo, eyeMat, [0.8, 1.1, 0.5], [0, 0, 0], holder);
   gh.bodyG.add(g);
-  return { group: g, arms, mouth, rest };
+  return { group: g, arms, mouth, walkers: legs, hold: { x: 0, y: 0.93, z: -0.8, s: 0.7 } };
 }
 
 // ---- Bunny (Easter) ----
-// The fur is the player's own color.
+// A rabbit on all fours: rounded back (higher at the rump), big hind feet, long ears, a cotton tail.
+// The fur is the player's own color. Built small and then scaled up 1.5 times so bunnies aren't lost
+// among the seats (about knee-high to waist-high on a person, ears included).
 const BUNNY = { white: std(0xfbf7f2), pink: std(0xf2a7b8), teeth: std(0xffffff, { roughness: 0.4 }) };
+const BUNNY_SCALE = 1.5;
 function makeBunnyBody(gh) {
-  const g = new THREE.Group(), B = BUNNY, P = (geo, mat, sc, pos, par) => bodyPart(par || g, geo, mat, sc, pos), fur = solidMat(gh);
-  P(BALL, fur, [0.36, 0.4, 0.34], [0, 0.42, 0]);                        // body
-  P(BALL, B.white, [0.24, 0.28, 0.1], [0, 0.38, -0.26]);                // white tummy
-  P(BALL, fur, [0.25, 0.23, 0.23], [0, 0.95, -0.05]);                   // head
-  P(BALL, B.white, [0.13, 0.08, 0.08], [0, 0.87, -0.24]);               // muzzle
-  P(BALL, B.pink, [0.03, 0.025, 0.025], [0, 0.92, -0.3]);               // nose
+  const g = new THREE.Group(), inner = new THREE.Group(), B = BUNNY, fur = solidMat(gh);
+  inner.scale.setScalar(BUNNY_SCALE); g.add(inner);
+  const P = (geo, mat, sc, pos, par) => bodyPart(par || inner, geo, mat, sc, pos);
+  const body = P(BALL, fur, [0.15, 0.14, 0.24], [0, 0.25, 0.04]); body.rotation.x = -0.3;   // body, rump higher than shoulders
+  P(BALL, B.white, [0.11, 0.08, 0.17], [0, 0.19, 0.0]);                 // white tummy
+  P(BALL, fur, [0.105, 0.095, 0.105], [0, 0.36, -0.22]);                // head
+  P(BALL, B.white, [0.055, 0.038, 0.045], [0, 0.33, -0.305]);           // muzzle
+  P(BALL, B.pink, [0.014, 0.012, 0.012], [0, 0.35, -0.33]);             // nose
   for (const sd of [-1, 1]) {
-    P(BALL, B.teeth, [0.016, 0.024, 0.006], [sd * 0.017, 0.81, -0.29]); // two front teeth
-    P(eyeGeo, eyeMat, [0.55, 0.75, 0.4], [sd * 0.1, 1.0, -0.22]);        // eyes
-    const ear = P(BALL, fur, [0.07, 0.3, 0.035], [sd * 0.1, 1.4, -0.02]); ear.rotation.z = -sd * 0.15;      // long ears
-    const inner = P(BALL, B.pink, [0.04, 0.24, 0.02], [sd * 0.1, 1.39, -0.05]); inner.rotation.z = -sd * 0.15;
-    P(BALL, B.white, [0.1, 0.05, 0.17], [sd * 0.14, 0.04, -0.06]);       // big feet
+    P(BALL, B.teeth, [0.008, 0.012, 0.004], [sd * 0.009, 0.305, -0.322]); // two front teeth
+    P(eyeGeo, eyeMat, [0.28, 0.38, 0.24], [sd * 0.058, 0.39, -0.28]);    // eyes
+    const ear = P(BALL, fur, [0.034, 0.15, 0.017], [sd * 0.045, 0.55, -0.18]); ear.rotation.set(0.2, 0, -sd * 0.12);   // long ears
+    const inn = P(BALL, B.pink, [0.02, 0.12, 0.01], [sd * 0.045, 0.55, -0.195]); inn.rotation.set(0.2, 0, -sd * 0.12);
+    P(BALL, fur, [0.055, 0.085, 0.1], [sd * 0.11, 0.16, 0.14]);          // big hind haunches
+    P(BALL, B.white, [0.038, 0.02, 0.1], [sd * 0.11, 0.02, 0.1]);        // long hind feet
   }
-  P(BALL, B.white, [0.1, 0.1, 0.1], [0, 0.35, 0.34]);                   // cotton tail
-  const arms = [-1, 1].map((sd) => { const a = P(armGeo, fur, [0.5, 0.9, 0.5], [sd * 0.5, 0.48, -0.08]); a.rotation.z = sd * 0.5; return a; });
-  const holder = new THREE.Group(); holder.position.set(0, 0.84, -0.28); holder.scale.setScalar(0.32); g.add(holder);
+  P(BALL, B.white, [0.055, 0.055, 0.055], [0, 0.31, 0.29]);             // cotton tail
+  // Front legs (they swing as the bunny moves; the hind legs are the big haunches above).
+  const legs = [-1, 1].map((sd) => quadLeg(inner, fur, B.white, sd * 0.065, 0.2, -0.13, 0.02, [0.028, 0.018, 0.04]));
+  const arms = [new THREE.Object3D(), new THREE.Object3D()]; arms.forEach((a) => g.add(a));
+  const holder = new THREE.Group(); holder.position.set(0, 0.31, -0.31); holder.scale.setScalar(0.11); inner.add(holder);
   const mouth = P(eyeGeo, eyeMat, [0.8, 1.1, 0.5], [0, 0, 0], holder);
   gh.bodyG.add(g);
-  return { group: g, arms, mouth };
+  return { group: g, arms, mouth, walkers: [legs[0], legs[1], legs[1], legs[0]], hold: { x: 0, y: 0.3 * BUNNY_SCALE, z: -0.36 * BUNNY_SCALE, s: 0.6 } };
 }
 
 // ---- Person (Independence Day, New Year's Day) ----
@@ -2059,7 +2096,8 @@ function makePersonBody(gh) {
   // Each leg (with its shoe) is its own group, so a blown-off leg disappears whole.
   const legs = [-1, 1].map((sd) => { const lg = new THREE.Group(); g.add(lg); P(ROD, PS.jeans, [0.075, 0.48, 0.075], [sd * 0.1, 0.27, 0], lg); P(new THREE.BoxGeometry(1, 1, 1), PS.shoe, [0.12, 0.06, 0.22], [sd * 0.1, 0.03, -0.04], lg); return lg; });
   const shirt = solidMat(gh);
-  P(PS.torso, shirt, [1, 1, 1], [0, 0.74, 0]);                           // shirt, in the player's color
+  const torso = P(PS.torso, shirt, [1, 1, 1], [0, 0.74, 0]);             // shirt, in the player's color
+  const belly = P(BALL, shirt, [0.01, 0.01, 0.01], [0, 0.66, -0.05]); belly.visible = false;   // grows at Independence Day (see setFat())
   P(ROD, skin, [0.06, 0.08, 0.06], [0, 1.02, 0]);                         // neck
   P(BALL, skin, [0.16, 0.18, 0.16], [0, 1.2, 0]);                         // head
   P(PS.cap, hair, [0.17, 0.17, 0.17], [0, 1.22, 0.015]);                  // hair
@@ -2076,7 +2114,48 @@ function makePersonBody(gh) {
   const holder = new THREE.Group(); holder.position.set(0, 1.12, -0.15); holder.scale.setScalar(0.26); g.add(holder);
   const mouth = P(eyeGeo, eyeMat, [0.8, 1.1, 0.5], [0, 0, 0], holder);
   gh.bodyG.add(g);
-  return { group: g, arms, mouth, rest, parts: [arms[0], arms[1], legs[0], legs[1]] };
+  return { group: g, arms, mouth, rest, parts: [arms[0], arms[1], legs[0], legs[1]], fat: { torso, belly, legs } };
+}
+// ---- Weight (Independence Day) ----
+// At an Independence Day showing, every bite of food makes your person a little heavier, from BASE_LBS
+// up to MAX_LBS, and walking slims you back down. Your weight is shared in your presence ("lbs"), so
+// everyone sees it. It lasts for the showing (reloading the page starts you over).
+// Walking burns it back off (LBS_PER_METER for every meter walked), down to BASE_LBS again.
+const BASE_LBS = 180, MAX_LBS = 800, LBS_PER_BITE = 14, LBS_PER_METER = 1;
+let myLbs = BASE_LBS;
+const walkFrom = { x: 0, z: 0 };   // where you were last frame (to measure how far you walked)
+let lbsSharedAt = 0;   // when our weight was last sent to everyone (while walking it's sent at most once a second)
+// Show a person at a given weight: the shirt and belly widen, the legs spread and thicken, and the arms
+// move out to the sides. At 800 lbs they're about two and a half times as wide, with a big round belly
+// hanging low in front (below the face).
+function setFat(gh, lbs) {
+  gh.lbs = lbs;
+  const pb = gh.bodies && gh.bodies.person; if (!pb) return;
+  const k = clamp((lbs - BASE_LBS) / (MAX_LBS - BASE_LBS), 0, 1), w = 1 + k * 1.5;   // w = how many times as wide
+  pb.fat.torso.scale.set(w, 1, w * 0.95);
+  pb.fat.belly.visible = k > 0.02;
+  const br = 0.18 + 0.2 * k;   // belly size
+  pb.fat.belly.scale.set(br * 1.15, br, br); pb.fat.belly.position.set(0, 0.6 - 0.05 * k, -0.1 - 0.16 * k * w);
+  pb.fat.legs.forEach((lg, i) => { lg.position.x = (i ? 1 : -1) * 0.07 * (w - 1); lg.scale.set(1 + 0.6 * k, 1, 1 + 0.6 * k); });
+  pb.rest.x = 0.27 + 0.2 * (w - 1);   // the arms hang at the sides of the wider body
+}
+// Every frame at an Independence Day showing: walking (on the floor, under your own steam) burns weight.
+// dist = how far you walked this frame, in meters.
+function burnWeight(dist, t) {
+  if (holiday !== "july4" || me.ghost.kind !== "person" || myLbs <= BASE_LBS || dist <= 0) return;
+  const before = myLbs; myLbs = Math.max(BASE_LBS, myLbs - dist * LBS_PER_METER);
+  setFat(me.ghost, myLbs);
+  if (t - lbsSharedAt > 1 || myLbs === BASE_LBS) { lbsSharedAt = t; sharePresence(true); }   // friends see you slim down
+  if (myLbs === BASE_LBS) toast("You've walked it all off. Back to " + BASE_LBS + " lbs!");
+  else for (const mark of [650, 500, 350, 250]) if (before > mark && myLbs <= mark) toast("You've walked off some weight: " + Math.round(myLbs) + " lbs now.");
+}
+// You took a bite of food at an Independence Day showing: put on some weight (and hear about it).
+function gainWeight() {
+  if (holiday !== "july4" || me.ghost.kind !== "person" || myLbs >= MAX_LBS) return;
+  const before = myLbs; myLbs = Math.min(MAX_LBS, myLbs + LBS_PER_BITE);
+  setFat(me.ghost, myLbs); sharePresence(true);
+  if (myLbs >= MAX_LBS) toast("You've hit 800 lbs. That's the limit. The seats are filing a complaint.");
+  else for (const mark of [250, 350, 500, 650]) if (before < mark && myLbs >= mark) toast("You now weigh " + Math.round(myLbs) + " lbs. Freedom has never felt so filling.");
 }
 // Show a person with n limbs blown off (0 to 4), in the order left arm, right arm, left leg, right leg.
 // Remembered on the ghost, so it still applies if the person body is built later.
@@ -2286,6 +2365,7 @@ function buildChristmasDecor() {
   const grp = new THREE.Group(); scene.add(grp);
   xmasTree(grp, -10.4, 0.7, -12, 3.6); xmasTree(grp, 10.4, 0.7, -12, 3.6);   // beside the screen, on the stage
   xmasTree(grp, -10.6, 0, 27.4, 3.4);                                       // lobby, between the posters on the left wall
+  santaChair(grp);                                                          // Santa's chair, beside that tree
   const twinkle = stringLights(grp, WALL_RUNS(6.6, 4.85), [0xff4d4d, 0x4dff7a, 0xffd34d, 0x4da6ff, 0xffffff], 34);
   for (const sx of [-1, 1]) wreath(grp, sx * (DOOR.x0 + DOOR.x1) / 2, 3.9, ROOM.zBack - 0.1, Math.PI);   // over the theater doors
   for (const sx of [-1, 1]) wreath(grp, sx * (DOOR.x0 + DOOR.x1) / 2, 3.9, LOBBY.z0 + 0.32, 0);           // over the hallway openings in the lobby
@@ -2496,11 +2576,16 @@ const MORT_BOOM = [
 ];
 
 /* ---------------- Christmas: Santa's lap ----------------
-   At Christmas, Mortimer is playing Santa. Ordering (O, or the Order button at the counter) sits you on
-   his lap behind the counter, and the order menu turns into a letter to Santa: you ask him for what you
-   want, and he hands it over (for Ghost Bucks: Santa has overheads). Closing the menu puts you back
+   At Christmas, Mortimer is playing Santa, sitting in a big chair by the lobby's Christmas tree. To
+   order, go to him (Visit Santa, or O, beside the chair): you sit on his lap, and the order menu turns
+   into a letter to Santa, and everything you ask for is free: you ask him for what you
+   want, and he hands it over, no Ghost Bucks needed. Closing the menu puts you back
    where you were. Everyone sees you up on his lap, since it's just your position. */
 let lap = null;   // while on Santa's lap: { x, y, z, yaw, pitch } = where you were before
+// Santa's chair: in the lobby by the Christmas tree, facing the middle of the room. Mortimer sits in it
+// all Christmas (y = how high he sits), and that's where you go to order.
+const SANTA_SEAT = { x: -9.2, y: 0.62, z: 31.2, yaw: -Math.PI / 2 };
+let santaPointedAt = -999;   // when someone at the counter was last told to go to Santa's chair
 // Climb up (called when the order menu opens at Christmas).
 function startLap() {
   if (lap) return;
@@ -2513,19 +2598,48 @@ function endLap() {
   Object.assign(me, { x: lap.x, y: lap.y, z: lap.z, yaw: lap.yaw, pitch: lap.pitch }); lap = null;
   npcSay(pickOne(SANTA_BYE));
 }
+// Directions from Santa's chair: fx/fz = the way he faces, rx/rz = to his left as you look at him.
+const seatDirs = () => { const y = SANTA_SEAT.yaw; return { fx: -Math.sin(y), fz: -Math.cos(y), rx: -Math.cos(y), rz: Math.sin(y) }; };
 // Every frame while on his lap: perched on one knee, a little to his side (so his face still shows),
-// turned slightly toward the camera.
-function sitOnLap() { me.x = npc.x + 0.5; me.z = npc.z - 0.3; me.y = npc.y + 0.1; me.yaw = 0.45; me.pitch = -0.05; }
-// While on his lap, the camera looks down at the two of you from above the front of the counter (high
-// enough to see over the things on it). It aims a little off to the side so the two of you appear on the
-// left of the screen, beside the letter to Santa (which moves to the right; see #shop.santa in the styles).
-function lapCamera() { camera.position.set(npc.x, 2.7, npc.z - 2.6); camera.lookAt(npc.x - 0.5, 1.1, npc.z - 0.3); }
+// facing out the way he does, turned slightly toward the camera.
+function sitOnLap() {
+  const d = seatDirs();
+  me.x = npc.x + d.fx * 0.3 + d.rx * 0.38; me.z = npc.z + d.fz * 0.3 + d.rz * 0.38; me.y = npc.y + 0.32; me.yaw = SANTA_SEAT.yaw - 0.45; me.pitch = -0.05;
+}
+// While on his lap, the camera looks at the two of you from out in front of the chair, a little above.
+// It aims off to one side so you both appear on the left of the screen, beside the letter to Santa
+// (which moves to the right; see #shop.santa in the styles).
+function lapCamera() {
+  const d = seatDirs();
+  camera.position.set(npc.x + d.fx * 3.0 + d.rx * 0.2, 1.9, npc.z + d.fz * 3.0 + d.rz * 0.2);
+  camera.lookAt(npc.x + d.fx * 0.4 + d.rx * 0.75, 1.15, npc.z + d.fz * 0.4 + d.rz * 0.75);
+}
+// The big chair itself: a deep red velvet armchair with a tall arched back, gold trim and gold feet.
+function santaChair(grp) {
+  const red = std(0x8e1520, { roughness: 0.75 }), gold = std(0xd8b24a, { metalness: 0.6, roughness: 0.3 });
+  const c = new THREE.Group(); c.position.set(SANTA_SEAT.x, 0, SANTA_SEAT.z); c.rotation.y = SANTA_SEAT.yaw; grp.add(c);
+  const B = (sc, pos, mat) => bodyPart(c, new THREE.BoxGeometry(1, 1, 1), mat || red, sc, pos);
+  B([1.5, 0.22, 1.2], [0, 0.5, 0]);                                       // seat cushion
+  B([1.56, 0.1, 1.26], [0, 0.36, 0], gold);                               // gold rail under the seat
+  B([1.6, 1.9, 0.26], [0, 1.4, 0.62]);                                    // tall back
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.26, 28, 1, false, -Math.PI / 2, Math.PI), red); top.rotation.x = Math.PI / 2; top.rotation.z = Math.PI / 2; top.position.set(0, 2.35, 0.62); c.add(top);   // arched top
+  for (const sd of [-1, 1]) {
+    B([0.22, 0.5, 1.2], [sd * 0.86, 0.75, 0]);                            // armrests
+    B([0.26, 0.08, 1.26], [sd * 0.86, 1.02, 0], gold);                    // gold tops on the armrests
+    for (const z of [-0.5, 0.5]) bodyPart(c, new THREE.CylinderGeometry(0.07, 0.05, 0.32, 10), gold, [1, 1, 1], [sd * 0.65, 0.16, z]);   // feet
+  }
+  bodyPart(c, new THREE.TorusGeometry(0.7, 0.05, 8, 24, Math.PI), gold, [1, 1, 1], [0, 2.35, 0.48]);   // gold edge on the arch
+  bodyPart(c, BALL, gold, [0.12, 0.12, 0.06], [0, 2.9, 0.62]);            // gold ornament on top
+}
+// What an item costs right now: nothing at Christmas (everything you ask Santa for is a gift), otherwise
+// its menu price.
+const priceNow = (m) => (holiday === "christmas" ? 0 : m.price);
 // The menu dressed up as a letter to Santa (or back to normal). Called whenever the menu is drawn.
 function dressShopForSanta() {
   const xmas = holiday === "christmas";
   $("shop").querySelector("h2").textContent = xmas ? "Dear Santa," : "Concessions";
   $("shopIntro").hidden = !xmas;
-  $("shop").querySelector("footer p").textContent = xmas ? "Santa takes Ghost Bucks. The elves have bills too." : "Ghost Bucks only. No refunds in the afterlife.";
+  $("shop").querySelector("footer p").textContent = xmas ? "Everything is free. It's Christmas! (Santa's treat.)" : "Ghost Bucks only. No refunds in the afterlife.";
   $("closeShop").textContent = xmas ? "Hop down" : "Done";
   $("shop").classList.toggle("santa", xmas);   // the letter moves aside so you can see yourself on his lap
 }
@@ -2535,17 +2649,17 @@ const SANTA_HELLO = [
   "Ho ho… oof. You're heavier than you look. What would you like for Christmas?"
 ];
 const SANTA_BYE = ["Off you trot! Merry Christmas!", "Ho ho ho! Mind the counter on your way down.", "Merry Christmas! Next!"];
-// Santa's reply when you ask for something ({item} and {price} are filled in).
+// Santa's reply when you ask for something ({item} is filled in). It's all free.
 const SANTA_GIFT = [
   "Ho ho ho! One {item}, coming right up. You've been good this year. Mostly.",
   "A {item}? Excellent choice. The elves will be thrilled. Well, the elf. It's just me.",
   "{Item}! I'll put you on the nice list. In pencil.",
-  "Ho ho… ho. That'll be {price} Ghost Bucks. Santa has overheads.",
+  "Ho ho ho! No charge, of course. It's Christmas. Don't tell the accountant.",
   "One {item}. Don't tell the other reindeer. They'll all want one."
 ];
 function santaGift(m) {
   const t = pickOne(SANTA_GIFT), item = m.name.toLowerCase();
-  return t.replace("{item}", item).replace("{Item}", m.name).replace("{price}", money(m.price).slice(1));
+  return t.replace("{item}", item).replace("{Item}", m.name);
 }
 
 /* ---------------- Easter: hopping (and people walking) ----------------
@@ -3128,7 +3242,7 @@ function sharePresence(force) {
   if (!room) return;
   const g = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), r: +me.yaw.toFixed(3), c: myColor };
   const patch = { g };
-  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; patch.emo = myEmote; /* my latest emote (see "emotes") */ patch.legs = myLegsLost || null; /* legs Mortimer stole from me */ patch.lost = myPartsLost || null; /* limbs I've lost to fireworks */ if (amRoomHost()) patch.heirs = heirList(); if (amRoomHost()) { patch.hol = holiday || null; /* host: the room's holiday (see "Holidays") */ patch.tg = thanksgiving || null; /* the same, for guests still on v2.20 */ } patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
+  if (force) { patch.film = film ? { n: film.n, d: film.d } : null; patch.say = me.say ? { t: me.say, k: me.sayAt } : null; patch.nick = myNick; patch.ver = BUILD; /* which version of the game this player is running */ patch.share = sharing || null; patch.hold = heldItem() ? heldItem().id : null; patch.emo = myEmote; /* my latest emote (see "emotes") */ patch.legs = myLegsLost || null; /* legs Mortimer stole from me */ patch.lost = myPartsLost || null; /* limbs I've lost to fireworks */ patch.lbs = myLbs > BASE_LBS ? Math.round(myLbs) : null; /* my weight (Independence Day) */ if (amRoomHost()) patch.heirs = heirList(); if (amRoomHost()) { patch.hol = holiday || null; /* host: the room's holiday (see "Holidays") */ patch.tg = thanksgiving || null; /* the same, for guests still on v2.20 */ } patch.feed = amProj() && feedPlan.length ? feedPlan : null; /* who passes the picture to whom */ patch.pic = !amProj() && remoteOn && !repair.tries && !repair.gaveUp; /* our picture works: we can pass it on */ /* host: who takes over if I leave (see "Keeping the room alive") */ }
   room.presence(patch).catch(() => {});
 }
 // Send the shared playback state on its own channel.
@@ -3189,6 +3303,7 @@ function onPeers(ch) {
     if (!o) { o = { gh: makeGhost(c), tag: makeTag(), x, y, z, yaw: r, sayKey: null, sayAt: -99, sayText: "" }; others.set(pe.peer, o); setGhostKind(o.gh, bodyFor(0)); /* a turkey during the Thanksgiving theme */ }
     o.legs = clamp(num(pe.presence.legs, 0) | 0, 0, 2); if (o.gh.legsLost !== o.legs) setLegsLost(o.gh, o.legs);   // legs Mortimer stole from them
     o.lost = clamp(num(pe.presence.lost, 0) | 0, 0, LIMBS); if (o.gh.partsLost !== o.lost) { setPartsLost(o.gh, o.lost); setGhostKind(o.gh, bodyFor(o.lost)); }   // limbs lost to fireworks (see "Fireworks")
+    { const lb = clamp(num(pe.presence.lbs, BASE_LBS), BASE_LBS, MAX_LBS); if (o.gh.lbs !== lb) setFat(o.gh, lb); }   // their weight (Independence Day)
     setGhostColor(o.gh, c); o.tx = x; o.ty = y; o.tz = z; o.tyaw = r;
     friendEmote(o, pe.presence.emo, pe.peer);   // an emote (1 to 5): act it out on their ghost
     const hid = typeof pe.presence.hold === "string" && MENU_BY_ID[pe.presence.hold] ? pe.presence.hold : null; setHeld(o.gh, hid);
@@ -4451,9 +4566,10 @@ function renderShop() {
     const li = document.createElement("li");
     const chip = document.createElement("span"); chip.className = "chip"; chip.style.background = m.color;
     const nm = document.createElement("div"); nm.className = "nm"; const b = document.createElement("b"); b.textContent = m.name; const sp = document.createElement("span"); sp.textContent = m.uses + " " + (m.verb === "Drink" ? "sips" : "bites"); nm.append(b, sp);
-    const pr = document.createElement("span"); pr.className = "price"; pr.textContent = money(m.price);
-    const buy = document.createElement("button"); buy.type = "button"; buy.textContent = holiday === "christmas" ? "Ask for it" : "Buy"; buy.disabled = wallet + 1e-9 < m.price || inventory.length >= 6;
-    buy.title = inventory.length >= 6 ? "Your hands are full" : wallet < m.price ? "Not enough Ghost Bucks" : "Buy " + m.name;
+    const cost = priceNow(m);   // free at Christmas (see "Christmas: Santa's lap")
+    const pr = document.createElement("span"); pr.className = "price"; pr.textContent = cost ? money(cost) : "Free";
+    const buy = document.createElement("button"); buy.type = "button"; buy.textContent = holiday === "christmas" ? "Ask for it" : "Buy"; buy.disabled = wallet + 1e-9 < cost || inventory.length >= 6;
+    buy.title = inventory.length >= 6 ? "Your hands are full" : wallet < cost ? "Not enough Ghost Bucks" : (holiday === "christmas" ? "Ask Santa for " : "Buy ") + m.name;
     buy.addEventListener("click", () => buyItem(m.id));
     li.append(chip, nm, pr, buy); ul.appendChild(li);
   }
@@ -4466,8 +4582,9 @@ function closeShop() { $("shop").hidden = true; endLap(); /* off Santa's lap, if
 function buyItem(id) {
   const m = MENU_BY_ID[id]; if (!m) return;
   if (inventory.length + legsOwed() >= 6) { toast("Your hands are full. Eat something first."); return; }   // legs Mortimer is still fetching count too
-  if (wallet + 1e-9 < m.price) { toast("Not enough Ghost Bucks. Try the Ghost ATM."); return; }
-  wallet = Math.round((wallet - m.price) * 100) / 100; saveWallet();
+  const cost = priceNow(m);   // free at Christmas: Santa doesn't charge
+  if (wallet + 1e-9 < cost) { toast("Not enough Ghost Bucks. Try the Ghost ATM."); return; }
+  wallet = Math.round((wallet - cost) * 100) / 100; saveWallet();
   // A turkey leg isn't handed over: Mortimer goes and steals one (see "turkey-leg heist").
   if (id === "turkeyleg") { orderTurkeyLeg(); renderShop(); closeShop(); mortNoteOrder(id); return; }
   inventory.push({ id, left: m.uses });
@@ -4600,6 +4717,7 @@ function eatHeld() {
   const m = MENU_BY_ID[h.id]; h.left -= 1;
   me.ghost.munchAt = performance.now() / 1000;
   if (h.id === "margarita" || h.id === "champagne") sipAlcohol(1 / m.uses);   // a glass is one drink (see "Margaritas")
+  if (m.verb === "Eat") gainWeight();   // Independence Day: food makes you heavier (see "Weight")
   if (h.id === "water") sipWater();                   // water helps you sober up a bit faster
   if (h.left <= 0) { inventory.shift(); say(m.done); toast("Finished the " + m.name.toLowerCase() + "."); refreshHeld(); }
   else { say(m.sounds[Math.floor(Math.random() * m.sounds.length)]); renderTray(); }
@@ -4862,6 +4980,7 @@ function talkNpc() {
     else if (proj.kind === "screen") ctx.push((proj.nick || "Somebody") + " has their screen up on the big screen. In my day we had newsreels.");
     else if (!proj.owner) ctx.push("Nothing on the screen yet. Anybody can put a movie up with the Load movie button.");
     if (flying.length > 3) ctx.push("Somebody's been throwing food. I'll find out who. I always find out who.");
+    if (holiday === "july4" && myLbs >= 350) ctx.push(myLbs >= MAX_LBS ? "Eight hundred pounds of pure patriotism. I'd salute, but I'd need to stand further back." : "You're looking very… American tonight. I mean that as a compliment. Mostly.");
     if (myPartsLost && myPartsLost < LIMBS) ctx.push("You seem to be missing your " + PART_NAMES[myPartsLost - 1] + ". We don't have a lost and found. We have a lost and lost.");
     if (myPartsLost >= LIMBS && (holiday === "july4" || holiday === "newyear")) ctx.push("Welcome to the other side! Fireworks? Fireworks. It's always fireworks.");
     ctx.push(...mortMemoryLines());
@@ -4884,8 +5003,12 @@ function talkNpc() {
 // (hidden while you're in the theater so it doesn't show through the walls).
 function updateNpc(t, dt) {
   updateHeist(t, dt);   // off stealing a turkey leg? (see "turkey-leg heist")
+  // At Christmas he sits in Santa's chair in the lobby; otherwise he's behind the counter.
+  const home = holiday === "christmas" ? SANTA_SEAT : null;
+  if (home && !heist) { npc.x = home.x; npc.y = home.y; npc.z = home.z; }
+  else if (!heist && npc.x === SANTA_SEAT.x && npc.z === SANTA_SEAT.z) { npc.x = NPC_HOME.x; npc.y = NPC_HOME.y; npc.z = NPC_HOME.z; }   // Christmas is over: back to the counter
   const dx = me.x - npc.x, dz = me.z - npc.z;
-  npc.tyaw = heist && heist.phase !== "leave" ? heist.yaw : t < npc.faceUntil ? Math.atan2(-dx, -dz) : 0;   // on a heist he faces where he's flying
+  npc.tyaw = heist && heist.phase !== "leave" ? heist.yaw : t < npc.faceUntil && !lap ? Math.atan2(-dx, -dz) : home ? home.yaw : 0;   // on a heist he faces where he's flying
   npc.yaw = angLerp(npc.yaw, npc.tyaw, 1 - Math.exp(-dt * 5));
   poseGhost(npc.ghost, npc.x, npc.y, npc.z, npc.yaw, t);
   npc.tag.bub.textContent = t - npc.sayAt < 7 ? npc.say : "";
@@ -5335,7 +5458,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.24 · 2026-11-17";
+const BUILD = "v2.25 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -5445,7 +5568,7 @@ function dbgRows() {
       ["Holding", inventory.length ? inventory.map((it, i) => (i ? "" : "▶ ") + MENU_BY_ID[it.id].name + " (" + it.left + ")").join(", ") : "nothing"],
       ["Food in the air", flying.length + " (" + flying.filter((f) => f.rest).length + " landed)"],
       ["Alcohol", alcohol.toFixed(2) + " drinks" + (alcohol >= 3.99 ? "" : alcohol >= 2.99 ? " (drifting + blurry)" : alcohol >= 1.99 ? " (drifting)" : "") + (blackout ? ", blacked out" : "") + (nowS() - lastSipAt < SOBER_DELAY ? ", still drinking" : alcohol > 0 ? ", sobering up" : "") + " · " + blackouts + " blackout(s)"],
-      ["Holiday body", "your body: " + me.ghost.kind + (lap ? " · on Santa's lap" : "") + (me.ghost.kind === "bunny" ? " · " + hopsDone + " hops" : "")],
+      ["Holiday body", "your body: " + me.ghost.kind + (lap ? " · on Santa's lap" : "") + (me.ghost.kind === "bunny" ? " · " + hopsDone + " hops" : "") + (holiday === "july4" ? " · " + Math.round(myLbs) + " lbs" : "")],
       ["Fireworks", burstsTotal + " burst here · you've lost " + myPartsLost + " of " + LIMBS + " limbs" + (myPartsLost ? " (" + PART_NAMES.slice(0, myPartsLost).join(", ") + ")" : "")],
       ["Tomato splats", splats.length + " on the screen now, " + splatsTotal + " so far"],
       ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
@@ -5862,9 +5985,15 @@ function frame() {
       if (me.y > maxY) me.y += (maxY - me.y) * Math.min(1, dt * 7);
     }
     if (lap) sitOnLap();   // Christmas: sitting on Santa's lap while ordering (see "Christmas: Santa's lap")
+    // Independence Day: walking burns weight (see "Weight"). Only real walking counts: not sitting on
+    // Santa's lap, and not being carried somewhere (a blackout).
+    if (!lap && !blackout && (Math.abs(f) + Math.abs(s) > 0.1)) burnWeight(Math.min(0.5, Math.hypot(me.x - walkFrom.x, me.z - walkFrom.z)), t);   // (at most 0.5 m a frame, so a teleport doesn't count)
+    walkFrom.x = me.x; walkFrom.z = me.z;
+    // Christmas: someone waiting at the empty counter is told where Santa is (once a minute at most).
+    if (holiday === "christmas" && me.z > 30.3 && Math.abs(me.x) < 7 && me.z < 33.4 && t - santaPointedAt > 60) { santaPointedAt = t; toast("Santa's taking orders in his big chair by the Christmas tree. Go and sit on his lap!"); }
     // Show the counter / Mortimer buttons when you're close.
     const near = nearCounter(), nn = nearNpc();
-    if (near !== lastNear || nn !== lastNearNpc) { lastNear = near; lastNearNpc = nn; $("openShop").hidden = !near; $("talkNpc").hidden = !nn; $("shopHint").hidden = !(near || nn) && $("pickBtn").hidden; if (!near) closeShop(); }
+    if (near !== lastNear || nn !== lastNearNpc) { lastNear = near; lastNearNpc = nn; $("openShop").hidden = !near; $("openShop").textContent = holiday === "christmas" ? "Visit Santa (O)" : "Order at the counter (O)"; $("talkNpc").hidden = !nn; $("shopHint").hidden = !(near || nn) && $("pickBtn").hidden; if (!near) closeShop(); }
   }
   poseGhost(me.ghost, me.x, me.y, me.z, me.yaw, t);
   me.ghost.group.visible = !firstPerson || !!lap; // you can't see your own ghost from inside it (but on Santa's lap the camera is outside)
