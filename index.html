@@ -4642,6 +4642,34 @@ async function join(code) {
     else if (!entered) fail("Couldn't connect (" + (err && err.type || "network") + "). Try again.");
   });
 }
+// ---- Counting the addresses each connection receives (for the debug screen) ----
+// Each connection learns the other computer's network addresses one by one, passed along by the
+// matchmaking server. To tell "their addresses never arrived" apart from "they arrived but none
+// worked", count every address handed to every connection on this page (and any the browser
+// refused), by watching the browser's addIceCandidate. ("end" = the other side said it had sent them all.)
+const iceIn = new WeakMap();   // connection -> { n: addresses received, bad: refused, types: Set of kinds }
+if (window.RTCPeerConnection) {
+  const realAdd = RTCPeerConnection.prototype.addIceCandidate;
+  RTCPeerConnection.prototype.addIceCandidate = function (c, ...rest) {
+    const r = iceIn.get(this) || { n: 0, bad: 0, types: new Set() }; iceIn.set(this, r);
+    try { const m = c && typeof c.candidate === "string" && c.candidate.match(/ typ (\w+)/); if (m) { r.n++; r.types.add(m[1]); } else r.types.add("end"); } catch {}
+    const out = realAdd.call(this, c, ...rest);
+    if (out && out.catch) out.catch(() => { r.bad++; });   // refused (counted, but the caller still sees the error as before)
+    return out;
+  };
+}
+// "received 3 (host+srflx)" for one connection, for the debug screen.
+function iceInText(pc) { const r = iceIn.get(pc); return r ? "received " + r.n + " (" + ([...r.types].join("+") || "–") + ")" + (r.bad ? ", " + r.bad + " refused" : "") : "received 0"; }
+// How many of my own addresses each connection has found and passed on (counted as they're found).
+// Counting starts when the connection sets up its own side (setLocalDescription), which is just before
+// the browser starts looking for addresses, so none are missed.
+const iceOut = new WeakMap();
+function countMine(pc) { if (!pc || iceOut.has(pc)) return; iceOut.set(pc, 0); pc.addEventListener("icecandidate", (e) => { if (e.candidate) iceOut.set(pc, iceOut.get(pc) + 1); }); }
+if (window.RTCPeerConnection) {
+  const realSetLocal = RTCPeerConnection.prototype.setLocalDescription;
+  RTCPeerConnection.prototype.setLocalDescription = function (...args) { try { countMine(this); } catch {} return realSetLocal.apply(this, args); };
+}
+
 // ---- Last join attempt (for the debug screen) ----
 // Each step of the most recent attempt to join a room, with the time it happened, plus how the
 // connection to the host was getting on: whether the host's page answered, the connection state, and
@@ -4651,12 +4679,13 @@ let joinLog = null;
 function joinNote(what) { if (joinLog) joinLog.steps.push(((performance.now() - joinLog.t0) / 1000).toFixed(1) + "s " + what); }
 async function watchJoin(cn) {
   const pc = cn && cn.peerConnection; if (!pc || !joinLog) return;
+  countMine(pc);   // start counting my addresses as they're found
   const ice = (pc.remoteDescription ? "host answered" : "no answer from the host yet") + ", connection " + pc.iceConnectionState + ", gathering " + pc.iceGatheringState;
   if (ice !== joinLog.ice) { joinLog.ice = ice; joinNote(ice); }
   try {
     const rep = await pc.getStats(), mine = new Set(), theirs = new Set(); let pairs = 0, tried = 0;
     rep.forEach((r) => { if (r.type === "local-candidate") mine.add(r.candidateType); if (r.type === "remote-candidate") theirs.add(r.candidateType); if (r.type === "candidate-pair") { pairs++; if (r.state === "failed" || r.state === "succeeded" || r.state === "in-progress") tried++; } });
-    joinLog.cands = "mine: " + ([...mine].join("+") || "none") + " · host's: " + ([...theirs].join("+") || "none") + " · " + pairs + " routes (" + tried + " tried)";
+    joinLog.cands = "mine: " + ([...mine].join("+") || "none") + " (" + (iceOut.get(pc) || 0) + " sent) · host's: " + ([...theirs].join("+") || "none") + " (" + iceInText(pc) + ") · " + pairs + " routes (" + tried + " tried)";
   } catch {}
 }
 // Rows for the debug screen.
@@ -6000,7 +6029,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.36 · 2026-11-17";
+const BUILD = "v2.37 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -6056,7 +6085,8 @@ async function noteRoute(pc) {
       }
     });
     const kind = (c) => c ? c.candidateType + (c.protocol ? "/" + c.protocol : "") : "?";
-    routeNotes.set(pc, pc.iceConnectionState + ", " + Math.round((performance.now() - bornAt.get(pc)) / 1000) + "s old · mine: " + ([...mine].join("+") || "none") + " · theirs: " + ([...theirs].join("+") || "none") +
+    countMine(pc);
+    routeNotes.set(pc, pc.iceConnectionState + ", " + Math.round((performance.now() - bornAt.get(pc)) / 1000) + "s old · mine: " + ([...mine].join("+") || "none") + " (" + (iceOut.get(pc) || 0) + " sent) · theirs: " + ([...theirs].join("+") || "none") + " (" + iceInText(pc) + ")" +
       " · routes " + n.ok + " worked, " + n.failed + " failed, " + n.trying + " trying, " + n.waiting + " waiting" + (use ? " · using " + kind(cand[use.localCandidateId]) + " → " + kind(cand[use.remoteCandidateId]) : ""));
   } catch {}
 }
