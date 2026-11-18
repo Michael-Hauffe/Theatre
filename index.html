@@ -5887,8 +5887,7 @@ function splatMyView(kind) {
   const rot = (Math.random() - 0.5) * 50;
   $("faceSplats").appendChild(c);
   const anim = c.animate([
-    { transform: "rotate(" + rot + "deg) scale(0.6)", opacity: 1 },
-    { transform: "rotate(" + rot + "deg) scale(1)", opacity: 1, offset: 0.02 },        // SPLAT: bursts out
+    { transform: "rotate(" + rot + "deg) translateY(0)", opacity: 1 },                 // SPLAT: there at once, full size
     { transform: "rotate(" + rot + "deg) translateY(0)", opacity: 1, offset: 0.4 },   // sits there for 4 seconds
     { transform: "rotate(" + rot + "deg) translateY(14vh)", opacity: 0 }               // then slides down and fades
   ], { duration: FACE_SPLAT_LIFE * 1000, easing: "ease-in" });
@@ -6029,7 +6028,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.37 · 2026-11-17";
+const BUILD = "v2.38 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
