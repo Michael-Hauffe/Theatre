@@ -341,7 +341,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
   <!-- Bottom of the screen. -->
   <div class="deck">
     <!-- Appears when you're near the counter / near Mortimer. -->
-    <div id="shopHint" hidden><button class="btn primary" id="pickBtn" type="button" hidden>Pick up (X)</button><button class="btn primary" id="openShop" type="button">Order at the counter (O)</button><button class="btn" id="talkNpc" type="button" hidden>Talk to Mortimer (R)</button><button class="btn" id="talkRudolph" type="button" hidden>Talk to Rudolph (R)</button></div>
+    <div id="shopHint" hidden><button class="btn primary" id="pickBtn" type="button" hidden>Pick up (X)</button><button class="btn primary" id="openShop" type="button">Order at the counter (O)</button><button class="btn" id="talkNpc" type="button" hidden>Talk to Mortimer (R)</button><button class="btn" id="talkGary" type="button" hidden>Talk to Gary (R)</button></div>
     <!-- Appears while you're holding a snack. Throw charges up while held (see beginCharge). -->
     <div id="tray" class="bar" hidden>
       <span class="holding" id="holding"></span>
@@ -454,7 +454,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
           <dt><kbd>F</kbd></dt><dd>Eat or drink what you're holding (or light a firework)</dd>
           <dt><kbd>G</kbd></dt><dd>Switch to your next snack</dd>
           <dt><kbd>T</kbd> <span class="alt">hold</span></dt><dd>Throw it. Hold longer to throw harder</dd>
-          <dt><kbd>R</kbd></dt><dd>Talk to Mortimer at the counter (or to Rudolph in the lobby corner, at Christmas)</dd>
+          <dt><kbd>R</kbd></dt><dd>Talk to Mortimer at the counter (or to Gary in the lobby corner, at Christmas)</dd>
           <dt><kbd>X</kbd></dt><dd>Pick up thrown food you're next to (or click it)</dd>
         </dl>
       </section>
@@ -2855,7 +2855,7 @@ addEventListener("keydown", (e) => {
   if (k === "h") setHud(document.body.classList.contains("nohud"));
   if (k === "f") eatHeld();
   if (k === "g") switchHeld();
-  if (k === "r") { if (RudolphIsCloser()) talkRudolph(); else talkNpc(); }   // whoever you're standing next to: Rudolph (Christmas) or Mortimer
+  if (k === "r") { if (GaryIsCloser()) talkGary(); else talkNpc(); }   // whoever you're standing next to: Gary (Christmas) or Mortimer
   if (k === "x") pickUpNearest(); // pick up thrown food
   if (k === "p") copyDebug(); // Copy Debug Screen
   if (k === "o" && nearCounter()) openShop();
@@ -3406,7 +3406,7 @@ function onPeers(ch) {
     const s = pe.presence.say;
     const sk = s && typeof s === "object" ? String(s.k) + "|" + String(s.t) : null;
     if (sk && sk !== o.sayKey) {
-      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); RudolphHear(o.sayText, x, z, pe.peer); /* Rudolph may take it personally (see "Rudolph") */ if (/^(boo|gobble)/i.test(o.sayText)) o.gh.booAt = performance.now() / 1000; if (o.sayText.startsWith("*")) o.gh.munchAt = performance.now() / 1000; }
+      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); GaryHear(o.sayText, x, z, pe.peer); /* Gary may take it personally (see "Gary") */ if (/^(boo|gobble)/i.test(o.sayText)) o.gh.booAt = performance.now() / 1000; if (o.sayText.startsWith("*")) o.gh.munchAt = performance.now() / 1000; }
       o.sayKey = sk;
     } else if (!sk) o.sayKey = "";
   }
@@ -4717,7 +4717,7 @@ renderCrowd();
 function say(text) {
   text = clean(text, 80).trim(); if (!text) return;
   me.say = text; me.sayAt = Date.now(); me.sayLocal = performance.now() / 1000;
-  RudolphHear(text, me.x, me.z, myPeerId());   // at Christmas, Rudolph may take it personally (see "Rudolph")
+  GaryHear(text, me.x, me.z, myPeerId());   // at Christmas, Gary may take it personally (see "Gary")
   if (BOO_WORDS.test(text)) me.ghost.booAt = performance.now() / 1000;
   sharePresence(true);
 }
@@ -4934,7 +4934,7 @@ $("shop").addEventListener("click", (e) => { if (e.target === $("shop")) closeSh
 $("atm").addEventListener("click", () => { wallet = Math.min(100, Math.round((wallet + 20) * 100) / 100); saveWallet(); renderShop(); toast("The Ghost ATM spat out $20. It smells faintly of cobwebs."); });
 // Used by the third-person camera to stop in front of walls instead of going through them.
 const camRay = new THREE.Raycaster(), camDesired = new THREE.Vector3(), camDirV = new THREE.Vector3();
-let lastNear = false, lastNearNpc = false, lastNearRudolph = false;   // were the counter, Mortimer and Rudolph in reach last frame?
+let lastNear = false, lastNearNpc = false, lastNearGary = false;   // were the counter, Mortimer and Gary in reach last frame?
 /* =====================================================================
    MORTIMER, THE CONCESSION GHOST
    A non-player ghost in a red usher's vest, bow tie and pillbox hat, standing behind the counter.
@@ -5191,7 +5191,7 @@ function talkNpc() {
     else if (!proj.owner) ctx.push("Nothing on the screen yet. Anybody can put a movie up with the Load movie button.");
     if (flying.length > 3) ctx.push("Somebody's been throwing food. I'll find out who. I always find out who.");
     if (holiday === "july4" && myLbs >= 350) ctx.push(myLbs >= MAX_LBS ? "Eight hundred pounds of pure patriotism. I'd salute, but I'd need to stand further back." : "You're looking very… American tonight. I mean that as a compliment. Mostly.");
-    if (holiday === "christmas" && RudolphStats.hits + RudolphStats.mean >= 3) ctx.push("Somebody's been picking on Rudolph. I won't say who. Santa knows who, though. Santa always knows who.");
+    if (holiday === "christmas" && GaryStats.hits + GaryStats.mean >= 3) ctx.push("Somebody's been picking on Gary. I won't say who. Santa knows who, though. Santa always knows who.");
     if (myPartsLost && myPartsLost < LIMBS) ctx.push("You seem to be missing your " + PART_NAMES[myPartsLost - 1] + ". We don't have a lost and found. We have a lost and lost.");
     if (myPartsLost >= LIMBS && (holiday === "july4" || holiday === "newyear")) ctx.push("Welcome to the other side! Fireworks? Fireworks. It's always fireworks.");
     ctx.push(...mortMemoryLines());
@@ -5226,11 +5226,11 @@ function updateNpc(t, dt) {
   placeTag(npc.tag, npc.x, npc.y + 1.6, npc.z, !entered || (me.z < LOBBY.z0 - 1 && !heist));   // on a heist his tag shows everywhere
 }
 
-/* ---------------- Rudolph, the reindeer in the corner (Christmas) ----------------
-   At a Christmas showing, a scruffy little reindeer called Rudolph stands in the back-right corner of the
+/* ---------------- Gary, the reindeer in the corner (Christmas) ----------------
+   At a Christmas showing, a scruffy little reindeer called Gary stands in the back-right corner of the
    lobby, past the end of the counter. He's a bit too small, one of his antlers grew in sideways, and he
    wears a hand-knitted green sweater that's far too big for him.
-   - Say something mean near him (within a few steps, or with "Rudolph" in it) and he answers with a hurt
+   - Say something mean near him (within a few steps, or with "Gary" in it) and he answers with a hurt
      little comeback; say something nice and he cheers up. Things said nearby that aren't about him are
      left alone.
    - Throw food at him and he flinches, the food sticks to his sweater for about 25 seconds, and he
@@ -5245,16 +5245,16 @@ function updateNpc(t, dt) {
    disappears with them when the holiday changes. */
 // Where he stands, which way he faces (toward the middle of the lobby), how big he is next to a
 // player's reindeer, and how close you must be for him to take something you say personally (meters).
-const Rudolph = { x: 10.5, z: 35.25, yaw: 0.96, scale: 0.85, hear: 4.5 };
-let Rudolph = null;   // his body and state, once built (see makeRudolph())
+const Gary = { x: 10.5, z: 35.25, yaw: 0.96, scale: 0.85, hear: 4.5 };
+let Gary = null;   // his body and state, once built (see makeGary())
 // What he's been through tonight (on this computer): hits, mean and nice remarks, and who did what
 // (name -> number of hits and insults), for his call-outs and the debug screen.
-const RudolphStats = { hits: 0, mean: 0, nice: 0, byWho: {}, idleAt: 0, mortAt: -99 };
+const GaryStats = { hits: 0, mean: 0, nice: 0, byWho: {}, idleAt: 0, mortAt: -99 };
 // Words that make a remark mean, or nice. Checked as whole words, so "class" doesn't count as "ass".
-const Rudolph_MEAN = /\b(stupid|dumb|ugly|loser|idiot|hate|weird|weirdo|freak|smell|smelly|stink|stinks|stinky|gross|lame|pathetic|worthless|useless|moron|shut up|go away|nobody likes|no one likes|nerd|dork|jerk|sucks?|worst|cringe|clown|disgusting|crooked|tiny|shrimp|runt|fat|bad|annoying|boring|ew|eww|loser)\b/i;
-const Rudolph_NICE = /\b(love|sorry|nice|cute|cool|friend|awesome|great|best|sweet|handsome|beautiful|proud|hug|like you|good boy|merry christmas|happy holidays|thanks?|adorable|amazing)\b/i;
+const Gary_MEAN = /\b(stupid|dumb|ugly|loser|idiot|hate|weird|weirdo|freak|smell|smelly|stink|stinks|stinky|gross|lame|pathetic|worthless|useless|moron|shut up|go away|nobody likes|no one likes|nerd|dork|jerk|sucks?|worst|cringe|clown|disgusting|crooked|tiny|shrimp|runt|fat|bad|annoying|boring|ew|eww|loser)\b/i;
+const Gary_NICE = /\b(love|sorry|nice|cute|cool|friend|awesome|great|best|sweet|handsome|beautiful|proud|hug|like you|good boy|merry christmas|happy holidays|thanks?|adorable|amazing)\b/i;
 // What he says when someone's mean to him.
-const Rudolph_HURT = [
+const Gary_HURT = [
   "Oh. Okay. I'll just… stand over here. Where I always stand.",
   "My mom says my antler is “distinctive.”",
   "That's okay. I've been called worse. By Santa, mostly.",
@@ -5273,7 +5273,7 @@ const Rudolph_HURT = [
   "*quietly faces the wall*"
 ];
 // What he says when food hits him.
-const Rudolph_HIT = [
+const Gary_HIT = [
   "Ow! That was a perfectly good sweater!",
   "Oof. Right in the knitting.",
   "Is this… a Christmas tradition? Nobody told me.",
@@ -5287,7 +5287,7 @@ const Rudolph_HIT = [
   "*shields face with one sleeve*"
 ];
 // When someone's nice to him.
-const Rudolph_NICE_LINES = [
+const Gary_NICE_LINES = [
   "Really? You mean it? Nobody's ever… okay. I'm fine. Thank you.",
   "Do you want to be friends? We could stand in the corner together. It's a good corner.",
   "I'm going to remember this for the rest of my life.",
@@ -5296,13 +5296,13 @@ const Rudolph_NICE_LINES = [
   "That's the nicest thing anyone's said to me since August."
 ];
 // When someone says his name but isn't being mean or nice.
-const Rudolph_NAME = [
+const Gary_NAME = [
   "Yes? Hi! Me? Hi.",
   "You know my name! Most people just call me “the one in the corner.”",
-  "Hi. I'm Rudolph. I'm a reindeer. You could probably tell. Probably."
+  "Hi. I'm Gary. I'm a reindeer. You could probably tell. Probably."
 ];
 // Things he says now and then when you're standing near him.
-const Rudolph_IDLE = [
+const Gary_IDLE = [
   "Hi. Don't mind me. I'm just standing in the corner. Festively.",
   "Santa says I'm “on standby.” I've been on standby for nine Christmases.",
   "My antler grew in sideways. The doctor said it'll straighten out. The doctor was a squirrel.",
@@ -5310,27 +5310,27 @@ const Rudolph_IDLE = [
   "If anybody needs a reindeer for anything… I'm right here. In the corner.",
   "I tried out for the sleigh team. They said I was “more of a corner reindeer.”"
 ];
-// Mortimer (as Santa) chiming in after someone picks on Rudolph: defending him, or joining in.
-const MORT_Rudolph_DEFEND = [
-  "Leave Rudolph alone. He's having a hard enough Christmas.",
-  "Ho ho NO. We don't throw food at Rudolph.",
+// Mortimer (as Santa) chiming in after someone picks on Gary: defending him, or joining in.
+const MORT_Gary_DEFEND = [
+  "Leave Gary alone. He's having a hard enough Christmas.",
+  "Ho ho NO. We don't throw food at Gary.",
   "That's going on the naughty list. In pen.",
   "Throwing food at someone who's asked you to stop? I know how that story ends. Badly. For everyone.",
-  "Be nice to Rudolph. Have you SEEN his antler?"
+  "Be nice to Gary. Have you SEEN his antler?"
 ];
-const MORT_Rudolph_JOIN = [
+const MORT_Gary_JOIN = [
   "Ho ho ho! Good shot!",
-  "Rudolph, stand still, you're making it harder.",
+  "Gary, stand still, you're making it harder.",
   "I've been telling him that for years. Ho ho ho.",
-  "Don't worry, Rudolph. It's free food. That's practically a present.",
+  "Don't worry, Gary. It's free food. That's practically a present.",
   "Ho ho ho! I didn't see anything. Santa sees everything, but I didn't see that."
 ];
 // What to call the person who did something: their name, or "friend" for yourself with no name set.
-const RudolphName = (peer) => (peer === myPeerId() ? myNick || "friend" : whoIs(peer));
+const GaryName = (peer) => (peer === myPeerId() ? myNick || "friend" : whoIs(peer));
 // Count one more hit or insult from someone; returns how many they've done tonight.
-function RudolphNote(name) { RudolphStats.byWho[name] = (RudolphStats.byWho[name] || 0) + 1; return RudolphStats.byWho[name]; }
+function GaryNote(name) { GaryStats.byWho[name] = (GaryStats.byWho[name] || 0) + 1; return GaryStats.byWho[name]; }
 // A call-out for someone who keeps picking on him (n = how many times so far).
-function RudolphCallOut(name, n) {
+function GaryCallOut(name, n) {
   return pickOne([
     "That's " + n + " times now, " + name + ". I'm keeping a list. It has one name on it.",
     "Oh. It's you again, " + name + ".",
@@ -5339,19 +5339,19 @@ function RudolphCallOut(name, n) {
   ]);
 }
 // Show a line in his speech bubble, and work his mouth while he says it.
-function RudolphSay(text) { if (!Rudolph) return; Rudolph.say = text; Rudolph.sayAt = nowS(); }
+function GarySay(text) { if (!Gary) return; Gary.say = text; Gary.sayAt = nowS(); }
 // Now and then (about 1 time in 3, never more than once every 15 s), Mortimer chimes in a moment later.
-function RudolphMortimer(t) {
-  if (t - RudolphStats.mortAt < 15 || Math.random() > 0.35) return;
-  RudolphStats.mortAt = t;
-  setTimeout(() => { if (holiday === "christmas") npcSay(pickOne(Math.random() < 0.55 ? MORT_Rudolph_DEFEND : MORT_Rudolph_JOIN)); }, 1800);
+function GaryMortimer(t) {
+  if (t - GaryStats.mortAt < 15 || Math.random() > 0.35) return;
+  GaryStats.mortAt = t;
+  setTimeout(() => { if (holiday === "christmas") npcSay(pickOne(Math.random() < 0.55 ? MORT_Gary_DEFEND : MORT_Gary_JOIN)); }, 1800);
 }
 
-// Build Rudolph's body into `parent` (the Christmas decorations). Facing -z like everyone else, then turned
+// Build Gary's body into `parent` (the Christmas decorations). Facing -z like everyone else, then turned
 // to face the lobby. Returns his parts and state.
-function makeRudolph(parent) {
-  const root = new THREE.Group(); root.position.set(Rudolph.x, 0, Rudolph.z); root.rotation.y = Rudolph.yaw; parent.add(root);
-  const body = new THREE.Group(); body.scale.setScalar(Rudolph.scale); root.add(body);
+function makeGary(parent) {
+  const root = new THREE.Group(); root.position.set(Gary.x, 0, Gary.z); root.rotation.y = Gary.yaw; parent.add(root);
+  const body = new THREE.Group(); body.scale.setScalar(Gary.scale); root.add(body);
   const D = DEER, P = (geo, mat, sc, pos, par) => bodyPart(par || body, geo, mat, sc, pos);
   // His sweater's knit pattern: green with darker rows of little "V" stitches, a band of white
   // zigzag and red dots, and a few dropped stitches (hand-knitted, and not by an expert).
@@ -5396,59 +5396,59 @@ function makeRudolph(parent) {
   { const beam = P(ROD, D.antler, [0.016, 0.3, 0.016], [0.22, 0.36, -0.14], headG); beam.rotation.z = -1.5;
     const tip = P(ROD, D.antler, [0.014, 0.12, 0.014], [0.39, 0.31, -0.14], headG); tip.rotation.z = -0.5;
     const nub = P(ROD, D.antler, [0.011, 0.07, 0.011], [0.27, 0.4, -0.14], headG); nub.rotation.z = 0.3; }
-  const stuck = new THREE.Group(); body.add(stuck);   // food stuck to his sweater (see RudolphHit())
-  const tag = makeTag(); tag.nm.textContent = "Rudolph · Reindeer";
+  const stuck = new THREE.Group(); body.add(stuck);   // food stuck to his sweater (see GaryHit())
+  const tag = makeTag(); tag.nm.textContent = "Gary · Reindeer";
   return { root, body, headG, ears, mouth, stuck, stuckList: [], tag, gh: { booAt: -10 }, flinchAt: -10, happyAt: -10, sad: 0, say: "", sayAt: -99, pending: null, look: 0 };
 }
 
-// Food hit Rudolph (on every computer, since everyone runs the same throws): he flinches and gets sadder,
+// Food hit Gary (on every computer, since everyone runs the same throws): he flinches and gets sadder,
 // the food sticks to his sweater (except fireworks, which keep fizzing toward their bang), and he says
 // something: a call-out if it's the same person again, otherwise a pitiful line.
-function RudolphHit(f, t) {
-  if (!Rudolph) return;
-  Rudolph.flinchAt = t; Rudolph.sad = Math.min(1, Rudolph.sad + 0.25); RudolphStats.hits++;
+function GaryHit(f, t) {
+  if (!Gary) return;
+  Gary.flinchAt = t; Gary.sad = Math.min(1, Gary.sad + 0.25); GaryStats.hits++;
   if (f.id !== "firework") { stickFood(f, t); f.stuck = true; }
-  const name = RudolphName(f.from), n = RudolphNote(name), food = MENU_BY_ID[f.id] ? MENU_BY_ID[f.id].name.toLowerCase() : "food";
-  if (t - Rudolph.sayAt < 2.5) return;   // still finishing his last sentence
-  RudolphSay(n >= 3 && Math.random() < 0.5 ? RudolphCallOut(name, n) : Math.random() < 0.25 ? "Was that " + (/^[aeiou]/.test(food) ? "an " : "a ") + food + "? …I'm keeping it." : pickOne(Rudolph_HIT));
-  RudolphMortimer(t);
+  const name = GaryName(f.from), n = GaryNote(name), food = MENU_BY_ID[f.id] ? MENU_BY_ID[f.id].name.toLowerCase() : "food";
+  if (t - Gary.sayAt < 2.5) return;   // still finishing his last sentence
+  GarySay(n >= 3 && Math.random() < 0.5 ? GaryCallOut(name, n) : Math.random() < 0.25 ? "Was that " + (/^[aeiou]/.test(food) ? "an " : "a ") + food + "? …I'm keeping it." : pickOne(Gary_HIT));
+  GaryMortimer(t);
 }
 // Stick a copy of the thrown food onto his sweater where it hit. It stays about 25 seconds, then
 // shrinks away. At most 12 at a time (the oldest goes first).
 function stickFood(f, t) {
   const m = f.mesh.clone();
-  // Where it hit, as a point on Rudolph's body, pushed out to the surface of the sweater.
-  const p = Rudolph.body.worldToLocal(f.p.clone()), c = new THREE.Vector3(0, 0.665, -0.03), r = new THREE.Vector3(0.215, 0.225, 0.36);
+  // Where it hit, as a point on Gary's body, pushed out to the surface of the sweater.
+  const p = Gary.body.worldToLocal(f.p.clone()), c = new THREE.Vector3(0, 0.665, -0.03), r = new THREE.Vector3(0.215, 0.225, 0.36);
   const d = p.sub(c).divide(r); if (d.lengthSq() < 1e-6) d.set(0, 1, 0); d.normalize();
   m.position.copy(c).add(d.multiply(r).multiplyScalar(1.04));
   m.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
-  m.scale.multiplyScalar(0.4 / Rudolph.scale);   // smaller than in flight, so a popcorn bucket doesn't swallow him
-  Rudolph.stuck.add(m); Rudolph.stuckList.push({ mesh: m, at: t, s: m.scale.x });
-  while (Rudolph.stuckList.length > 12) Rudolph.stuck.remove(Rudolph.stuckList.shift().mesh);
+  m.scale.multiplyScalar(0.4 / Gary.scale);   // smaller than in flight, so a popcorn bucket doesn't swallow him
+  Gary.stuck.add(m); Gary.stuckList.push({ mesh: m, at: t, s: m.scale.x });
+  while (Gary.stuckList.length > 12) Gary.stuck.remove(Gary.stuckList.shift().mesh);
 }
-// Someone said something. If it's meant for Rudolph (said near him, or with his name in it), work out
+// Someone said something. If it's meant for Gary (said near him, or with his name in it), work out
 // whether it's mean or nice and queue his answer for a moment later (so it feels like he heard it).
 // x, z = where they were standing; peer = who said it.
-function RudolphHear(text, x, z, peer) {
-  if (holiday !== "christmas" || !Rudolph || !text || text.startsWith("*")) return;   // "*munch*" lines are eating sounds, not speech
-  const named = /\bRudolph\b/i.test(text);
-  if (!named && Math.hypot(x - Rudolph.x, z - Rudolph.z) > Rudolph.hear) return;
-  const t = nowS(), name = RudolphName(peer);
-  if (Rudolph_MEAN.test(text)) {
-    RudolphStats.mean++; Rudolph.sad = Math.min(1, Rudolph.sad + 0.2); const n = RudolphNote(name);
-    Rudolph.pending = { at: t + 0.8, line: n >= 3 && Math.random() < 0.4 ? RudolphCallOut(name, n) : pickOne(Rudolph_HURT), flinch: true };
-    RudolphMortimer(t);
-  } else if (Rudolph_NICE.test(text)) {
-    RudolphStats.nice++; Rudolph.sad = Math.max(0, Rudolph.sad - 0.4);
-    Rudolph.pending = { at: t + 0.8, line: pickOne(Rudolph_NICE_LINES), happy: true };
-  } else if (named) Rudolph.pending = { at: t + 0.8, line: pickOne(Rudolph_NAME) };
+function GaryHear(text, x, z, peer) {
+  if (holiday !== "christmas" || !Gary || !text || text.startsWith("*")) return;   // "*munch*" lines are eating sounds, not speech
+  const named = /\bGary\b/i.test(text);
+  if (!named && Math.hypot(x - Gary.x, z - Gary.z) > Gary.hear) return;
+  const t = nowS(), name = GaryName(peer);
+  if (Gary_MEAN.test(text)) {
+    GaryStats.mean++; Gary.sad = Math.min(1, Gary.sad + 0.2); const n = GaryNote(name);
+    Gary.pending = { at: t + 0.8, line: n >= 3 && Math.random() < 0.4 ? GaryCallOut(name, n) : pickOne(Gary_HURT), flinch: true };
+    GaryMortimer(t);
+  } else if (Gary_NICE.test(text)) {
+    GaryStats.nice++; Gary.sad = Math.max(0, Gary.sad - 0.4);
+    Gary.pending = { at: t + 0.8, line: pickOne(Gary_NICE_LINES), happy: true };
+  } else if (named) Gary.pending = { at: t + 0.8, line: pickOne(Gary_NAME) };
 }
-// Close enough to talk to Rudolph (3.4 m, the same as Mortimer), and only at Christmas.
-const nearRudolph = () => !!Rudolph && holiday === "christmas" && Math.hypot(me.x - Rudolph.x, me.z - Rudolph.z) < 3.4;
-// R talks to whoever is nearer: true if that's Rudolph.
-const RudolphIsCloser = () => nearRudolph() && (!nearNpc() || Math.hypot(me.x - Rudolph.x, me.z - Rudolph.z) < Math.hypot(me.x - npc.x, me.z - npc.z));
+// Close enough to talk to Gary (3.4 m, the same as Mortimer), and only at Christmas.
+const nearGary = () => !!Gary && holiday === "christmas" && Math.hypot(me.x - Gary.x, me.z - Gary.z) < 3.4;
+// R talks to whoever is nearer: true if that's Gary.
+const GaryIsCloser = () => nearGary() && (!nearNpc() || Math.hypot(me.x - Gary.x, me.z - Gary.z) < Math.hypot(me.x - npc.x, me.z - npc.z));
 // Things he tells you when you talk to him (R): little bits of his life.
-const Rudolph_TALK = [
+const Gary_TALK = [
   "I've been practicing my flying. I got about this high. *holds hooves an inch apart* Then I landed on my antler.",
   "Do you like my sweater? My grandma made it. She knits by the pound.",
   "I have a best friend. He's a snowman. He's away for the summer. Every summer. And spring. And autumn.",
@@ -5459,75 +5459,75 @@ const Rudolph_TALK = [
   "I've been in this corner since 1987. It's a good corner. Good acoustics. Nobody bumps into you.",
   "If you see the other reindeer, tell them I said hi. They won't say it back, but tell them.",
   "I'm saving up for a sweater that fits. I've got eleven dollars and a button.",
-  "I wrote Santa a letter asking for a friend. He sent me a pet rock. I named him Rudolph Two. He's a good listener.",
+  "I wrote Santa a letter asking for a friend. He sent me a pet rock. I named him Gary Two. He's a good listener.",
   "Mortimer is nice to me. Well. Sometimes. He's complicated. I think something happened to him once.",
   "Sometimes I practice saying “Ho ho ho” in case Santa ever gets sick. “Ho… ho… ho?” See? Not bad.",
   "I'm a little small for my age. But my heart is regular-sized. The doctor checked. The squirrel."
 ];
-let RudolphTalks = 0, RudolphLastTalk = -1;   // how many times you've talked to him; the last everyday line (so it isn't repeated right away)
-// Talk to Rudolph (R, the button, or clicking him). The first time, he introduces himself. After that he
+let GaryTalks = 0, GaryLastTalk = -1;   // how many times you've talked to him; the last everyday line (so it isn't repeated right away)
+// Talk to Gary (R, the button, or clicking him). The first time, he introduces himself. After that he
 // sometimes mentions what's going on (food stuck on him, the snack you're holding, whether YOU are one of
 // the people who picked on him, how his night is going); otherwise a little story from his life.
-function talkRudolph() {
-  if (!nearRudolph()) { toast("Get closer to Rudolph to talk to him."); return; }
-  RudolphTalks++;
-  const me1 = RudolphName(myPeerId()), mine = RudolphStats.byWho[me1] || 0, h = heldItem();
+function talkGary() {
+  if (!nearGary()) { toast("Get closer to Gary to talk to him."); return; }
+  GaryTalks++;
+  const me1 = GaryName(myPeerId()), mine = GaryStats.byWho[me1] || 0, h = heldItem();
   let line;
-  if (RudolphTalks === 1) line = mine ? "Oh. It's you. …Hi, " + me1 + ". I'm Rudolph. You've, um. Met me already. Sort of. With food." : "Oh! Hi! Nobody usually talks to me. I'm Rudolph. I'm a reindeer. In the corner. Welcome to the corner!";
+  if (GaryTalks === 1) line = mine ? "Oh. It's you. …Hi, " + me1 + ". I'm Gary. You've, um. Met me already. Sort of. With food." : "Oh! Hi! Nobody usually talks to me. I'm Gary. I'm a reindeer. In the corner. Welcome to the corner!";
   else {
     const ctx = [];
     if (mine >= 2) ctx.push("You've been kind of mean to me tonight, " + me1 + ". But you came over to talk, so. I'm choosing to believe in you.");
     if (mine >= 4) ctx.push("Please don't throw anything. I'm talking to you with my eyes closed. Just in case.");
-    if (Rudolph.stuckList.length) ctx.push("Don't mind the food on my sweater. It's a look. I'm trying a look.");
+    if (Gary.stuckList.length) ctx.push("Don't mind the food on my sweater. It's a look. I'm trying a look.");
     if (h) ctx.push("Is that " + MENU_BY_ID[h.id].name.toLowerCase() + " for me? …Or for throwing at me? You can tell me. I can take it.");
-    if (Rudolph.sad > 0.5) ctx.push("Rough night. Somebody threw stuff at me. And said stuff. It's fine. I'm fine. Thanks for asking. You didn't ask, but thanks.");
-    if (RudolphStats.nice > 0 && Rudolph.sad < 0.2) ctx.push("Somebody said something nice to me tonight! I'm having the best Christmas.");
+    if (Gary.sad > 0.5) ctx.push("Rough night. Somebody threw stuff at me. And said stuff. It's fine. I'm fine. Thanks for asking. You didn't ask, but thanks.");
+    if (GaryStats.nice > 0 && Gary.sad < 0.2) ctx.push("Somebody said something nice to me tonight! I'm having the best Christmas.");
     if (ctx.length && Math.random() < 0.45) line = pickOne(ctx);
-    else { RudolphLastTalk = pickFresh(Rudolph_TALK, RudolphLastTalk); line = Rudolph_TALK[RudolphLastTalk]; }
+    else { GaryLastTalk = pickFresh(Gary_TALK, GaryLastTalk); line = Gary_TALK[GaryLastTalk]; }
   }
-  Rudolph.happyAt = nowS();   // a little bounce: someone's talking to him!
-  RudolphSay(line);
+  Gary.happyAt = nowS();   // a little bounce: someone's talking to him!
+  GarySay(line);
 }
 
 // Every frame: build him the first time he's needed, then animate him (breathing, looking at you,
 // flinching, a happy little bounce, drooping when sad), say anything queued, let stuck food drop off,
 // and place his name tag and speech bubble.
-const tmpRudolphV = new THREE.Vector3();
-function updateRudolph(t, dt) {
+const tmpGaryV = new THREE.Vector3();
+function updateGary(t, dt) {
   const on = holiday === "christmas" && holidayDecor.christmas;
-  if (!Rudolph && on) Rudolph = makeRudolph(holidayDecor.christmas.group);
-  if (!Rudolph) return;
-  if (!on) { placeTag(Rudolph.tag, Rudolph.x, 1.5, Rudolph.z, true); return; }
-  if (Rudolph.pending && t >= Rudolph.pending.at) {
-    const p = Rudolph.pending; Rudolph.pending = null; RudolphSay(p.line);
-    if (p.flinch) Rudolph.flinchAt = t; if (p.happy) Rudolph.happyAt = t;
+  if (!Gary && on) Gary = makeGary(holidayDecor.christmas.group);
+  if (!Gary) return;
+  if (!on) { placeTag(Gary.tag, Gary.x, 1.5, Gary.z, true); return; }
+  if (Gary.pending && t >= Gary.pending.at) {
+    const p = Gary.pending; Gary.pending = null; GarySay(p.line);
+    if (p.flinch) Gary.flinchAt = t; if (p.happy) Gary.happyAt = t;
   }
   // Now and then he speaks up on his own when you're standing near him.
-  const near = Math.hypot(me.x - Rudolph.x, me.z - Rudolph.z) < 6;
-  if (near && t - Rudolph.sayAt > 40 && t - RudolphStats.idleAt > 60) { RudolphStats.idleAt = t; RudolphSay(pickOne(Rudolph_IDLE)); }
-  Rudolph.sad = Math.max(0, Rudolph.sad - dt / 45);   // he gets over things in about 45 seconds… mostly
-  const fl = clamp(1 - (t - Rudolph.flinchAt) / 0.7, 0, 1), fk = Math.sin(fl * Math.PI);   // flinch strength (0..1)
-  const hp = clamp(1 - (t - Rudolph.happyAt) / 1.4, 0, 1);                                 // happy bounce, fading out
-  const b = Rudolph.body;
-  b.position.set(Math.sin(t * 55) * 0.025 * fk, Math.abs(Math.sin((t - Rudolph.happyAt) * 9)) * 0.07 * hp, fk * 0.08);   // shake and step back when hit; bounce when happy
+  const near = Math.hypot(me.x - Gary.x, me.z - Gary.z) < 6;
+  if (near && t - Gary.sayAt > 40 && t - GaryStats.idleAt > 60) { GaryStats.idleAt = t; GarySay(pickOne(Gary_IDLE)); }
+  Gary.sad = Math.max(0, Gary.sad - dt / 45);   // he gets over things in about 45 seconds… mostly
+  const fl = clamp(1 - (t - Gary.flinchAt) / 0.7, 0, 1), fk = Math.sin(fl * Math.PI);   // flinch strength (0..1)
+  const hp = clamp(1 - (t - Gary.happyAt) / 1.4, 0, 1);                                 // happy bounce, fading out
+  const b = Gary.body;
+  b.position.set(Math.sin(t * 55) * 0.025 * fk, Math.abs(Math.sin((t - Gary.happyAt) * 9)) * 0.07 * hp, fk * 0.08);   // shake and step back when hit; bounce when happy
   b.rotation.z = Math.sin(t * 1.1) * 0.015; b.rotation.x = -fk * 0.12;
-  b.scale.set(Rudolph.scale, Rudolph.scale * (1 + Math.sin(t * 1.7) * 0.012), Rudolph.scale);   // breathing
+  b.scale.set(Gary.scale, Gary.scale * (1 + Math.sin(t * 1.7) * 0.012), Gary.scale);   // breathing
   // Look toward you when you're close (turning his head, not his body), otherwise gaze about a bit.
   let want = Math.sin(t * 0.37) * 0.35;
-  if (near) { const a = Math.atan2(-(me.x - Rudolph.x), -(me.z - Rudolph.z)) - Rudolph.yaw; want = clamp(Math.atan2(Math.sin(a), Math.cos(a)), -0.9, 0.9); }
-  Rudolph.look += (want - Rudolph.look) * (1 - Math.exp(-dt * 3));
-  Rudolph.headG.rotation.set(0.1 + Rudolph.sad * 0.55 + fk * 0.3 - hp * 0.2, Rudolph.look, 0);   // sad = head hangs low
-  const flat = Math.max(fk, Rudolph.sad * 0.7);   // ears go flat when hit or sad
-  Rudolph.ears.forEach((e, i) => { e.rotation.z = (i ? 1 : -1) * (1.1 + flat * 0.7); });
-  Rudolph.mouth.scale.y = t - Rudolph.sayAt < 2.2 ? 0.04 + Math.abs(Math.sin(t * 14)) * 0.07 : 0.03;   // talking
+  if (near) { const a = Math.atan2(-(me.x - Gary.x), -(me.z - Gary.z)) - Gary.yaw; want = clamp(Math.atan2(Math.sin(a), Math.cos(a)), -0.9, 0.9); }
+  Gary.look += (want - Gary.look) * (1 - Math.exp(-dt * 3));
+  Gary.headG.rotation.set(0.1 + Gary.sad * 0.55 + fk * 0.3 - hp * 0.2, Gary.look, 0);   // sad = head hangs low
+  const flat = Math.max(fk, Gary.sad * 0.7);   // ears go flat when hit or sad
+  Gary.ears.forEach((e, i) => { e.rotation.z = (i ? 1 : -1) * (1.1 + flat * 0.7); });
+  Gary.mouth.scale.y = t - Gary.sayAt < 2.2 ? 0.04 + Math.abs(Math.sin(t * 14)) * 0.07 : 0.03;   // talking
   // Stuck food: after 25 seconds it shrinks away over 1 second, then it's gone.
-  for (let i = Rudolph.stuckList.length - 1; i >= 0; i--) {
-    const s = Rudolph.stuckList[i], age = t - s.at;
-    if (age > 26) { Rudolph.stuck.remove(s.mesh); Rudolph.stuckList.splice(i, 1); }
+  for (let i = Gary.stuckList.length - 1; i >= 0; i--) {
+    const s = Gary.stuckList[i], age = t - s.at;
+    if (age > 26) { Gary.stuck.remove(s.mesh); Gary.stuckList.splice(i, 1); }
     else if (age > 25) s.mesh.scale.setScalar(s.s * (26 - age));
   }
-  Rudolph.tag.bub.textContent = t - Rudolph.sayAt < 7 ? Rudolph.say : "";
-  placeTag(Rudolph.tag, Rudolph.x, 1.5, Rudolph.z, !entered || me.z < LOBBY.z0 - 1);   // hidden from inside the theater, like Mortimer's
+  Gary.tag.bub.textContent = t - Gary.sayAt < 7 ? Gary.say : "";
+  placeTag(Gary.tag, Gary.x, 1.5, Gary.z, !entered || me.z < LOBBY.z0 - 1);   // hidden from inside the theater, like Mortimer's
 }
 
 /* ---------------- Mortimer's turkey-leg heist ----------------
@@ -5625,7 +5625,7 @@ function updateHeist(t, dt) {
   }
 }
 $("talkNpc").addEventListener("click", talkNpc);
-$("talkRudolph").addEventListener("click", talkRudolph);   // Talk to Rudolph (Christmas; see "Rudolph")
+$("talkGary").addEventListener("click", talkGary);   // Talk to Gary (Christmas; see "Gary")
 // Click Mortimer to talk
 // Clicking him: a short click (not a drag) whose ray hits him before hitting a wall.
 const pickRay = new THREE.Raycaster(), pickNdc = new THREE.Vector2();
@@ -5641,9 +5641,9 @@ cv.addEventListener("pointerup", (e) => {
     const f = flying.find((g) => { let o = foodHit.object; while (o) { if (o === g.mesh) return true; o = o.parent; } return false; });
     if (f) { if (canReach(f)) pickUp(f); else toast("Float closer to pick that up."); return; }
   }
-  // Clicked Rudolph (Christmas)? Talk to him, unless a wall is in the way.
-  const hitG = Rudolph && holiday === "christmas" ? pickRay.intersectObject(Rudolph.root, true)[0] : null;
-  if (hitG) { const w = pickRay.intersectObjects(colliders, false)[0]; if (!w || w.distance > hitG.distance) { talkRudolph(); return; } }
+  // Clicked Gary (Christmas)? Talk to him, unless a wall is in the way.
+  const hitG = Gary && holiday === "christmas" ? pickRay.intersectObject(Gary.root, true)[0] : null;
+  if (hitG) { const w = pickRay.intersectObjects(colliders, false)[0]; if (!w || w.distance > hitG.distance) { talkGary(); return; } }
   const hitN = pickRay.intersectObject(npc.ghost.bodyG, true)[0]; if (!hitN) return;
   const hitW = pickRay.intersectObjects(colliders, false)[0];
   if (hitW && hitW.distance < hitN.distance) return;
@@ -5788,7 +5788,7 @@ function updatePickHint() {
   lastPickLabel = label;
   $("pickBtn").hidden = !f; if (f) $("pickBtn").textContent = label;
   // The shared hint row is visible if any of its buttons is.
-  $("shopHint").hidden = $("pickBtn").hidden && $("openShop").hidden && $("talkNpc").hidden && $("talkRudolph").hidden;
+  $("shopHint").hidden = $("pickBtn").hidden && $("openShop").hidden && $("talkNpc").hidden && $("talkGary").hidden;
 }
 // Which way the surface we hit is facing (needed to bounce), including for instanced seats.
 function surfaceNormal(hit, out) {
@@ -5803,15 +5803,15 @@ function settle(f) { f.rest = true; f.v.set(0, 0, 0); f.mesh.rotation.set(0, f.m
 // Name for a network id.
 function whoIs(peer) { if (peer === myPeerId()) return "You"; return nameFor(peersSnap.find((p) => p.peer === peer)); }
 // Food hit a ghost: it flinches; if it's you, a "Bonk!" message; if it's Mortimer, he complains;
-// if it's Rudolph (Christmas), it sticks to his sweater and he reacts.
+// if it's Gary (Christmas), it sticks to his sweater and he reacts.
 function onGhostHit(g, f, t) {
   g.gh.booAt = t;
   // A rotten tomato or cranberry sauce bursts on a player's face instead of bouncing off (see "Face splats").
-  const faceHit = SPLAT_FOODS.includes(f.id) && !g.npc && !g.Rudolph;
+  const faceHit = SPLAT_FOODS.includes(f.id) && !g.npc && !g.Gary;
   if (faceHit) { f.splat = true; splatOnGhost(g.gh, f.id, t); if (g.me) splatMyView(f.id); }
   if (g.me && f.from !== myPeerId()) toast((faceHit ? "Splat! " : "Bonk! ") + whoIs(f.from) + " hit you " + (faceHit ? "in the face " : "") + "with " + MENU_BY_ID[f.id].name.toLowerCase() + ".");
   if (g.npc && f.from === myPeerId()) mortNoteHit();   // your throw hit Mortimer: he'll remember
-  if (g.Rudolph) RudolphHit(f, t);   // Rudolph flinches, the food sticks to his sweater, and he says something (see "Rudolph")
+  if (g.Gary) GaryHit(f, t);   // Gary flinches, the food sticks to his sweater, and he says something (see "Gary")
   if (g.npc && t - npc.lastHitTalk > 2.5) { npc.lastHitTalk = t; npcSay(pickOne(Math.random() < HIT_BACKSTORY_CHANCE ? NPC_HIT_BACKSTORY : NPC_HIT)); } // now and then the hit stirs up old memories
 }
 // Move all flying food for this frame. Small sub-steps (90 per second) so fast throws can't
@@ -5929,7 +5929,7 @@ function stepThrows(dt, t) {
   if (!flying.length) return;
   const targets = getThrowTargets();
   const gts = [{ key: myPeerId(), x: me.x, y: me.y, z: me.z, gh: me.ghost, me: true }, { key: "npc", x: npc.x, y: npc.y, z: npc.z, gh: npc.ghost, npc: true }];
-  if (Rudolph && holiday === "christmas") gts.push({ key: "Rudolph", x: Rudolph.x, y: 0, z: Rudolph.z, gh: Rudolph.gh, Rudolph: true });   // Rudolph can be hit too (see "Rudolph")
+  if (Gary && holiday === "christmas") gts.push({ key: "Gary", x: Gary.x, y: 0, z: Gary.z, gh: Gary.gh, Gary: true });   // Gary can be hit too (see "Gary")
   for (const [peer, o] of others) gts.push({ key: peer, x: o.x, y: o.y, z: o.z, gh: o.gh });
   for (let i = flying.length - 1; i >= 0; i--) {
     const f = flying[i], age = t - f.born;
@@ -5938,7 +5938,7 @@ function stepThrows(dt, t) {
     if (f.id === "firework" && age >= FIREWORK_FUSE) { onFireworkBurst(f.p); killThrow(i); continue; }   // the fuse ran out: BOOM (see "Fireworks")
     if (f.rest) continue;
     const n = Math.max(1, Math.ceil(dt / (1 / 90))), h = dt / n;
-    for (let s = 0; s < n && !f.rest && !f.stuck && !f.splat; s++) {   // (stops early if it stuck to Rudolph or splatted)
+    for (let s = 0; s < n && !f.rest && !f.stuck && !f.splat; s++) {   // (stops early if it stuck to Gary or splatted)
       f.v.y -= 9.8 * h;
       const dist = f.v.length() * h;
       if (dist > 1e-6) {
@@ -5964,11 +5964,11 @@ function stepThrows(dt, t) {
           if (f.v.dot(tN) < 0) bounce(f, tN, 0.45, 0.85);
           if (f.lastHit !== g.key || t - f.lastHitAt > 1) onGhostHit(g, f, t);
           f.lastHit = g.key; f.lastHitAt = t;
-          if (f.stuck || f.splat) break;   // it stuck to Rudolph's sweater, or burst on someone's face: stop moving it
+          if (f.stuck || f.splat) break;   // it stuck to Gary's sweater, or burst on someone's face: stop moving it
         }
       }
     }
-    if (f.splat || f.stuck) { killThrow(i); continue; }   // it burst (on the screen or a face), or stuck to Rudolph (a copy stays on him)
+    if (f.splat || f.stuck) { killThrow(i); continue; }   // it burst (on the screen or a face), or stuck to Gary (a copy stays on him)
     f.mesh.position.copy(f.p);
     if (!f.rest) { f.mesh.rotation.x += f.w.x * dt; f.mesh.rotation.y += f.w.y * dt; f.mesh.rotation.z += f.w.z * dt; }
   }
@@ -6186,7 +6186,7 @@ function dbgRows() {
       ["Alcohol", alcohol.toFixed(2) + " drinks" + (alcohol >= 3.99 ? "" : alcohol >= 2.99 ? " (drifting + blurry)" : alcohol >= 1.99 ? " (drifting)" : "") + (blackout ? ", blacked out" : "") + (nowS() - lastSipAt < SOBER_DELAY ? ", still drinking" : alcohol > 0 ? ", sobering up" : "") + " · " + blackouts + " blackout(s)"],
       ["Holiday body", "your body: " + me.ghost.kind + (lap ? " · on Santa's lap" : "") + (me.ghost.kind === "bunny" || hopsDone ? " · " + hopsDone + " hops" : "") + (holiday === "july4" ? " · " + Math.round(myLbs) + " lbs" : "")],
       ["Fireworks", burstsTotal + " burst here · you've lost " + myPartsLost + " of " + LIMBS + " limbs" + (myPartsLost ? " (" + PART_NAMES.slice(0, myPartsLost).join(", ") + ")" : "")],
-      ["Rudolph (Christmas)", !Rudolph ? "not here (only at Christmas)" : RudolphStats.hits + " hits, " + RudolphStats.mean + " mean remarks, " + RudolphStats.nice + " nice ones, " + RudolphTalks + " talks · sadness " + Math.round(Rudolph.sad * 100) + "% · " + Rudolph.stuckList.length + " food stuck on him" + (Object.keys(RudolphStats.byWho).length ? " · picked on by " + Object.entries(RudolphStats.byWho).map(([k, v]) => k + " ×" + v).join(", ") : "")],
+      ["Gary (Christmas)", !Gary ? "not here (only at Christmas)" : GaryStats.hits + " hits, " + GaryStats.mean + " mean remarks, " + GaryStats.nice + " nice ones, " + GaryTalks + " talks · sadness " + Math.round(Gary.sad * 100) + "% · " + Gary.stuckList.length + " food stuck on him" + (Object.keys(GaryStats.byWho).length ? " · picked on by " + Object.entries(GaryStats.byWho).map(([k, v]) => k + " ×" + v).join(", ") : "")],
       ["Tomato splats", splats.length + " on the screen now, " + splatsTotal + " so far · " + faceSplatsTotal + " in someone's face · " + $("faceSplats").childElementCount + " on my view now"],
       ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
       ["Last emote", lastEmoteSeen ? lastEmoteSeen.who + ": " + lastEmoteSeen.kind + ", " + Math.round(performance.now() / 1000 - lastEmoteSeen.at) + "s ago" : "none yet"],
@@ -6617,8 +6617,8 @@ function frame() {
     // Christmas: someone waiting at the empty counter is told where Santa is (once a minute at most).
     if (holiday === "christmas" && me.z > 30.3 && Math.abs(me.x) < 7 && me.z < 33.4 && t - santaPointedAt > 60) { santaPointedAt = t; toast("Santa's taking orders in his big chair by the Christmas tree. Go and sit on his lap!"); }
     // Show the counter / Mortimer buttons when you're close.
-    const near = nearCounter(), nn = nearNpc(), ng = nearRudolph();   // ng: next to Rudolph (Christmas)
-    if (near !== lastNear || nn !== lastNearNpc || ng !== lastNearRudolph) { lastNear = near; lastNearNpc = nn; lastNearRudolph = ng; $("openShop").hidden = !near; $("openShop").textContent = holiday === "christmas" ? "Visit Santa (O)" : "Order at the counter (O)"; $("talkNpc").hidden = !nn; $("talkRudolph").hidden = !ng; $("shopHint").hidden = !(near || nn || ng) && $("pickBtn").hidden; if (!near) closeShop(); }
+    const near = nearCounter(), nn = nearNpc(), ng = nearGary();   // ng: next to Gary (Christmas)
+    if (near !== lastNear || nn !== lastNearNpc || ng !== lastNearGary) { lastNear = near; lastNearNpc = nn; lastNearGary = ng; $("openShop").hidden = !near; $("openShop").textContent = holiday === "christmas" ? "Visit Santa (O)" : "Order at the counter (O)"; $("talkNpc").hidden = !nn; $("talkGary").hidden = !ng; $("shopHint").hidden = !(near || nn || ng) && $("pickBtn").hidden; if (!near) closeShop(); }
   }
   poseGhost(me.ghost, me.x, me.y, me.z, me.yaw, t);
   me.ghost.group.visible = !firstPerson || !!lap; // you can't see your own ghost from inside it (but on Santa's lap the camera is outside)
@@ -6691,7 +6691,7 @@ function frame() {
 
   // Everything else that moves, then draw: the theater first, then (in first person) your hands on top.
   updateNpc(t, dt);
-  updateRudolph(t, dt); // the reindeer in the lobby corner at Christmas (see "Rudolph")
+  updateGary(t, dt); // the reindeer in the lobby corner at Christmas (see "Gary")
   updateCharge();
   updatePickHint();
   stepThrows(dt, t);
