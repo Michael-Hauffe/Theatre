@@ -3402,7 +3402,7 @@ function onPeers(ch) {
     const s = pe.presence.say;
     const sk = s && typeof s === "object" ? String(s.k) + "|" + String(s.t) : null;
     if (sk && sk !== o.sayKey) {
-      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); if (/^(boo|gobble)/i.test(o.sayText)) o.gh.booAt = performance.now() / 1000; if (o.sayText.startsWith("*")) o.gh.munchAt = performance.now() / 1000; }
+      if (o.sayKey !== null || Date.now() - num(s.k, 0) < 8000) { o.sayAt = performance.now() / 1000; o.sayText = clean(s.t, 80); garyHear(o.sayText, x, z, pe.peer); /* Gary may take it personally (see "Gary") */ if (/^(boo|gobble)/i.test(o.sayText)) o.gh.booAt = performance.now() / 1000; if (o.sayText.startsWith("*")) o.gh.munchAt = performance.now() / 1000; }
       o.sayKey = sk;
     } else if (!sk) o.sayKey = "";
   }
@@ -4684,6 +4684,7 @@ renderCrowd();
 function say(text) {
   text = clean(text, 80).trim(); if (!text) return;
   me.say = text; me.sayAt = Date.now(); me.sayLocal = performance.now() / 1000;
+  garyHear(text, me.x, me.z, myPeerId());   // at Christmas, Gary may take it personally (see "Gary")
   if (BOO_WORDS.test(text)) me.ghost.booAt = performance.now() / 1000;
   sharePresence(true);
 }
@@ -5157,6 +5158,7 @@ function talkNpc() {
     else if (!proj.owner) ctx.push("Nothing on the screen yet. Anybody can put a movie up with the Load movie button.");
     if (flying.length > 3) ctx.push("Somebody's been throwing food. I'll find out who. I always find out who.");
     if (holiday === "july4" && myLbs >= 350) ctx.push(myLbs >= MAX_LBS ? "Eight hundred pounds of pure patriotism. I'd salute, but I'd need to stand further back." : "You're looking very… American tonight. I mean that as a compliment. Mostly.");
+    if (holiday === "christmas" && garyStats.hits + garyStats.mean >= 3) ctx.push("Somebody's been picking on Gary. I won't say who. Santa knows who, though. Santa always knows who.");
     if (myPartsLost && myPartsLost < LIMBS) ctx.push("You seem to be missing your " + PART_NAMES[myPartsLost - 1] + ". We don't have a lost and found. We have a lost and lost.");
     if (myPartsLost >= LIMBS && (holiday === "july4" || holiday === "newyear")) ctx.push("Welcome to the other side! Fireworks? Fireworks. It's always fireworks.");
     ctx.push(...mortMemoryLines());
@@ -5189,6 +5191,264 @@ function updateNpc(t, dt) {
   poseGhost(npc.ghost, npc.x, npc.y, npc.z, npc.yaw, t);
   npc.tag.bub.textContent = t - npc.sayAt < 7 ? npc.say : "";
   placeTag(npc.tag, npc.x, npc.y + 1.6, npc.z, !entered || (me.z < LOBBY.z0 - 1 && !heist));   // on a heist his tag shows everywhere
+}
+
+/* ---------------- Gary, the reindeer in the corner (Christmas) ----------------
+   At a Christmas showing, a scruffy little reindeer called Gary stands in the back-right corner of the
+   lobby, past the end of the counter. He's a bit too small, one of his antlers grew in sideways, and he
+   wears a hand-knitted green sweater that's far too big for him.
+   - Say something mean near him (within a few steps, or with "Gary" in it) and he answers with a hurt
+     little comeback; say something nice and he cheers up. Things said nearby that aren't about him are
+     left alone.
+   - Throw food at him and he flinches, the food sticks to his sweater for about 25 seconds, and he
+     says something pitiful.
+   - He keeps count of who picks on him, and after a few times he starts calling them out by name.
+   - Now and then Mortimer (as Santa, in his chair across the lobby) chimes in: sometimes to defend
+     him, sometimes to join in.
+   - Picked on a lot, he droops his head and flattens his ears; he perks up again after a while.
+   Every computer sees the same throws and hears the same chat, so everyone sees him react (his exact
+   words are picked on each computer, like Mortimer's).
+   He's built the first time a Christmas showing needs him, as part of the Christmas decorations, so he
+   disappears with them when the holiday changes. */
+// Where he stands, which way he faces (toward the middle of the lobby), how big he is next to a
+// player's reindeer, and how close you must be for him to take something you say personally (meters).
+const GARY = { x: 10.5, z: 35.25, yaw: 0.96, scale: 0.85, hear: 4.5 };
+let gary = null;   // his body and state, once built (see makeGary())
+// What he's been through tonight (on this computer): hits, mean and nice remarks, and who did what
+// (name -> number of hits and insults), for his call-outs and the debug screen.
+const garyStats = { hits: 0, mean: 0, nice: 0, byWho: {}, idleAt: 0, mortAt: -99 };
+// Words that make a remark mean, or nice. Checked as whole words, so "class" doesn't count as "ass".
+const GARY_MEAN = /\b(stupid|dumb|ugly|loser|idiot|hate|weird|weirdo|freak|smell|smelly|stink|stinks|stinky|gross|lame|pathetic|worthless|useless|moron|shut up|go away|nobody likes|no one likes|nerd|dork|jerk|sucks?|worst|cringe|clown|disgusting|crooked|tiny|shrimp|runt|fat|bad|annoying|boring|ew|eww|loser)\b/i;
+const GARY_NICE = /\b(love|sorry|nice|cute|cool|friend|awesome|great|best|sweet|handsome|beautiful|proud|hug|like you|good boy|merry christmas|happy holidays|thanks?|adorable|amazing)\b/i;
+// What he says when someone's mean to him.
+const GARY_HURT = [
+  "Oh. Okay. I'll just… stand over here. Where I always stand.",
+  "My mom says my antler is “distinctive.”",
+  "That's okay. I've been called worse. By Santa, mostly.",
+  "I'm writing that down. Not to get back at you. Just so I have it.",
+  "*sniff* No, it's the hay. I'm allergic to hay. I'm a reindeer. It's a whole thing.",
+  "Do you say that to all the reindeer, or just me?",
+  "I'll have you know I came ninth in the North Pole spelling bee. Out of ten.",
+  "Wow. Okay. Merry Christmas to you too.",
+  "I'm not crying. My eyes are just cold.",
+  "That's going in my diary. Under “things people said.” It's a big section.",
+  "I have feelings, you know. Small ones. But I have them.",
+  "At least my sweater fits. …No. No, it doesn't. You got me there.",
+  "Says the person who came to a movie theater to yell at a reindeer in a corner.",
+  "My antler grew sideways ON PURPOSE. For aerodynamics. You wouldn't understand.",
+  "I'm technically small for my age. And for every other age.",
+  "*quietly faces the wall*"
+];
+// What he says when food hits him.
+const GARY_HIT = [
+  "Ow! That was a perfectly good sweater!",
+  "Oof. Right in the knitting.",
+  "Is this… a Christmas tradition? Nobody told me.",
+  "I'll just wear it. It goes with the sweater.",
+  "*flinches* I didn't do anything! I've been standing here the whole time!",
+  "Please aim for the sweater. Not the face. The sweater's already ruined.",
+  "Ow. That one had a crunch to it.",
+  "I can't even run away. My hooves are stuck to the floor. Soda. Long story.",
+  "Thank you, I was hungry. No, wait. That hurt.",
+  "My grandma knitted this. She's going to hear about this. She's going to be so sad.",
+  "*shields face with one sleeve*"
+];
+// When someone's nice to him.
+const GARY_NICE_LINES = [
+  "Really? You mean it? Nobody's ever… okay. I'm fine. Thank you.",
+  "Do you want to be friends? We could stand in the corner together. It's a good corner.",
+  "I'm going to remember this for the rest of my life.",
+  "Aw, shucks. *scuffs the floor with one hoof*",
+  "Merry Christmas to you too! You're my favorite. Don't tell the others.",
+  "That's the nicest thing anyone's said to me since August."
+];
+// When someone says his name but isn't being mean or nice.
+const GARY_NAME = [
+  "Yes? Hi! Me? Hi.",
+  "You know my name! Most people just call me “the one in the corner.”",
+  "Hi. I'm Gary. I'm a reindeer. You could probably tell. Probably."
+];
+// Things he says now and then when you're standing near him.
+const GARY_IDLE = [
+  "Hi. Don't mind me. I'm just standing in the corner. Festively.",
+  "Santa says I'm “on standby.” I've been on standby for nine Christmases.",
+  "My antler grew in sideways. The doctor said it'll straighten out. The doctor was a squirrel.",
+  "My grandma knitted this sweater. She thought I'd be bigger. Optimistic woman.",
+  "If anybody needs a reindeer for anything… I'm right here. In the corner.",
+  "I tried out for the sleigh team. They said I was “more of a corner reindeer.”"
+];
+// Mortimer (as Santa) chiming in after someone picks on Gary: defending him, or joining in.
+const MORT_GARY_DEFEND = [
+  "Leave Gary alone. He's having a hard enough Christmas.",
+  "Ho ho NO. We don't throw food at Gary.",
+  "That's going on the naughty list. In pen.",
+  "Throwing food at someone who's asked you to stop? I know how that story ends. Badly. For everyone.",
+  "Be nice to Gary. Have you SEEN his antler?"
+];
+const MORT_GARY_JOIN = [
+  "Ho ho ho! Good shot!",
+  "Gary, stand still, you're making it harder.",
+  "I've been telling him that for years. Ho ho ho.",
+  "Don't worry, Gary. It's free food. That's practically a present.",
+  "Ho ho ho! I didn't see anything. Santa sees everything, but I didn't see that."
+];
+// What to call the person who did something: their name, or "friend" for yourself with no name set.
+const garyName = (peer) => (peer === myPeerId() ? myNick || "friend" : whoIs(peer));
+// Count one more hit or insult from someone; returns how many they've done tonight.
+function garyNote(name) { garyStats.byWho[name] = (garyStats.byWho[name] || 0) + 1; return garyStats.byWho[name]; }
+// A call-out for someone who keeps picking on him (n = how many times so far).
+function garyCallOut(name, n) {
+  return pickOne([
+    "That's " + n + " times now, " + name + ". I'm keeping a list. It has one name on it.",
+    "Oh. It's you again, " + name + ".",
+    name + ", I'm starting to think you don't like me.",
+    "I know it's you, " + name + ". I'd know that throwing arm anywhere."
+  ]);
+}
+// Show a line in his speech bubble, and work his mouth while he says it.
+function garySay(text) { if (!gary) return; gary.say = text; gary.sayAt = nowS(); }
+// Now and then (about 1 time in 3, never more than once every 15 s), Mortimer chimes in a moment later.
+function garyMortimer(t) {
+  if (t - garyStats.mortAt < 15 || Math.random() > 0.35) return;
+  garyStats.mortAt = t;
+  setTimeout(() => { if (holiday === "christmas") npcSay(pickOne(Math.random() < 0.55 ? MORT_GARY_DEFEND : MORT_GARY_JOIN)); }, 1800);
+}
+
+// Build Gary's body into `parent` (the Christmas decorations). Facing -z like everyone else, then turned
+// to face the lobby. Returns his parts and state.
+function makeGary(parent) {
+  const root = new THREE.Group(); root.position.set(GARY.x, 0, GARY.z); root.rotation.y = GARY.yaw; parent.add(root);
+  const body = new THREE.Group(); body.scale.setScalar(GARY.scale); root.add(body);
+  const D = DEER, P = (geo, mat, sc, pos, par) => bodyPart(par || body, geo, mat, sc, pos);
+  // His sweater's knit pattern: green with darker rows of little "V" stitches, a band of white
+  // zigzag and red dots, and a few dropped stitches (hand-knitted, and not by an expert).
+  const knit = canvasTex(256, 256, (x, w, h) => {
+    x.fillStyle = "#2f7a3a"; x.fillRect(0, 0, w, h);
+    x.strokeStyle = "rgba(15, 60, 25, 0.55)"; x.lineWidth = 2;
+    for (let r = 0; r < h; r += 8) for (let c = 0; c < w; c += 8) { x.beginPath(); x.moveTo(c, r); x.lineTo(c + 4, r + 6); x.lineTo(c + 8, r); x.stroke(); }
+    x.fillStyle = "#f3efe4"; x.fillRect(0, 108, w, 6); x.fillRect(0, 142, w, 6);
+    x.strokeStyle = "#f3efe4"; x.lineWidth = 5; x.beginPath(); for (let c = 0; c <= w; c += 16) x.lineTo(c, c % 32 ? 120 : 136); x.stroke();
+    x.fillStyle = "#c0262d"; for (let c = 8; c < w; c += 32) { x.beginPath(); x.arc(c, 128, 4, 0, Math.PI * 2); x.fill(); }
+    x.fillStyle = "#1d5a29"; for (const [a, b] of [[40, 40], [190, 70], [120, 200], [60, 170]]) x.fillRect(a, b, 6, 10);   // dropped stitches
+  });
+  knit.wrapS = knit.wrapT = THREE.RepeatWrapping; knit.repeat.set(2, 1);
+  const wool = new THREE.MeshStandardMaterial({ map: knit, roughness: 1 });
+  P(BALL, D.fur, [0.18, 0.19, 0.42], [0, 0.68, 0.02]);                       // body (same shape as a player's reindeer)
+  // The sweater: baggier than his body, sagging underneath, with sleeves that go all the way down to his hooves.
+  P(BALL, wool, [0.215, 0.225, 0.36], [0, 0.665, -0.03]);
+  P(BALL, wool, [0.19, 0.13, 0.3], [0, 0.53, -0.05]);                        // the saggy bottom
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.04, 8, 20), wool); collar.rotation.x = Math.PI / 2 - 0.55; collar.position.set(0, 0.8, -0.3); body.add(collar);   // rolled collar
+  for (const sd of [-1, 1]) { const sl = P(ROD, wool, [0.055, 0.5, 0.055], [sd * 0.095, 0.4, -0.26]); sl.rotation.x = 0.05; }   // too-long sleeves over his front legs
+  // Legs and tail.
+  for (const [lx, lz] of [[-0.09, -0.26], [0.09, -0.26], [-0.09, 0.3], [0.09, 0.3]]) quadLeg(body, D.fur, D.hoof, lx, 0.62, lz, 0.03, [0.035, 0.035, 0.045]);
+  P(BALL, D.tail, [0.045, 0.055, 0.04], [0, 0.76, 0.44]);
+  // Head and neck, on a pivot at the base of the neck so he can droop his head and look around.
+  const headG = new THREE.Group(); headG.position.set(0, 0.8, -0.3); body.add(headG);
+  const neck = P(ROD, D.fur, [0.065, 0.36, 0.075], [0, 0.08, -0.06], headG); neck.rotation.x = -0.55;
+  P(BALL, D.fur, [0.1, 0.1, 0.13], [0, 0.24, -0.2], headG);                 // head
+  P(BALL, D.belly, [0.065, 0.055, 0.1], [0, 0.19, -0.31], headG);           // snout
+  P(BALL, D.nose, [0.03, 0.026, 0.026], [0, 0.2, -0.41], headG);            // an ordinary dark nose
+  const mouth = P(eyeGeo, eyeMat, [0.12, 0.08, 0.06], [0, 0.15, -0.36], headG);   // opens and closes when he talks
+  const ears = [];
+  for (const sd of [-1, 1]) {
+    P(eyeGeo, eyeMat, [0.3, 0.42, 0.26], [sd * 0.065, 0.28, -0.26], headG);     // eyes
+    const brow = P(ROD, D.hoof, [0.006, 0.045, 0.006], [sd * 0.068, 0.33, -0.275], headG); brow.rotation.z = sd * 1.15;   // worried eyebrows (higher in the middle)
+    const ear = P(BALL, D.fur, [0.032, 0.075, 0.02], [sd * 0.11, 0.3, -0.15], headG); ear.rotation.z = sd * 1.1; ears.push(ear);
+  }
+  // Antlers. His left one is normal: a beam curving up and out, with two tines…
+  { const beam = P(ROD, D.antler, [0.016, 0.3, 0.016], [-0.1, 0.47, -0.14], headG); beam.rotation.z = 0.45;
+    const t1 = P(ROD, D.antler, [0.012, 0.15, 0.012], [-0.19, 0.57, -0.14], headG); t1.rotation.z = 1.15;
+    const t2 = P(ROD, D.antler, [0.012, 0.13, 0.012], [-0.13, 0.64, -0.14], headG); t2.rotation.z = -0.2; }
+  // …and his right one grew in sideways: it sticks straight out, then droops, with one stubby tine.
+  { const beam = P(ROD, D.antler, [0.016, 0.3, 0.016], [0.22, 0.36, -0.14], headG); beam.rotation.z = -1.5;
+    const tip = P(ROD, D.antler, [0.014, 0.12, 0.014], [0.39, 0.31, -0.14], headG); tip.rotation.z = -0.5;
+    const nub = P(ROD, D.antler, [0.011, 0.07, 0.011], [0.27, 0.4, -0.14], headG); nub.rotation.z = 0.3; }
+  const stuck = new THREE.Group(); body.add(stuck);   // food stuck to his sweater (see garyHit())
+  const tag = makeTag(); tag.nm.textContent = "Gary · Reindeer";
+  return { root, body, headG, ears, mouth, stuck, stuckList: [], tag, gh: { booAt: -10 }, flinchAt: -10, happyAt: -10, sad: 0, say: "", sayAt: -99, pending: null, look: 0 };
+}
+
+// Food hit Gary (on every computer, since everyone runs the same throws): he flinches and gets sadder,
+// the food sticks to his sweater (except fireworks, which keep fizzing toward their bang), and he says
+// something: a call-out if it's the same person again, otherwise a pitiful line.
+function garyHit(f, t) {
+  if (!gary) return;
+  gary.flinchAt = t; gary.sad = Math.min(1, gary.sad + 0.25); garyStats.hits++;
+  if (f.id !== "firework") { stickFood(f, t); f.stuck = true; }
+  const name = garyName(f.from), n = garyNote(name), food = MENU_BY_ID[f.id] ? MENU_BY_ID[f.id].name.toLowerCase() : "food";
+  if (t - gary.sayAt < 2.5) return;   // still finishing his last sentence
+  garySay(n >= 3 && Math.random() < 0.5 ? garyCallOut(name, n) : Math.random() < 0.25 ? "Was that " + (/^[aeiou]/.test(food) ? "an " : "a ") + food + "? …I'm keeping it." : pickOne(GARY_HIT));
+  garyMortimer(t);
+}
+// Stick a copy of the thrown food onto his sweater where it hit. It stays about 25 seconds, then
+// shrinks away. At most 12 at a time (the oldest goes first).
+function stickFood(f, t) {
+  const m = f.mesh.clone();
+  // Where it hit, as a point on Gary's body, pushed out to the surface of the sweater.
+  const p = gary.body.worldToLocal(f.p.clone()), c = new THREE.Vector3(0, 0.665, -0.03), r = new THREE.Vector3(0.215, 0.225, 0.36);
+  const d = p.sub(c).divide(r); if (d.lengthSq() < 1e-6) d.set(0, 1, 0); d.normalize();
+  m.position.copy(c).add(d.multiply(r).multiplyScalar(1.04));
+  m.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+  m.scale.multiplyScalar(0.8 / GARY.scale);
+  gary.stuck.add(m); gary.stuckList.push({ mesh: m, at: t, s: m.scale.x });
+  while (gary.stuckList.length > 12) gary.stuck.remove(gary.stuckList.shift().mesh);
+}
+// Someone said something. If it's meant for Gary (said near him, or with his name in it), work out
+// whether it's mean or nice and queue his answer for a moment later (so it feels like he heard it).
+// x, z = where they were standing; peer = who said it.
+function garyHear(text, x, z, peer) {
+  if (holiday !== "christmas" || !gary || !text || text.startsWith("*")) return;   // "*munch*" lines are eating sounds, not speech
+  const named = /\bgary\b/i.test(text);
+  if (!named && Math.hypot(x - GARY.x, z - GARY.z) > GARY.hear) return;
+  const t = nowS(), name = garyName(peer);
+  if (GARY_MEAN.test(text)) {
+    garyStats.mean++; gary.sad = Math.min(1, gary.sad + 0.2); const n = garyNote(name);
+    gary.pending = { at: t + 0.8, line: n >= 3 && Math.random() < 0.4 ? garyCallOut(name, n) : pickOne(GARY_HURT), flinch: true };
+    garyMortimer(t);
+  } else if (GARY_NICE.test(text)) {
+    garyStats.nice++; gary.sad = Math.max(0, gary.sad - 0.4);
+    gary.pending = { at: t + 0.8, line: pickOne(GARY_NICE_LINES), happy: true };
+  } else if (named) gary.pending = { at: t + 0.8, line: pickOne(GARY_NAME) };
+}
+// Every frame: build him the first time he's needed, then animate him (breathing, looking at you,
+// flinching, a happy little bounce, drooping when sad), say anything queued, let stuck food drop off,
+// and place his name tag and speech bubble.
+const tmpGaryV = new THREE.Vector3();
+function updateGary(t, dt) {
+  const on = holiday === "christmas" && holidayDecor.christmas;
+  if (!gary && on) gary = makeGary(holidayDecor.christmas.group);
+  if (!gary) return;
+  if (!on) { placeTag(gary.tag, GARY.x, 1.5, GARY.z, true); return; }
+  if (gary.pending && t >= gary.pending.at) {
+    const p = gary.pending; gary.pending = null; garySay(p.line);
+    if (p.flinch) gary.flinchAt = t; if (p.happy) gary.happyAt = t;
+  }
+  // Now and then he speaks up on his own when you're standing near him.
+  const near = Math.hypot(me.x - GARY.x, me.z - GARY.z) < 6;
+  if (near && t - gary.sayAt > 40 && t - garyStats.idleAt > 60) { garyStats.idleAt = t; garySay(pickOne(GARY_IDLE)); }
+  gary.sad = Math.max(0, gary.sad - dt / 45);   // he gets over things in about 45 seconds… mostly
+  const fl = clamp(1 - (t - gary.flinchAt) / 0.7, 0, 1), fk = Math.sin(fl * Math.PI);   // flinch strength (0..1)
+  const hp = clamp(1 - (t - gary.happyAt) / 1.4, 0, 1);                                 // happy bounce, fading out
+  const b = gary.body;
+  b.position.set(Math.sin(t * 55) * 0.025 * fk, Math.abs(Math.sin((t - gary.happyAt) * 9)) * 0.07 * hp, fk * 0.08);   // shake and step back when hit; bounce when happy
+  b.rotation.z = Math.sin(t * 1.1) * 0.015; b.rotation.x = -fk * 0.12;
+  b.scale.set(GARY.scale, GARY.scale * (1 + Math.sin(t * 1.7) * 0.012), GARY.scale);   // breathing
+  // Look toward you when you're close (turning his head, not his body), otherwise gaze about a bit.
+  let want = Math.sin(t * 0.37) * 0.35;
+  if (near) { const a = Math.atan2(-(me.x - GARY.x), -(me.z - GARY.z)) - GARY.yaw; want = clamp(Math.atan2(Math.sin(a), Math.cos(a)), -0.9, 0.9); }
+  gary.look += (want - gary.look) * (1 - Math.exp(-dt * 3));
+  gary.headG.rotation.set(0.1 + gary.sad * 0.55 + fk * 0.3 - hp * 0.2, gary.look, 0);   // sad = head hangs low
+  const flat = Math.max(fk, gary.sad * 0.7);   // ears go flat when hit or sad
+  gary.ears.forEach((e, i) => { e.rotation.z = (i ? 1 : -1) * (1.1 + flat * 0.7); });
+  gary.mouth.scale.y = t - gary.sayAt < 2.2 ? 0.04 + Math.abs(Math.sin(t * 14)) * 0.07 : 0.03;   // talking
+  // Stuck food: after 25 seconds it shrinks away over 1 second, then it's gone.
+  for (let i = gary.stuckList.length - 1; i >= 0; i--) {
+    const s = gary.stuckList[i], age = t - s.at;
+    if (age > 26) { gary.stuck.remove(s.mesh); gary.stuckList.splice(i, 1); }
+    else if (age > 25) s.mesh.scale.setScalar(s.s * (26 - age));
+  }
+  gary.tag.bub.textContent = t - gary.sayAt < 7 ? gary.say : "";
+  placeTag(gary.tag, GARY.x, 1.5, GARY.z, !entered || me.z < LOBBY.z0 - 1);   // hidden from inside the theater, like Mortimer's
 }
 
 /* ---------------- Mortimer's turkey-leg heist ----------------
@@ -5459,11 +5719,13 @@ function bounce(f, n, e, fr) { const vn = f.v.dot(n); f.v.sub(tTmp.copy(n).multi
 function settle(f) { f.rest = true; f.v.set(0, 0, 0); f.mesh.rotation.set(0, f.mesh.rotation.y, 0); }
 // Name for a network id.
 function whoIs(peer) { if (peer === myPeerId()) return "You"; return nameFor(peersSnap.find((p) => p.peer === peer)); }
-// Food hit a ghost: it flinches; if it's you, a "Bonk!" message; if it's Mortimer, he complains.
+// Food hit a ghost: it flinches; if it's you, a "Bonk!" message; if it's Mortimer, he complains;
+// if it's Gary (Christmas), it sticks to his sweater and he reacts.
 function onGhostHit(g, f, t) {
   g.gh.booAt = t;
   if (g.me && f.from !== myPeerId()) toast("Bonk! " + whoIs(f.from) + " hit you with " + MENU_BY_ID[f.id].name.toLowerCase() + ".");
   if (g.npc && f.from === myPeerId()) mortNoteHit();   // your throw hit Mortimer: he'll remember
+  if (g.gary) garyHit(f, t);   // Gary flinches, the food sticks to his sweater, and he says something (see "Gary")
   if (g.npc && t - npc.lastHitTalk > 2.5) { npc.lastHitTalk = t; npcSay(pickOne(Math.random() < HIT_BACKSTORY_CHANCE ? NPC_HIT_BACKSTORY : NPC_HIT)); } // now and then the hit stirs up old memories
 }
 // Move all flying food for this frame. Small sub-steps (90 per second) so fast throws can't
@@ -5537,6 +5799,7 @@ function stepThrows(dt, t) {
   if (!flying.length) return;
   const targets = getThrowTargets();
   const gts = [{ key: myPeerId(), x: me.x, y: me.y, z: me.z, gh: me.ghost, me: true }, { key: "npc", x: npc.x, y: npc.y, z: npc.z, gh: npc.ghost, npc: true }];
+  if (gary && holiday === "christmas") gts.push({ key: "gary", x: GARY.x, y: 0, z: GARY.z, gh: gary.gh, gary: true });   // Gary can be hit too (see "Gary")
   for (const [peer, o] of others) gts.push({ key: peer, x: o.x, y: o.y, z: o.z, gh: o.gh });
   for (let i = flying.length - 1; i >= 0; i--) {
     const f = flying[i], age = t - f.born;
@@ -5545,7 +5808,7 @@ function stepThrows(dt, t) {
     if (f.id === "firework" && age >= FIREWORK_FUSE) { onFireworkBurst(f.p); killThrow(i); continue; }   // the fuse ran out: BOOM (see "Fireworks")
     if (f.rest) continue;
     const n = Math.max(1, Math.ceil(dt / (1 / 90))), h = dt / n;
-    for (let s = 0; s < n && !f.rest; s++) {
+    for (let s = 0; s < n && !f.rest && !f.stuck; s++) {   // (stops early if it stuck to Gary)
       f.v.y -= 9.8 * h;
       const dist = f.v.length() * h;
       if (dist > 1e-6) {
@@ -5571,10 +5834,11 @@ function stepThrows(dt, t) {
           if (f.v.dot(tN) < 0) bounce(f, tN, 0.45, 0.85);
           if (f.lastHit !== g.key || t - f.lastHitAt > 1) onGhostHit(g, f, t);
           f.lastHit = g.key; f.lastHitAt = t;
+          if (f.stuck) break;   // it stuck to Gary's sweater: stop moving it
         }
       }
     }
-    if (f.splat) { killThrow(i); continue; }   // it burst on the screen
+    if (f.splat || f.stuck) { killThrow(i); continue; }   // it burst on the screen, or stuck to Gary (a copy stays on him)
     f.mesh.position.copy(f.p);
     if (!f.rest) { f.mesh.rotation.x += f.w.x * dt; f.mesh.rotation.y += f.w.y * dt; f.mesh.rotation.z += f.w.z * dt; }
   }
@@ -5634,7 +5898,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.33 · 2026-11-17";
+const BUILD = "v2.34 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -5791,6 +6055,7 @@ function dbgRows() {
       ["Alcohol", alcohol.toFixed(2) + " drinks" + (alcohol >= 3.99 ? "" : alcohol >= 2.99 ? " (drifting + blurry)" : alcohol >= 1.99 ? " (drifting)" : "") + (blackout ? ", blacked out" : "") + (nowS() - lastSipAt < SOBER_DELAY ? ", still drinking" : alcohol > 0 ? ", sobering up" : "") + " · " + blackouts + " blackout(s)"],
       ["Holiday body", "your body: " + me.ghost.kind + (lap ? " · on Santa's lap" : "") + (me.ghost.kind === "bunny" || hopsDone ? " · " + hopsDone + " hops" : "") + (holiday === "july4" ? " · " + Math.round(myLbs) + " lbs" : "")],
       ["Fireworks", burstsTotal + " burst here · you've lost " + myPartsLost + " of " + LIMBS + " limbs" + (myPartsLost ? " (" + PART_NAMES.slice(0, myPartsLost).join(", ") + ")" : "")],
+      ["Gary (Christmas)", !gary ? "not here (only at Christmas)" : garyStats.hits + " hits, " + garyStats.mean + " mean remarks, " + garyStats.nice + " nice ones · sadness " + Math.round(gary.sad * 100) + "% · " + gary.stuckList.length + " food stuck on him" + (Object.keys(garyStats.byWho).length ? " · picked on by " + Object.entries(garyStats.byWho).map(([k, v]) => k + " ×" + v).join(", ") : "")],
       ["Tomato splats", splats.length + " on the screen now, " + splatsTotal + " so far"],
       ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
       ["Last emote", lastEmoteSeen ? lastEmoteSeen.who + ": " + lastEmoteSeen.kind + ", " + Math.round(performance.now() / 1000 - lastEmoteSeen.at) + "s ago" : "none yet"],
@@ -6295,6 +6560,7 @@ function frame() {
 
   // Everything else that moves, then draw: the theater first, then (in first person) your hands on top.
   updateNpc(t, dt);
+  updateGary(t, dt); // the reindeer in the lobby corner at Christmas (see "Gary")
   updateCharge();
   updatePickHint();
   stepThrows(dt, t);
