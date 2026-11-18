@@ -263,6 +263,9 @@ input[type=range] { accent-color: var(--brass); }
    appearing on the theater screen. It's drawn on #directCv, which sits above the 3D view but
    below the controls. Name tags are hidden. After 3 seconds without moving the mouse, the
    controls and the mouse pointer fade away (body.directIdle); any movement brings them back. */
+/* Splats over your view when someone hits you in the face with a tomato or cranberry sauce (see "Face splats"). */
+#faceSplats { position: fixed; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+#faceSplats canvas { position: absolute; width: 78vmin; height: 78vmin; }
 #directCv { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; background: #000; display: block; }
 /* Margaritas: the black screen when you've had too many (its opacity is set by the script). */
 #blackout { position: fixed; inset: 0; z-index: 30; background: #000; pointer-events: none; display: flex; align-items: center; justify-content: center;
@@ -477,6 +480,7 @@ body.nohud .hud, body.nohud #tags, body.nohud #joy, body.nohud #updown, body.noh
 </div>
 
 <!-- Welcome screen: pick a name and bedsheet, then host, join with a code, or look around alone. -->
+<div id="faceSplats" aria-hidden="true"></div>   <!-- tomato/cranberry splats on your view (see "Face splats") -->
 <div id="lobby">
   <div class="marquee">
     <div class="eyebrow">Tonight · Screen One</div>
@@ -5773,7 +5777,10 @@ function whoIs(peer) { if (peer === myPeerId()) return "You"; return nameFor(pee
 // if it's Gary (Christmas), it sticks to his sweater and he reacts.
 function onGhostHit(g, f, t) {
   g.gh.booAt = t;
-  if (g.me && f.from !== myPeerId()) toast("Bonk! " + whoIs(f.from) + " hit you with " + MENU_BY_ID[f.id].name.toLowerCase() + ".");
+  // A rotten tomato or cranberry sauce bursts on a player's face instead of bouncing off (see "Face splats").
+  const faceHit = SPLAT_FOODS.includes(f.id) && !g.npc && !g.gary;
+  if (faceHit) { f.splat = true; splatOnGhost(g.gh, f.id, t); if (g.me) splatMyView(f.id); }
+  if (g.me && f.from !== myPeerId()) toast((faceHit ? "Splat! " : "Bonk! ") + whoIs(f.from) + " hit you " + (faceHit ? "in the face " : "") + "with " + MENU_BY_ID[f.id].name.toLowerCase() + ".");
   if (g.npc && f.from === myPeerId()) mortNoteHit();   // your throw hit Mortimer: he'll remember
   if (g.gary) garyHit(f, t);   // Gary flinches, the food sticks to his sweater, and he says something (see "Gary")
   if (g.npc && t - npc.lastHitTalk > 2.5) { npc.lastHitTalk = t; npcSay(pickOne(Math.random() < HIT_BACKSTORY_CHANCE ? NPC_HIT_BACKSTORY : NPC_HIT)); } // now and then the hit stirs up old memories
@@ -5833,9 +5840,54 @@ function splatOnScreen(point, kind) {
 }
 function removeSplat(i) { const sp = splats[i]; scene.remove(sp.mesh); sp.mesh.geometry.dispose(); sp.mesh.material.dispose(); splats.splice(i, 1); }
 // Remove all splats (/admin clear food).
-function clearSplats() { while (splats.length) removeSplat(0); }
+function clearSplats() { while (splats.length) removeSplat(0); $("faceSplats").textContent = ""; }   // the movie screen's splats, and any on your view
+/* ---------------- Face splats ----------------
+   A tomato or cranberry sauce that hits another player bursts on their face. On their own computer a
+   big splat covers part of their view: it stays for 4 seconds, then slides down and fades over the
+   next 6. Several hits pile up. Everyone else sees a splat on that player's face for the same
+   10 seconds. Every computer runs the same flight, so they all agree on who got hit. */
+const FACE_SPLAT_LIFE = 10;   // seconds a face splat lasts (the last 6 of them fading)
+// Where each kind of body's face is, so the splat lands on it (body-relative, facing -z).
+const FACE_AT = { ghost: [0, 0.72, -0.5], reindeer: [0, 1.04, -0.66], bunny: [0, 0.54, -0.47], person: [0, 1.2, -0.18], turkey: [0, 1.0, -0.5] };
+let faceSplatsTotal = 0;   // face splats seen on this page (debug screen)
+// Cover my view with a splat (kind: "tomato" or "cranberry"), somewhere around the middle of the screen.
+function splatMyView(kind) {
+  kind = kind === "cranberry" ? "cranberry" : "tomato";
+  const c = makeSplatImg(1 + (faceSplatsTotal % 3), kind);
+  c.style.left = (15 + Math.random() * 40) + "vw"; c.style.top = "calc(" + (5 + Math.random() * 35) + "vh - 10vmin)";
+  const rot = (Math.random() - 0.5) * 50;
+  $("faceSplats").appendChild(c);
+  const anim = c.animate([
+    { transform: "rotate(" + rot + "deg) scale(0.6)", opacity: 1 },
+    { transform: "rotate(" + rot + "deg) scale(1)", opacity: 1, offset: 0.02 },        // SPLAT: bursts out
+    { transform: "rotate(" + rot + "deg) translateY(0)", opacity: 1, offset: 0.4 },   // sits there for 4 seconds
+    { transform: "rotate(" + rot + "deg) translateY(14vh)", opacity: 0 }               // then slides down and fades
+  ], { duration: FACE_SPLAT_LIFE * 1000, easing: "ease-in" });
+  anim.onfinish = () => c.remove();
+  faceSplatsTotal++;
+}
+// Show a splat on a ghost's face (for everyone watching); stepFaceSplats() fades it out.
+let faceSplatTex = {};
+function splatOnGhost(gh, kind, t) {
+  kind = kind === "cranberry" ? "cranberry" : "tomato";
+  if (!faceSplatTex[kind]) faceSplatTex[kind] = splatTexFrom(makeSplatImg(2, kind));
+  if (!gh.faceSplat) { gh.faceSplat = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false })); gh.faceSplat.scale.set(0.42, 0.42, 1); gh.bodyG.add(gh.faceSplat); }
+  const sp = gh.faceSplat, at = FACE_AT[gh.kind] || FACE_AT.ghost;
+  sp.material.map = faceSplatTex[kind]; sp.material.needsUpdate = true; sp.material.rotation = (Math.random() - 0.5) * 1.2;
+  sp.position.set(at[0], at[1], at[2]); sp.visible = true; gh.faceSplatAt = t;
+  if (gh !== me.ghost) faceSplatsTotal++;
+}
+// Every frame, for each ghost with a splat on its face: fade it over its last 6 seconds (and with the
+// ghost itself in Hide HUD mode), then hide it. Your own is hidden in first person (you'd be inside it).
+function stepFaceSplats(t) {
+  const each = (gh, mine) => { const sp = gh.faceSplat; if (!sp || !sp.visible) return;
+    const age = t - gh.faceSplatAt; if (age > FACE_SPLAT_LIFE) { sp.visible = false; return; }
+    sp.material.opacity = clamp((FACE_SPLAT_LIFE - age) / 6, 0, 1) * ghostFade * (mine && firstPerson ? 0 : 1); };
+  each(me.ghost, true); for (const o of others.values()) each(o.gh, false);
+}
 // Every frame: splats slide slowly down the screen and fade out at the end of their life.
 function stepSplats(dt, t) {
+  stepFaceSplats(t);
   for (let i = splats.length - 1; i >= 0; i--) {
     const sp = splats[i], age = t - sp.born;
     if (age > SPLAT_LIFE) { removeSplat(i); continue; }
@@ -5858,7 +5910,7 @@ function stepThrows(dt, t) {
     if (f.id === "firework" && age >= FIREWORK_FUSE) { onFireworkBurst(f.p); killThrow(i); continue; }   // the fuse ran out: BOOM (see "Fireworks")
     if (f.rest) continue;
     const n = Math.max(1, Math.ceil(dt / (1 / 90))), h = dt / n;
-    for (let s = 0; s < n && !f.rest && !f.stuck; s++) {   // (stops early if it stuck to Gary)
+    for (let s = 0; s < n && !f.rest && !f.stuck && !f.splat; s++) {   // (stops early if it stuck to Gary or splatted)
       f.v.y -= 9.8 * h;
       const dist = f.v.length() * h;
       if (dist > 1e-6) {
@@ -5884,11 +5936,11 @@ function stepThrows(dt, t) {
           if (f.v.dot(tN) < 0) bounce(f, tN, 0.45, 0.85);
           if (f.lastHit !== g.key || t - f.lastHitAt > 1) onGhostHit(g, f, t);
           f.lastHit = g.key; f.lastHitAt = t;
-          if (f.stuck) break;   // it stuck to Gary's sweater: stop moving it
+          if (f.stuck || f.splat) break;   // it stuck to Gary's sweater, or burst on someone's face: stop moving it
         }
       }
     }
-    if (f.splat || f.stuck) { killThrow(i); continue; }   // it burst on the screen, or stuck to Gary (a copy stays on him)
+    if (f.splat || f.stuck) { killThrow(i); continue; }   // it burst (on the screen or a face), or stuck to Gary (a copy stays on him)
     f.mesh.position.copy(f.p);
     if (!f.rest) { f.mesh.rotation.x += f.w.x * dt; f.mesh.rotation.y += f.w.y * dt; f.mesh.rotation.z += f.w.z * dt; }
   }
@@ -5948,7 +6000,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.35 · 2026-11-17";
+const BUILD = "v2.36 · 2026-11-17";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -6106,7 +6158,7 @@ function dbgRows() {
       ["Holiday body", "your body: " + me.ghost.kind + (lap ? " · on Santa's lap" : "") + (me.ghost.kind === "bunny" || hopsDone ? " · " + hopsDone + " hops" : "") + (holiday === "july4" ? " · " + Math.round(myLbs) + " lbs" : "")],
       ["Fireworks", burstsTotal + " burst here · you've lost " + myPartsLost + " of " + LIMBS + " limbs" + (myPartsLost ? " (" + PART_NAMES.slice(0, myPartsLost).join(", ") + ")" : "")],
       ["Gary (Christmas)", !gary ? "not here (only at Christmas)" : garyStats.hits + " hits, " + garyStats.mean + " mean remarks, " + garyStats.nice + " nice ones, " + garyTalks + " talks · sadness " + Math.round(gary.sad * 100) + "% · " + gary.stuckList.length + " food stuck on him" + (Object.keys(garyStats.byWho).length ? " · picked on by " + Object.entries(garyStats.byWho).map(([k, v]) => k + " ×" + v).join(", ") : "")],
-      ["Tomato splats", splats.length + " on the screen now, " + splatsTotal + " so far"],
+      ["Tomato splats", splats.length + " on the screen now, " + splatsTotal + " so far · " + faceSplatsTotal + " in someone's face · " + $("faceSplats").childElementCount + " on my view now"],
       ["Food in reach", (() => { const f = nearestFood(); return f ? MENU_BY_ID[f.id].name + ", " + reachDist(f).toFixed(1) + " m away (" + f.left + " left)" : "none"; })()],
       ["Last emote", lastEmoteSeen ? lastEmoteSeen.who + ": " + lastEmoteSeen.kind + ", " + Math.round(performance.now() / 1000 - lastEmoteSeen.at) + "s ago" : "none yet"],
       ["Mortimer", npc.talks + " talks, " + npc.backTold + " about his past (" + NPC_LINES.length + " everyday lines, " + NPC_BACKSTORY.length + " backstory lines)"],
