@@ -4647,24 +4647,44 @@ async function join(code) {
 // matchmaking server. To tell "their addresses never arrived" apart from "they arrived but none
 // worked", count every address handed to every connection on this page (and any the browser
 // refused), by watching the browser's addIceCandidate. ("end" = the other side said it had sent them all.)
-const iceIn = new WeakMap();   // connection -> { n: addresses received, bad: refused, types: Set of kinds }
+const iceIn = new WeakMap();   // connection -> { n: addresses received, bad: refused, types: Set of kinds, shapes: Set (see addrShape) }
+// What sort of address a candidate line carries, without revealing it: "hidden name" (the browser's
+// disguised local name, ending in .local), "local 192.168.1.x" (a home-network address, last part
+// hidden), "IPv6", or "public" (an internet address, hidden). Used to tell why two computers on the
+// same home network can or can't reach each other. Example input: "candidate:1 1 udp 2122 192.168.1.5 5000 typ host".
+function addrShape(line) {
+  const m = typeof line === "string" && line.match(/ (udp|tcp) \d+ (\S+) \d+ typ (\w+)/i); if (!m) return "";
+  const a = m[2], kind = m[3], proto = m[1].toLowerCase();
+  let what;
+  if (/\.local$/i.test(a)) what = "hidden name";
+  else if (a.includes(":")) what = "IPv6";
+  else if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/.test(a)) what = "local " + a.split(".").slice(0, 3).join(".") + ".x";
+  else what = "public";
+  return kind + " " + what + (proto === "tcp" ? " tcp" : "");
+}
 if (window.RTCPeerConnection) {
   const realAdd = RTCPeerConnection.prototype.addIceCandidate;
   RTCPeerConnection.prototype.addIceCandidate = function (c, ...rest) {
-    const r = iceIn.get(this) || { n: 0, bad: 0, types: new Set() }; iceIn.set(this, r);
-    try { const m = c && typeof c.candidate === "string" && c.candidate.match(/ typ (\w+)/); if (m) { r.n++; r.types.add(m[1]); } else r.types.add("end"); } catch {}
+    const r = iceIn.get(this) || { n: 0, bad: 0, types: new Set(), shapes: new Set() }; iceIn.set(this, r);
+    try { const m = c && typeof c.candidate === "string" && c.candidate.match(/ typ (\w+)/); if (m) { r.n++; r.types.add(m[1]); const sh = addrShape(c.candidate); if (sh) r.shapes.add(sh); } else r.types.add("end"); } catch {}
     const out = realAdd.call(this, c, ...rest);
     if (out && out.catch) out.catch(() => { r.bad++; });   // refused (counted, but the caller still sees the error as before)
     return out;
   };
 }
 // "received 3 (host+srflx)" for one connection, for the debug screen.
-function iceInText(pc) { const r = iceIn.get(pc); return r ? "received " + r.n + " (" + ([...r.types].join("+") || "–") + ")" + (r.bad ? ", " + r.bad + " refused" : "") : "received 0"; }
+function iceInText(pc) { const r = iceIn.get(pc); return r ? "received " + r.n + " (" + ([...r.types].join("+") || "–") + ")" + (r.bad ? ", " + r.bad + " refused" : "") + (r.shapes.size ? ": " + [...r.shapes].join(", ") : "") : "received 0"; }
+// The sorts of address I've sent on one connection (see addrShape), for the debug screen.
+const iceOutShapes = new WeakMap();
+function mineShapes(pc) { const s = iceOutShapes.get(pc); return s && s.size ? ": " + [...s].join(", ") : ""; }
 // How many of my own addresses each connection has found and passed on (counted as they're found).
 // Counting starts when the connection sets up its own side (setLocalDescription), which is just before
 // the browser starts looking for addresses, so none are missed.
 const iceOut = new WeakMap();
-function countMine(pc) { if (!pc || iceOut.has(pc)) return; iceOut.set(pc, 0); pc.addEventListener("icecandidate", (e) => { if (e.candidate) iceOut.set(pc, iceOut.get(pc) + 1); }); }
+function countMine(pc) {
+  if (!pc || iceOut.has(pc)) return; iceOut.set(pc, 0); iceOutShapes.set(pc, new Set());
+  pc.addEventListener("icecandidate", (e) => { if (!e.candidate) return; iceOut.set(pc, iceOut.get(pc) + 1); const sh = addrShape(e.candidate.candidate); if (sh) iceOutShapes.get(pc).add(sh); });
+}
 if (window.RTCPeerConnection) {
   const realSetLocal = RTCPeerConnection.prototype.setLocalDescription;
   RTCPeerConnection.prototype.setLocalDescription = function (...args) { try { countMine(this); } catch {} return realSetLocal.apply(this, args); };
@@ -4685,7 +4705,7 @@ async function watchJoin(cn) {
   try {
     const rep = await pc.getStats(), mine = new Set(), theirs = new Set(); let pairs = 0, tried = 0;
     rep.forEach((r) => { if (r.type === "local-candidate") mine.add(r.candidateType); if (r.type === "remote-candidate") theirs.add(r.candidateType); if (r.type === "candidate-pair") { pairs++; if (r.state === "failed" || r.state === "succeeded" || r.state === "in-progress") tried++; } });
-    joinLog.cands = "mine: " + ([...mine].join("+") || "none") + " (" + (iceOut.get(pc) || 0) + " sent) · host's: " + ([...theirs].join("+") || "none") + " (" + iceInText(pc) + ") · " + pairs + " routes (" + tried + " tried)";
+    joinLog.cands = "mine: " + ([...mine].join("+") || "none") + " (" + (iceOut.get(pc) || 0) + " sent" + mineShapes(pc) + ") · host's: " + ([...theirs].join("+") || "none") + " (" + iceInText(pc) + ") · " + pairs + " routes (" + tried + " tried)";
   } catch {}
 }
 // Rows for the debug screen.
@@ -6029,7 +6049,7 @@ function updateFP(t, dt) {
 // Frame-rate counter (updated in the main loop).
 let fps = 0, fpsFrames = 0, fpsT = performance.now();
 // Version label shown on the debug screen. Update it when making a notable change.
-const BUILD = "v2.40 · 2026-11-18";
+const BUILD = "v2.41 · 2026-11-18";
 
 /* ---------------- STAYING UP TO DATE ----------------
    GitHub Pages lets browsers reuse a saved copy of this page for up to 10 minutes, so right after
@@ -6086,7 +6106,7 @@ async function noteRoute(pc) {
     });
     const kind = (c) => c ? c.candidateType + (c.protocol ? "/" + c.protocol : "") : "?";
     countMine(pc);
-    routeNotes.set(pc, pc.iceConnectionState + ", " + Math.round((performance.now() - bornAt.get(pc)) / 1000) + "s old · mine: " + ([...mine].join("+") || "none") + " (" + (iceOut.get(pc) || 0) + " sent) · theirs: " + ([...theirs].join("+") || "none") + " (" + iceInText(pc) + ")" +
+    routeNotes.set(pc, pc.iceConnectionState + ", " + Math.round((performance.now() - bornAt.get(pc)) / 1000) + "s old · mine: " + ([...mine].join("+") || "none") + " (" + (iceOut.get(pc) || 0) + " sent" + mineShapes(pc) + ") · theirs: " + ([...theirs].join("+") || "none") + " (" + iceInText(pc) + ")" +
       " · routes " + n.ok + " worked, " + n.failed + " failed, " + n.trying + " trying, " + n.waiting + " waiting" + (use ? " · using " + kind(cand[use.localCandidateId]) + " → " + kind(cand[use.remoteCandidateId]) : ""));
   } catch {}
 }
